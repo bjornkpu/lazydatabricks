@@ -25,4 +25,4 @@ expression: render(&with_runs())
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "└───────────────────0 of 0┘└───────────────────────────────────────────────────┘"
-" Select: j/k │ Filter: / │ Mine: m │ Open: Enter │ Actions: x │ Quit: q   v0.1.0"
+" Select: j/k │ Filter: / │ Mine: m │ Actions: x │ Quit: q │ Keys: ?       v0.1.0"

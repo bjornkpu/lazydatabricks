@@ -32,6 +32,12 @@ pub enum Action {
     PrevTab,
     /// Opens the `x` menu; the only way to reach run-now and cancel.
     Menu,
+    /// The `?` overlay.
+    Help,
+    /// Open the selected item in the browser.
+    Browse,
+    /// Copy the selected item's URL.
+    Copy,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -64,6 +70,9 @@ impl Default for Keymap {
                 vec![Key::Char('h'), Key::Char('['), Key::Left],
             ),
             (Action::Menu, vec![Key::Char('x')]),
+            (Action::Help, vec![Key::Char('?')]),
+            (Action::Browse, vec![Key::Char('o')]),
+            (Action::Copy, vec![Key::Char('y')]),
         ]))
     }
 }
@@ -88,6 +97,20 @@ impl Keymap {
             .iter()
             .find(|(_, keys)| keys.contains(&key))
             .map(|(action, _)| *action)
+    }
+
+    /// Every binding of `action`, `j/↓` style, for the help overlay.
+    #[must_use]
+    pub fn labels(&self, action: Action) -> String {
+        self.0.get(&action).map_or_else(
+            || "-".to_owned(),
+            |keys| {
+                keys.iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("/")
+            },
+        )
     }
 
     /// The first binding of `action`, as shown in the hint bar.
@@ -167,7 +190,9 @@ mod tests {
         assert_eq!(keys.action(Key::Char(']')), Some(Action::NextTab));
         assert_eq!(keys.action(Key::Char('7')), None);
         assert_eq!(keys.label(Action::Down), "j");
+        assert_eq!(keys.labels(Action::Down), "j/↓");
         assert_eq!(keys.label(Action::Open), "Enter");
+        assert_eq!(keys.action(Key::Char('?')), Some(Action::Help));
     }
 
     #[test]

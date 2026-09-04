@@ -4,6 +4,7 @@
 
 mod apilog;
 mod chrome;
+mod help;
 mod hints;
 mod main_panel;
 mod menu;
@@ -50,6 +51,7 @@ pub fn draw(app: &App, frame: &mut Frame) {
     }
     hints::draw(app, hint_bar, frame);
     menu::draw(app, frame);
+    help::draw(app, frame);
 }
 
 /// Height of one side panel. Status is two lines of text; the lists share the rest.
@@ -85,6 +87,7 @@ mod tests {
     use crate::api::models::ResultState;
     use crate::app::tests::{api_call, app, job, run, theirs};
     use crate::app::{Key, Message};
+    use crate::config::Theme;
     use crate::error::AppError;
 
     fn render(app: &App) -> String {
@@ -298,6 +301,35 @@ mod tests {
             run_id: 50_851_892_761_076,
         });
         insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn help_jobs_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "?");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn help_main_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "0?");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    /// Snapshots are text, so the theme is checked on the focused border's colour instead.
+    #[test]
+    fn light_theme_changes_the_accent() {
+        let accent = |theme| {
+            let mut app = with_runs();
+            app.theme = theme;
+            let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+            terminal.draw(|frame| draw(&app, frame)).unwrap();
+            // Top-left corner of the focused Jobs panel, just under the 4-row Status panel.
+            terminal.backend().buffer().cell((0, 4)).unwrap().fg
+        };
+        assert_eq!(accent(Theme::Dark), ratatui::style::Color::Green);
+        assert_eq!(accent(Theme::Light), ratatui::style::Color::Blue);
     }
 
     #[test]

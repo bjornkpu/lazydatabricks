@@ -9,6 +9,7 @@ mod app;
 mod cli;
 mod config;
 mod error;
+mod shell;
 mod ui;
 
 use std::sync::Arc;
@@ -22,6 +23,7 @@ use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
 
 use crate::app::{App, Command, Key, Message, TICK};
+use crate::error::AppError;
 
 /// Messages buffered between producers and the update loop.
 const CHANNEL_CAPACITY: usize = 64;
@@ -84,6 +86,12 @@ async fn run(
                 Command::CancelRun { job_id, run_id } => {
                     tokio::spawn(cancel_run(Arc::clone(&client), tx.clone(), job_id, run_id));
                 }
+                Command::OpenUrl(url) => {
+                    tokio::spawn(desktop(tx.clone(), move || shell::open_url(&url)));
+                }
+                Command::Copy(text) => {
+                    tokio::spawn(desktop(tx.clone(), move || shell::copy(&text)));
+                }
             }
         }
     }
@@ -130,6 +138,21 @@ async fn cancel_run(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id:
         Err(error) => Message::ActionFailed(error),
     };
     let _ = tx.send(message).await;
+}
+
+/// Runs a desktop hand-off (browser, clipboard) off the async threads; only failures are worth a
+/// message, the notice for success was already shown optimistically.
+async fn desktop(
+    tx: mpsc::Sender<Message>,
+    work: impl FnOnce() -> Result<(), AppError> + Send + 'static,
+) {
+    let result = match tokio::task::spawn_blocking(work).await {
+        Ok(result) => result,
+        Err(error) => Err(AppError::Internal(error.to_string())),
+    };
+    if let Err(error) = result {
+        let _ = tx.send(Message::ActionFailed(error)).await;
+    }
 }
 
 /// Reads terminal events on a plain thread, since crossterm's reader blocks. Sends a `Tick`

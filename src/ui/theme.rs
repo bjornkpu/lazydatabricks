@@ -2,9 +2,55 @@
 
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp};
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier, Style};
 
 use crate::api::models::{LifeCycleState, ResultState, Run};
+use crate::app::App;
+use crate::config::Theme;
+
+/// Chrome colours for one theme. Status glyphs keep their semantic colours regardless.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Palette {
+    /// Focused borders and titles.
+    pub accent: Color,
+    /// The selected row in the focused panel.
+    pub highlight: Style,
+    /// The selected row elsewhere, so the cursor never vanishes.
+    pub highlight_unfocused: Style,
+    pub error: Color,
+    /// Notices and the actions menu.
+    pub notice: Color,
+    /// The confirmation box.
+    pub danger: Color,
+}
+
+#[must_use]
+pub const fn palette(app: &App) -> Palette {
+    match app.theme {
+        Theme::Dark => Palette {
+            accent: Color::Green,
+            highlight: Style::new()
+                .bg(Color::Blue)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+            highlight_unfocused: Style::new().bg(Color::DarkGray),
+            error: Color::Red,
+            notice: Color::Yellow,
+            danger: Color::Red,
+        },
+        Theme::Light => Palette {
+            accent: Color::Blue,
+            highlight: Style::new()
+                .bg(Color::LightBlue)
+                .fg(Color::Black)
+                .add_modifier(Modifier::BOLD),
+            highlight_unfocused: Style::new().bg(Color::Gray).fg(Color::Black),
+            error: Color::LightRed,
+            notice: Color::Magenta,
+            danger: Color::LightRed,
+        },
+    }
+}
 
 /// Status as a glyph, not a word: colour carries the state, the glyph makes it work without.
 #[must_use]

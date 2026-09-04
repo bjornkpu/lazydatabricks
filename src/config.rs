@@ -25,6 +25,8 @@ pub struct Config {
     pub allow_actions: bool,
     /// Value of the `dev` tag that marks a job as mine. Derived from the email when unset.
     pub dev_tag: Option<String>,
+    /// Chrome colours: `dark` (default) or `light`. Status glyphs keep their colours either way.
+    pub theme: Theme,
     /// Background refresh interval for the jobs list.
     pub jobs_ttl_secs: u64,
     /// How long cached runs are shown before being refetched.
@@ -42,11 +44,20 @@ impl Default for Config {
             filter: None,
             allow_actions: false,
             dev_tag: None,
+            theme: Theme::Dark,
             jobs_ttl_secs: 300,
             runs_ttl_secs: 120,
             keys: BTreeMap::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    #[default]
+    Dark,
+    Light,
 }
 
 /// The config that was loaded and where it came from, for the Profile tab.
@@ -128,6 +139,8 @@ mod tests {
             vec![Key::Char('ø'), Key::Right]
         );
         assert_eq!(config.keys[&Action::Quit], vec![Key::Char('q')]);
+        assert_eq!(parse("theme = \"light\"").unwrap().theme, Theme::Light);
+        assert!(parse("theme = \"neon\"").is_err());
     }
 
     #[test]

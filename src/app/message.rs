@@ -72,8 +72,21 @@ pub enum Message {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Quit,
-    FetchJobs { max: usize },
-    FetchRuns { job_id: i64 },
-    RunNow { job_id: i64 },
-    CancelRun { job_id: i64, run_id: i64 },
+    FetchJobs {
+        max: usize,
+    },
+    FetchRuns {
+        job_id: i64,
+    },
+    RunNow {
+        job_id: i64,
+    },
+    CancelRun {
+        job_id: i64,
+        run_id: i64,
+    },
+    /// Hand a URL to the browser.
+    OpenUrl(String),
+    /// Put text on the clipboard.
+    Copy(String),
 }

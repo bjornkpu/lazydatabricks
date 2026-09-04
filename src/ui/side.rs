@@ -15,6 +15,7 @@ pub fn status(app: &App, area: Rect, frame: &mut Frame) {
         app.focus == Panel::Status,
         Line::default(),
         None,
+        &theme::palette(app),
     );
     // Whether we know who we are: resolved, failed, or still asking.
     let (glyph, color) = match (&app.me, &app.me_error) {
@@ -57,9 +58,10 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
         ));
     }
     let counter = app.jobs.counter();
-    let block = chrome::panel(Panel::Jobs, focused, suffix, Some(&counter));
+    let palette = theme::palette(app);
+    let block = chrome::panel(Panel::Jobs, focused, suffix, Some(&counter), &palette);
     if let Some(error) = &app.error {
-        frame.render_widget(chrome::error(error, block), area);
+        frame.render_widget(chrome::error(error, block, &palette), area);
         return;
     }
     let names = app
@@ -69,7 +71,7 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
         .map(|job| job.settings.name.as_str());
     let list = List::new(names)
         .block(block)
-        .highlight_style(chrome::highlight(focused));
+        .highlight_style(chrome::highlight(focused, &palette));
     // Local widget state built from `App`: the render stays a pure function of the app.
     let mut state = ListState::default().with_selected(app.jobs.selected_index());
     frame.render_stateful_widget(list, area, &mut state);
@@ -81,6 +83,7 @@ pub fn pipelines(app: &App, area: Rect, frame: &mut Frame) {
         app.focus == Panel::Pipelines,
         Line::default(),
         Some("0 of 0"),
+        &theme::palette(app),
     );
     frame.render_widget(block, area);
 }

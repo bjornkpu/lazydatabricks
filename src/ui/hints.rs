@@ -4,9 +4,10 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::Paragraph;
 
+use super::theme;
 use crate::app::{Action, App, InputMode, Keymap, Panel};
 
 const VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"));
@@ -20,35 +21,37 @@ pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap) -> String {
         }
         InputMode::Menu { .. } => return " Choose: j/k │ Confirm: Enter │ Close: Esc".to_owned(),
         InputMode::Confirm(_) => return " Send: y │ Back: any other key".to_owned(),
+        InputMode::Help => return " Close: Esc".to_owned(),
         InputMode::Normal => {}
     }
     match focus {
         Panel::Status => format!(
-            " Focus: 0-3/{} │ Screen: {} │ Log: {} │ Quit: {}",
+            " Focus: 0-3/{} │ Screen: {} │ Log: {} │ Quit: {} │ Keys: {}",
             k(Action::NextPanel),
             k(Action::ScreenMode),
             k(Action::ToggleLog),
-            k(Action::Quit)
+            k(Action::Quit),
+            k(Action::Help)
         ),
         Panel::Jobs | Panel::Pipelines => format!(
-            " Select: {}/{} │ Filter: {} │ Mine: {} │ Open: {} │ Actions: {} │ Quit: {}",
+            " Select: {}/{} │ Filter: {} │ Mine: {} │ Actions: {} │ Quit: {} │ Keys: {}",
             k(Action::Down),
             k(Action::Up),
             k(Action::Filter),
             k(Action::MineOnly),
-            k(Action::Open),
             k(Action::Menu),
-            k(Action::Quit)
+            k(Action::Quit),
+            k(Action::Help)
         ),
         Panel::Main => format!(
-            " Tabs: {}/{} │ Back: {} │ Actions: {} │ Screen: {} │ Log: {} │ Quit: {}",
+            " Tabs: {}/{} │ Back: {} │ Actions: {} │ Screen: {} │ Quit: {} │ Keys: {}",
             k(Action::PrevTab),
             k(Action::NextTab),
             k(Action::Back),
             k(Action::Menu),
             k(Action::ScreenMode),
-            k(Action::ToggleLog),
-            k(Action::Quit)
+            k(Action::Quit),
+            k(Action::Help)
         ),
     }
 }
@@ -56,7 +59,7 @@ pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap) -> String {
 pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
     let dim = Style::new().add_modifier(Modifier::DIM);
     if let Some(notice) = &app.notice {
-        let style = Style::new().fg(Color::Yellow);
+        let style = Style::new().fg(theme::palette(app).notice);
         frame.render_widget(Paragraph::new(format!(" {notice}")).style(style), area);
         return;
     }

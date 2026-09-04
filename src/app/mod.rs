@@ -19,7 +19,7 @@ pub use menu::{InputMode, MenuItem};
 pub use message::{ApiCall, Command, Key, Message};
 
 use crate::api::models::{Job, LifeCycleState, Run};
-use crate::config::Loaded;
+use crate::config::{Loaded, Theme};
 use crate::error::AppError;
 
 /// Spinner frames, one per `Tick` while loading.
@@ -90,6 +90,7 @@ pub struct App {
     pub notice: Option<String>,
     /// Run-now and cancel are allowed. Off by default: reading is safe, triggering is not.
     pub allow_actions: bool,
+    pub theme: Theme,
     /// A jobs fetch is in flight. True from launch until the first `JobsLoaded` or `JobsFailed`,
     /// then again during refreshes; the old list stays on screen meanwhile.
     pub loading: bool,
@@ -151,6 +152,7 @@ impl App {
             input: InputMode::Normal,
             notice: None,
             allow_actions: config.allow_actions,
+            theme: config.theme,
             loading: true,
             jobs_fetched_at: None,
             spinner: 0,
@@ -182,6 +184,11 @@ impl App {
                     InputMode::Filter => self.filter_key(key, &mut commands),
                     InputMode::Menu { .. } => self.menu_key(key),
                     InputMode::Confirm(_) => self.confirm_key(key, &mut commands),
+                    InputMode::Help => {
+                        if matches!(key, Key::Esc | Key::Char('?' | 'q')) {
+                            self.input = InputMode::Normal;
+                        }
+                    }
                 }
             }
             Message::Tick => self.tick(&mut commands),
@@ -398,6 +405,23 @@ impl App {
                 self.input = InputMode::Filter;
             }
             Action::Menu => self.open_menu(),
+            Action::Help => self.input = InputMode::Help,
+            Action::Browse => {
+                if let Some(url) = self.selected_url() {
+                    self.notice = Some(format!("Opening {url}"));
+                    commands.push(Command::OpenUrl(url));
+                } else {
+                    self.notice = Some("Nothing selected to open".to_owned());
+                }
+            }
+            Action::Copy => {
+                if let Some(url) = self.selected_url() {
+                    self.notice = Some(format!("Copied {url}"));
+                    commands.push(Command::Copy(url));
+                } else {
+                    self.notice = Some("Nothing selected to copy".to_owned());
+                }
+            }
             Action::MineOnly => {
                 self.filter.mine_only = !self.filter.mine_only;
                 self.apply_filter();
@@ -448,6 +472,15 @@ impl App {
             Key::Up => self.move_cursor(Move::Up),
             Key::Tab | Key::Left | Key::Right => {}
         }
+    }
+
+    /// The workspace URL of the selected job, when the jobs panel is in context.
+    fn selected_url(&self) -> Option<String> {
+        if self.context != Panel::Jobs {
+            return None;
+        }
+        let job = self.jobs.selected()?;
+        Some(format!("{}/jobs/{}", self.host, job.id))
     }
 
     /// Opens the `x` menu over the selected item, or says why there is nothing to do.
@@ -1324,6 +1357,52 @@ pub mod tests {
         let mut app = loaded();
         app.update(Message::ActionFailed(boom()));
         assert_eq!(app.notice.as_deref(), Some("internal error: boom"));
+    }
+
+    #[test]
+    fn question_mark_opens_help_and_esc_closes_it() {
+        let mut app = loaded();
+        press(&mut app, "?");
+        assert_eq!(app.input, InputMode::Help);
+        assert_eq!(
+            app.update(key(Key::Char('q'))),
+            vec![],
+            "q closes help, not the app"
+        );
+        assert_eq!(app.input, InputMode::Normal);
+        press(&mut app, "?");
+        app.update(key(Key::Char('j')));
+        assert_eq!(
+            app.input,
+            InputMode::Help,
+            "other keys are ignored while help is up"
+        );
+        app.update(key(Key::Esc));
+        assert_eq!(app.input, InputMode::Normal);
+    }
+
+    #[test]
+    fn o_and_y_use_the_job_url() {
+        let mut app = loaded();
+        press(&mut app, "j");
+        let url = "https://adb-1.azuredatabricks.net/jobs/2".to_owned();
+        assert_eq!(
+            app.update(key(Key::Char('o'))),
+            vec![Command::OpenUrl(url.clone())]
+        );
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("Opening https://adb-1.azuredatabricks.net/jobs/2")
+        );
+        press(&mut app, "0");
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![Command::Copy(url)],
+            "main keeps jobs context"
+        );
+        press(&mut app, "3");
+        assert_eq!(app.update(key(Key::Char('y'))), vec![]);
+        assert_eq!(app.notice.as_deref(), Some("Nothing selected to copy"));
     }
 
     #[test]

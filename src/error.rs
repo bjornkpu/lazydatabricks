@@ -46,6 +46,8 @@ pub enum AppError {
     Network { path: String, detail: String },
     #[error("malformed JSON from {path}: {detail}. The API shape may have changed")]
     Json { path: String, detail: String },
+    #[error("could not {what}: {detail}")]
+    Shell { what: String, detail: String },
     #[error("internal error: {0}")]
     Internal(String),
 }

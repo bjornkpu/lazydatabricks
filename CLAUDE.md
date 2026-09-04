@@ -74,9 +74,9 @@ Use the typestate pattern for screens whose transitions must not be mixed at run
    diff is intended. Never accept a snapshot you haven't read.
 3. **Fixture tests** — the fake `DatabricksApi` returns fixtures; tests cover deserialisation
    and the `update` reaction to loaded data. Fixtures are real API response shapes.
-4. **Headless run** (add after M3, when there is chrome worth driving) — `--headless --keys
-   "j j Enter q" --fixtures <dir> --dump` prints the final screen as text; `--dump-state`
-   prints `App` as JSON. Exists for us to iterate without a terminal, not for end users.
+4. **Headless run** — not built. Snapshot and state tests covered every milestone, and herdr
+   lets Claude drive the real binary in a pane and read the screen back. Revisit only if a bug
+   needs a scripted end-to-end run; it would need the fixture-backed `DatabricksApi` fake.
 5. **Logs** (add when the first real-API bug hides) — `tracing` to a file via
    `tracing-appender`, never stdout. `LAZYDATABRICKS_LOG=debug`.
 

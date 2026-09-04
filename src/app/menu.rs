@@ -52,6 +52,8 @@ pub enum InputMode {
     },
     /// An entry was chosen; `y` sends it, anything else backs out.
     Confirm(MenuItem),
+    /// `?` pressed: the keybindings overlay is up.
+    Help,
 }
 
 #[cfg(test)]

@@ -15,7 +15,8 @@ pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
     if app.runs_busy() {
         title.push_span(Span::raw(format!(" {}", app.spinner_glyph())));
     }
-    let block = chrome::panel(Panel::Main, app.focus == Panel::Main, title, None);
+    let palette = theme::palette(app);
+    let block = chrome::panel(Panel::Main, app.focus == Panel::Main, title, None, &palette);
     match app.active_tab() {
         Some(Tab::Runs) => runs(app, block, area, frame),
         Some(Tab::Detail) => detail(app, block, area, frame),
@@ -44,7 +45,7 @@ fn tabs_title(app: &App) -> Line<'static> {
 fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
     let runs = match &app.runs {
         Load::Failed(error) => {
-            frame.render_widget(chrome::error(error, block), area);
+            frame.render_widget(chrome::error(error, block, &theme::palette(app)), area);
             return;
         }
         Load::Loaded(runs) => runs.as_slice(),
