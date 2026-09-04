@@ -6,6 +6,7 @@ mod apilog;
 mod chrome;
 mod hints;
 mod main_panel;
+mod menu;
 mod side;
 mod theme;
 
@@ -47,7 +48,8 @@ pub fn draw(app: &App, frame: &mut Frame) {
             draw_panel(app, Panel::Main, main, frame);
         }
     }
-    hints::draw(app.focus, app.filtering, &app.keys, hint_bar, frame);
+    hints::draw(app, hint_bar, frame);
+    menu::draw(app, frame);
 }
 
 /// Height of one side panel. Status is two lines of text; the lists share the rest.
@@ -261,6 +263,40 @@ mod tests {
             path: "/api/2.0/preview/scim/v2/Me".to_owned(),
             profile: "dev".to_owned(),
         }));
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn menu_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "x");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn confirm_80x24() {
+        let mut app = with_runs();
+        app.allow_actions = true;
+        press(&mut app, "x");
+        app.update(Message::Key(Key::Enter));
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn read_only_notice_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "x");
+        app.update(Message::Key(Key::Enter));
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn run_started_80x24() {
+        let mut app = with_runs();
+        app.update(Message::RunStarted {
+            job_id: 1,
+            run_id: 50_851_892_761_076,
+        });
         insta::assert_snapshot!(render(&app));
     }
 

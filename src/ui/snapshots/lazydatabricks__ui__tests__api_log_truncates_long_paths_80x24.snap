@@ -25,4 +25,4 @@ expression: render(&app)
 "│                         ││GET  /api/2.2/jobs/list                 ERR 30000ms│"
 "│                         ││                                                   │"
 "└───────────────────0 of 0┘└───────────────────────────────────────────────────┘"
-" Select: j/k │ Filter: / │ Mine: m │ Open: Enter │ Focus: 0-3 │ Quit: q   v0.1.0"
+" Select: j/k │ Filter: / │ Mine: m │ Open: Enter │ Actions: x │ Quit: q   v0.1.0"

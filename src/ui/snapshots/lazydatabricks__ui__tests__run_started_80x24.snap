@@ -1,13 +1,13 @@
 ---
 source: src/ui/mod.rs
-expression: render(&with_runs())
+expression: render(&app)
 ---
 "┌─[1]─Status──────────────┐┌─[0]─Runs - Detail ⠋───────────────────────────────┐"
 "│◐ dev → adb-1.azuredatabr││Run ID           Started      Duration  Result     │"
-"│3 of 3 · 0s ago          ││50851892761075   09/01 10:08  -         ◐ RUNNING  │"
-"└─────────────────────────┘│50851892761073   08/31 10:08  1m12s     ✓ SUCCESS  │"
-"┌─[2]─Jobs────────────────┐│50851892761074   08/30 10:08  57s       ✗ FAILED   │"
-"│[someone] okonomi_gold   ││                                                   │"
+"│3 of 3 · 0s ago          ││50851892761076   -            -         ◐ PENDING  │"
+"└─────────────────────────┘│50851892761075   09/01 10:08  -         ◐ RUNNING  │"
+"┌─[2]─Jobs────────────────┐│50851892761073   08/31 10:08  1m12s     ✓ SUCCESS  │"
+"│[someone] okonomi_gold   ││50851892761074   08/30 10:08  57s       ✗ FAILED   │"
 "│nightly_bronze_ingest    ││                                                   │"
 "│weekly_report            ││                                                   │"
 "│                         ││                                                   │"
@@ -25,4 +25,4 @@ expression: render(&with_runs())
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "└───────────────────0 of 0┘└───────────────────────────────────────────────────┘"
-" Select: j/k │ Filter: / │ Mine: m │ Open: Enter │ Actions: x │ Quit: q   v0.1.0"
+" Started run 50851892761076                                                     "

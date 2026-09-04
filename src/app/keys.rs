@@ -30,6 +30,8 @@ pub enum Action {
     Last,
     NextTab,
     PrevTab,
+    /// Opens the `x` menu; the only way to reach run-now and cancel.
+    Menu,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -61,6 +63,7 @@ impl Default for Keymap {
                 Action::PrevTab,
                 vec![Key::Char('h'), Key::Char('['), Key::Left],
             ),
+            (Action::Menu, vec![Key::Char('x')]),
         ]))
     }
 }

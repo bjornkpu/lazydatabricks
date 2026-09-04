@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListState, Paragraph};
 
 use super::{chrome, theme};
-use crate::app::{App, Panel};
+use crate::app::{App, InputMode, Panel};
 
 pub fn status(app: &App, area: Rect, frame: &mut Frame) {
     let block = chrome::panel(
@@ -48,8 +48,9 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
     if app.loading {
         suffix.push_span(format!(" {}", app.spinner_glyph()));
     }
-    if app.filtering || !app.filter.text.is_empty() {
-        let cursor = if app.filtering { "▌" } else { "" };
+    let filtering = app.input == InputMode::Filter;
+    if filtering || !app.filter.text.is_empty() {
+        let cursor = if filtering { "▌" } else { "" };
         suffix.push_span(Span::styled(
             format!(" /{}{cursor}", app.filter.text),
             Style::new().fg(Color::Yellow),

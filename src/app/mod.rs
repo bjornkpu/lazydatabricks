@@ -4,6 +4,7 @@ mod filter;
 mod focus;
 mod keys;
 mod list;
+mod menu;
 mod message;
 
 use std::collections::{HashMap, VecDeque};
@@ -14,9 +15,10 @@ pub use focus::{Panel, ScreenMode, Tab};
 use jiff::tz::TimeZone;
 pub use keys::{Action, Keymap};
 pub use list::{Move, Selectable};
+pub use menu::{InputMode, MenuItem};
 pub use message::{ApiCall, Command, Key, Message};
 
-use crate::api::models::{Job, Run};
+use crate::api::models::{Job, LifeCycleState, Run};
 use crate::config::Loaded;
 use crate::error::AppError;
 
@@ -30,6 +32,9 @@ const API_LOG_CAPACITY: usize = 200;
 /// Heartbeat period. The input thread sends `Message::Tick` this often; ages and TTLs count
 /// ticks, so tests drive time by sending ticks.
 pub const TICK: Duration = Duration::from_millis(100);
+/// Shown when an action is chosen without the opt-in.
+const READ_ONLY: &str =
+    "Read-only: start with --allow-actions or set allow_actions = true in config";
 /// Ticks per second at `TICK` = 100ms. Turns config seconds into tick counts.
 const TICKS_PER_SECOND: u64 = 10;
 
@@ -79,8 +84,12 @@ pub struct App {
     /// The visible jobs, with the cursor.
     pub jobs: Selectable<Job>,
     pub filter: Filter,
-    /// `/` was pressed: keys edit `filter.text` until Enter or Esc.
-    pub filtering: bool,
+    /// Where keys go: normal bindings, the filter, the `x` menu or its confirmation.
+    pub input: InputMode,
+    /// One-line feedback shown in place of the hint bar until the next key.
+    pub notice: Option<String>,
+    /// Run-now and cancel are allowed. Off by default: reading is safe, triggering is not.
+    pub allow_actions: bool,
     /// A jobs fetch is in flight. True from launch until the first `JobsLoaded` or `JobsFailed`,
     /// then again during refreshes; the old list stays on screen meanwhile.
     pub loading: bool,
@@ -136,10 +145,12 @@ impl App {
             all_jobs: Vec::new(),
             jobs: Selectable::default(),
             filter: Filter {
-                text: String::new(),
+                text: config.filter.clone().unwrap_or_default(),
                 mine_only: config.mine_only,
             },
-            filtering: false,
+            input: InputMode::Normal,
+            notice: None,
+            allow_actions: config.allow_actions,
             loading: true,
             jobs_fetched_at: None,
             spinner: 0,
@@ -163,46 +174,17 @@ impl App {
     pub fn update(&mut self, message: Message) -> Vec<Command> {
         let mut commands = Vec::new();
         match message {
-            Message::Key(key) if self.filtering => self.filter_key(key, &mut commands),
-            Message::Key(key) => self.key(key, &mut commands),
-            Message::Tick => {
-                self.ticks = self.ticks.saturating_add(1);
-                if self.loading || self.runs_busy() {
-                    self.spinner = self
-                        .spinner
-                        .wrapping_add(1)
-                        .checked_rem(SPINNER.len())
-                        .unwrap_or(0);
-                }
-                if let Some((job_id, ticks)) = self.pending_runs {
-                    let left = ticks.saturating_sub(1);
-                    if left == 0 {
-                        self.pending_runs = None;
-                        if self.runs_inflight != Some(job_id) {
-                            self.runs_inflight = Some(job_id);
-                            commands.push(Command::FetchRuns { job_id });
-                        }
-                    } else {
-                        self.pending_runs = Some((job_id, left));
-                    }
-                }
-                // Background refresh of what is on screen, once it is older than its TTL.
-                if self
-                    .jobs_fetched_at
-                    .is_some_and(|at| self.age_ticks(at) >= self.jobs_ttl_ticks)
-                {
-                    self.refresh_jobs(&mut commands);
-                }
-                if let Some(job_id) = self.runs_job
-                    && self.pending_runs.is_none()
-                    && self
-                        .runs_cache
-                        .get(&job_id)
-                        .is_some_and(|cached| self.age_ticks(cached.at) >= self.runs_ttl_ticks)
-                {
-                    self.refresh_runs(&mut commands);
+            Message::Key(key) => {
+                // Any key dismisses the last notice; the handler may set a new one.
+                self.notice = None;
+                match self.input {
+                    InputMode::Normal => self.key(key, &mut commands),
+                    InputMode::Filter => self.filter_key(key, &mut commands),
+                    InputMode::Menu { .. } => self.menu_key(key),
+                    InputMode::Confirm(_) => self.confirm_key(key, &mut commands),
                 }
             }
+            Message::Tick => self.tick(&mut commands),
             Message::JobsLoaded(jobs) => {
                 self.all_jobs = jobs;
                 self.jobs_fetched_at = Some(self.ticks);
@@ -256,8 +238,79 @@ impl App {
                 }
             }
             Message::MeFailed(error) => self.me_error = Some(error),
+            Message::RunStarted { job_id, run_id } => {
+                self.on_run_started(job_id, run_id, &mut commands);
+            }
+            Message::RunCancelled { job_id, run_id } => {
+                self.on_run_cancelled(job_id, run_id, &mut commands);
+            }
+            Message::ActionFailed(error) => self.notice = Some(error.to_string()),
         }
         commands
+    }
+
+    /// One heartbeat: the clock, the spinner, the debounced runs fetch and TTL-driven refreshes.
+    fn tick(&mut self, commands: &mut Vec<Command>) {
+        self.ticks = self.ticks.saturating_add(1);
+        if self.loading || self.runs_busy() {
+            self.spinner = self
+                .spinner
+                .wrapping_add(1)
+                .checked_rem(SPINNER.len())
+                .unwrap_or(0);
+        }
+        if let Some((job_id, ticks)) = self.pending_runs {
+            let left = ticks.saturating_sub(1);
+            if left == 0 {
+                self.pending_runs = None;
+                if self.runs_inflight != Some(job_id) {
+                    self.runs_inflight = Some(job_id);
+                    commands.push(Command::FetchRuns { job_id });
+                }
+            } else {
+                self.pending_runs = Some((job_id, left));
+            }
+        }
+        // Background refresh of what is on screen, once it is older than its TTL.
+        if self
+            .jobs_fetched_at
+            .is_some_and(|at| self.age_ticks(at) >= self.jobs_ttl_ticks)
+        {
+            self.refresh_jobs(commands);
+        }
+        if let Some(job_id) = self.runs_job
+            && self.pending_runs.is_none()
+            && self
+                .runs_cache
+                .get(&job_id)
+                .is_some_and(|cached| self.age_ticks(cached.at) >= self.runs_ttl_ticks)
+        {
+            self.refresh_runs(commands);
+        }
+    }
+
+    /// `run-now` accepted. Optimistic: show the new run at once, then reconcile with a refetch.
+    fn on_run_started(&mut self, job_id: i64, run_id: i64, commands: &mut Vec<Command>) {
+        self.notice = Some(format!("Started run {run_id}"));
+        if self.runs_job == Some(job_id) {
+            if let Load::Loaded(runs) = &mut self.runs {
+                runs.insert(0, Run::placeholder(job_id, run_id));
+            }
+            self.refresh_runs(commands);
+        }
+    }
+
+    /// Cancel accepted. The run shows as terminating until the refetch says otherwise.
+    fn on_run_cancelled(&mut self, job_id: i64, run_id: i64, commands: &mut Vec<Command>) {
+        self.notice = Some(format!("Cancel requested for run {run_id}"));
+        if self.runs_job == Some(job_id) {
+            if let Load::Loaded(runs) = &mut self.runs
+                && let Some(run) = runs.iter_mut().find(|run| run.id == run_id)
+            {
+                run.state.life_cycle_state = LifeCycleState::Terminating;
+            }
+            self.refresh_runs(commands);
+        }
     }
 
     /// The tab the main panel is showing, if the context panel has any.
@@ -342,8 +395,9 @@ impl App {
             Action::ToggleLog => self.show_api_log = !self.show_api_log,
             Action::Filter => {
                 self.set_focus(Panel::Jobs);
-                self.filtering = true;
+                self.input = InputMode::Filter;
             }
+            Action::Menu => self.open_menu(),
             Action::MineOnly => {
                 self.filter.mine_only = !self.filter.mine_only;
                 self.apply_filter();
@@ -376,9 +430,9 @@ impl App {
     fn filter_key(&mut self, key: Key, commands: &mut Vec<Command>) {
         match key {
             Key::CtrlC => commands.push(Command::Quit),
-            Key::Enter => self.filtering = false,
+            Key::Enter => self.input = InputMode::Normal,
             Key::Esc => {
-                self.filtering = false;
+                self.input = InputMode::Normal;
                 self.filter.text.clear();
                 self.apply_filter();
             }
@@ -393,6 +447,86 @@ impl App {
             Key::Down => self.move_cursor(Move::Down),
             Key::Up => self.move_cursor(Move::Up),
             Key::Tab | Key::Left | Key::Right => {}
+        }
+    }
+
+    /// Opens the `x` menu over the selected item, or says why there is nothing to do.
+    fn open_menu(&mut self) {
+        let items = self.menu_items();
+        if items.is_empty() {
+            self.notice = Some("No actions for this selection".to_owned());
+            return;
+        }
+        self.input = InputMode::Menu { items, selected: 0 };
+    }
+
+    /// Actions valid for what is selected: run the job, cancel any of its active runs.
+    fn menu_items(&self) -> Vec<MenuItem> {
+        if self.context != Panel::Jobs {
+            return Vec::new();
+        }
+        let Some(job) = self.jobs.selected() else {
+            return Vec::new();
+        };
+        let mut items = vec![MenuItem::RunNow {
+            job_id: job.id,
+            name: job.settings.name.clone(),
+        }];
+        if let Load::Loaded(runs) = &self.runs {
+            items.extend(
+                runs.iter()
+                    .filter(|run| run.state.life_cycle_state.is_active())
+                    .map(|run| MenuItem::CancelRun {
+                        job_id: job.id,
+                        run_id: run.id,
+                    }),
+            );
+        }
+        items
+    }
+
+    /// Keys while the menu is open: move, choose, or close.
+    fn menu_key(&mut self, key: Key) {
+        let InputMode::Menu { items, selected } = std::mem::take(&mut self.input) else {
+            return;
+        };
+        let last = items.len().saturating_sub(1);
+        match key {
+            Key::Esc | Key::Char('x') => {}
+            Key::Enter => {
+                let Some(item) = items.into_iter().nth(selected) else {
+                    return;
+                };
+                if self.allow_actions {
+                    self.input = InputMode::Confirm(item);
+                } else {
+                    self.notice = Some(READ_ONLY.to_owned());
+                }
+            }
+            Key::Char('j') | Key::Down => {
+                self.input = InputMode::Menu {
+                    items,
+                    selected: selected.saturating_add(1).min(last),
+                };
+            }
+            Key::Char('k') | Key::Up => {
+                self.input = InputMode::Menu {
+                    items,
+                    selected: selected.saturating_sub(1),
+                };
+            }
+            _ => self.input = InputMode::Menu { items, selected },
+        }
+    }
+
+    /// `y` sends the confirmed action; any other key backs out without a word.
+    fn confirm_key(&mut self, key: Key, commands: &mut Vec<Command>) {
+        let InputMode::Confirm(item) = std::mem::take(&mut self.input) else {
+            return;
+        };
+        if key == Key::Char('y') {
+            self.notice = Some(format!("{}…", item.label()));
+            commands.push(item.command());
         }
     }
 
@@ -535,7 +669,7 @@ pub mod tests {
 
     pub fn api_call(path: &str, status: Option<u16>, ms: u64) -> ApiCall {
         ApiCall {
-            method: "GET",
+            method: "GET".to_owned(),
             path: path.to_owned(),
             status,
             duration: Duration::from_millis(ms),
@@ -819,7 +953,7 @@ pub mod tests {
         ]));
         press(&mut app, "3/");
         assert_eq!(app.focus, Panel::Jobs, "/ focuses jobs");
-        assert!(app.filtering);
+        assert_eq!(app.input, InputMode::Filter);
         press(&mut app, "q");
         assert_eq!(app.filter.text, "q", "q is a letter now, not quit");
         app.update(key(Key::Backspace));
@@ -827,7 +961,7 @@ pub mod tests {
         assert_eq!(names(&app), ["okonomi_gold", "ems_gold"]);
         assert_eq!(app.filter_summary(), "/GOLD · 2 of 3");
         app.update(key(Key::Enter));
-        assert!(!app.filtering);
+        assert_eq!(app.input, InputMode::Normal);
         assert_eq!(
             names(&app),
             ["okonomi_gold", "ems_gold"],
@@ -843,7 +977,7 @@ pub mod tests {
         assert!(names(&app).is_empty());
         assert_eq!(app.jobs.selected_index(), None);
         app.update(key(Key::Esc));
-        assert!(!app.filtering);
+        assert_eq!(app.input, InputMode::Normal);
         assert_eq!(names(&app), ["a", "b", "c"]);
         assert_eq!(app.filter_summary(), "3 of 3");
     }
@@ -1052,6 +1186,144 @@ pub mod tests {
             vec![Command::FetchRuns { job_id: 1 }],
             "runs ttl of one second"
         );
+    }
+
+    /// Jobs loaded, first job's runs loaded with one active run.
+    fn with_active_run() -> App {
+        let mut app = loaded();
+        ticks(&mut app, 3);
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: vec![
+                run(10, 1000, 0, None),
+                run(9, 1000, 2000, Some(ResultState::Success)),
+            ],
+        });
+        app
+    }
+
+    #[test]
+    fn x_opens_a_menu_naming_the_job_and_its_active_runs() {
+        let mut app = with_active_run();
+        press(&mut app, "x");
+        assert_eq!(
+            app.input,
+            InputMode::Menu {
+                items: vec![
+                    MenuItem::RunNow {
+                        job_id: 1,
+                        name: "a".to_owned()
+                    },
+                    MenuItem::CancelRun {
+                        job_id: 1,
+                        run_id: 10
+                    },
+                ],
+                selected: 0,
+            }
+        );
+        press(&mut app, "jjj");
+        assert!(
+            matches!(app.input, InputMode::Menu { selected: 1, .. }),
+            "clamped at the end"
+        );
+        press(&mut app, "k");
+        assert!(matches!(app.input, InputMode::Menu { selected: 0, .. }));
+        press(&mut app, "q");
+        assert!(
+            matches!(app.input, InputMode::Menu { .. }),
+            "q is not quit in the menu"
+        );
+        app.update(key(Key::Esc));
+        assert_eq!(app.input, InputMode::Normal);
+    }
+
+    #[test]
+    fn x_elsewhere_explains_itself() {
+        let mut app = loaded();
+        press(&mut app, "3x");
+        assert_eq!(app.input, InputMode::Normal);
+        assert_eq!(app.notice.as_deref(), Some("No actions for this selection"));
+        press(&mut app, "2");
+        assert_eq!(app.notice, None, "next key clears the notice");
+    }
+
+    #[test]
+    fn read_only_refuses_at_enter() {
+        let mut app = with_active_run();
+        press(&mut app, "x");
+        assert_eq!(app.update(key(Key::Enter)), vec![]);
+        assert_eq!(app.input, InputMode::Normal);
+        assert_eq!(app.notice.as_deref(), Some(READ_ONLY));
+    }
+
+    #[test]
+    fn actions_take_x_enter_y_and_show_the_name_first() {
+        let mut app = with_active_run();
+        app.allow_actions = true;
+        press(&mut app, "x");
+        assert_eq!(app.update(key(Key::Enter)), vec![]);
+        assert_eq!(
+            app.input,
+            InputMode::Confirm(MenuItem::RunNow {
+                job_id: 1,
+                name: "a".to_owned()
+            })
+        );
+        assert_eq!(
+            app.update(key(Key::Char('n'))),
+            vec![],
+            "anything but y backs out"
+        );
+        assert_eq!(app.input, InputMode::Normal);
+        press(&mut app, "xj");
+        app.update(key(Key::Enter));
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![Command::CancelRun {
+                job_id: 1,
+                run_id: 10
+            }]
+        );
+        assert_eq!(app.notice.as_deref(), Some("Cancel run 10…"));
+    }
+
+    #[test]
+    fn run_started_shows_a_placeholder_then_refetches() {
+        let mut app = with_active_run();
+        let commands = app.update(Message::RunStarted {
+            job_id: 1,
+            run_id: 11,
+        });
+        assert_eq!(commands, vec![Command::FetchRuns { job_id: 1 }]);
+        assert_eq!(app.notice.as_deref(), Some("Started run 11"));
+        let Load::Loaded(runs) = &app.runs else {
+            panic!("runs should stay loaded");
+        };
+        assert_eq!(runs[0].id, 11);
+        assert_eq!(runs[0].state.life_cycle_state, LifeCycleState::Pending);
+        assert_eq!(runs.len(), 3);
+    }
+
+    #[test]
+    fn run_cancelled_marks_it_terminating_then_refetches() {
+        let mut app = with_active_run();
+        let commands = app.update(Message::RunCancelled {
+            job_id: 1,
+            run_id: 10,
+        });
+        assert_eq!(commands, vec![Command::FetchRuns { job_id: 1 }]);
+        let Load::Loaded(runs) = &app.runs else {
+            panic!("runs should stay loaded");
+        };
+        assert_eq!(runs[0].state.life_cycle_state, LifeCycleState::Terminating);
+    }
+
+    #[test]
+    fn action_failure_is_a_notice() {
+        let mut app = loaded();
+        app.update(Message::ActionFailed(boom()));
+        assert_eq!(app.notice.as_deref(), Some("internal error: boom"));
     }
 
     #[test]

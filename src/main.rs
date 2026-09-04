@@ -6,6 +6,7 @@
 
 mod api;
 mod app;
+mod cli;
 mod config;
 mod error;
 mod ui;
@@ -14,6 +15,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Result, bail};
+use clap::Parser;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use jiff::tz::TimeZone;
 use ratatui::DefaultTerminal;
@@ -26,12 +28,18 @@ const CHANNEL_CAPACITY: usize = 64;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let loaded = config::load()?;
-    // Environment beats config beats the CLI's own default profile name.
-    let profile = std::env::var("DATABRICKS_CONFIG_PROFILE")
-        .ok()
+    let cli = cli::Cli::parse();
+    let mut loaded = config::load()?;
+    // Flags beat environment beat config beat the CLI's own default profile name.
+    let profile = cli
+        .profile
+        .or_else(|| std::env::var("DATABRICKS_CONFIG_PROFILE").ok())
         .or_else(|| loaded.config.profile.clone())
         .unwrap_or_else(|| "DEFAULT".to_owned());
+    loaded.config.allow_actions |= cli.allow_actions;
+    if cli.filter.is_some() {
+        loaded.config.filter = cli.filter;
+    }
     let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
     // Auth before the terminal is taken over: the CLI may print or open a browser, and its
     // errors should land in a normal shell.
@@ -70,6 +78,12 @@ async fn run(
                 Command::FetchRuns { job_id } => {
                     tokio::spawn(fetch_runs(Arc::clone(&client), tx.clone(), job_id));
                 }
+                Command::RunNow { job_id } => {
+                    tokio::spawn(run_now(Arc::clone(&client), tx.clone(), job_id));
+                }
+                Command::CancelRun { job_id, run_id } => {
+                    tokio::spawn(cancel_run(Arc::clone(&client), tx.clone(), job_id, run_id));
+                }
             }
         }
     }
@@ -98,6 +112,22 @@ async fn fetch_runs(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id:
     let message = match client.list_runs(job_id).await {
         Ok(runs) => Message::RunsLoaded { job_id, runs },
         Err(error) => Message::RunsFailed { job_id, error },
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn run_now(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id: i64) {
+    let message = match client.run_now(job_id).await {
+        Ok(run_id) => Message::RunStarted { job_id, run_id },
+        Err(error) => Message::ActionFailed(error),
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn cancel_run(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id: i64, run_id: i64) {
+    let message = match client.cancel_run(run_id).await {
+        Ok(()) => Message::RunCancelled { job_id, run_id },
+        Err(error) => Message::ActionFailed(error),
     };
     let _ = tx.send(message).await;
 }

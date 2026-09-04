@@ -1,6 +1,6 @@
 ---
 source: src/ui/mod.rs
-expression: render(&with_runs())
+expression: render(&app)
 ---
 "┌─[1]─Status──────────────┐┌─[0]─Runs - Detail ⠋───────────────────────────────┐"
 "│◐ dev → adb-1.azuredatabr││Run ID           Started      Duration  Result     │"
@@ -25,4 +25,4 @@ expression: render(&with_runs())
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "└───────────────────0 of 0┘└───────────────────────────────────────────────────┘"
-" Select: j/k │ Filter: / │ Mine: m │ Open: Enter │ Actions: x │ Quit: q   v0.1.0"
+" Read-only: start with --allow-actions or set allow_actions = true in config    "

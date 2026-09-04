@@ -28,7 +28,7 @@ pub enum Key {
 /// One REST call, as shown in the API log.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiCall {
-    pub method: &'static str,
+    pub method: String,
     /// Path and query exactly as sent.
     pub path: String,
     /// `None` when the request never got a response.
@@ -56,6 +56,16 @@ pub enum Message {
     /// Who the token belongs to, as an email.
     MeLoaded(String),
     MeFailed(AppError),
+    /// `run-now` accepted; the run exists but nothing is known about it yet.
+    RunStarted {
+        job_id: i64,
+        run_id: i64,
+    },
+    RunCancelled {
+        job_id: i64,
+        run_id: i64,
+    },
+    ActionFailed(AppError),
 }
 
 /// Side effects `update` asks `main` to perform. `update` itself never does IO.
@@ -64,4 +74,6 @@ pub enum Command {
     Quit,
     FetchJobs { max: usize },
     FetchRuns { job_id: i64 },
+    RunNow { job_id: i64 },
+    CancelRun { job_id: i64, run_id: i64 },
 }

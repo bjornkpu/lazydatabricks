@@ -5,14 +5,15 @@ pub mod models;
 
 use std::time::{Duration, Instant};
 
-use reqwest::Client as Http;
+use reqwest::{Client as Http, Method};
 use serde::de::DeserializeOwned;
+use serde_json::{Value, json};
 use tokio::sync::{Mutex, mpsc};
 
 use crate::app::{ApiCall, Message};
 use crate::error::AppError;
 use auth::Token;
-use models::{Job, JobsList, Run, RunsList, ScimMe};
+use models::{Job, JobsList, Run, RunNowResponse, RunsList, ScimMe};
 
 /// Page size sent to Databricks. A page size, not a cap: `list_jobs` follows `next_page_token`.
 const PAGE_SIZE: &str = "25";
@@ -88,6 +89,22 @@ impl Client {
         Ok(me.user_name)
     }
 
+    /// Starts a run of `job_id` and returns the new run's id.
+    pub async fn run_now(&self, job_id: i64) -> Result<i64, AppError> {
+        let started: RunNowResponse = self
+            .post("/api/2.2/jobs/run-now", json!({ "job_id": job_id }))
+            .await?;
+        Ok(started.run_id)
+    }
+
+    /// Asks Databricks to cancel `run_id`. The run reaches TERMINATED a little later.
+    pub async fn cancel_run(&self, run_id: i64) -> Result<(), AppError> {
+        let _: Value = self
+            .post("/api/2.2/jobs/runs/cancel", json!({ "run_id": run_id }))
+            .await?;
+        Ok(())
+    }
+
     /// The current bearer token, minted anew via the CLI when it is about to expire.
     async fn bearer(&self) -> Result<String, AppError> {
         let mut token = self.token.lock().await;
@@ -102,18 +119,36 @@ impl Client {
         Ok(token.access_token.clone())
     }
 
-    /// One GET, timed and reported to the API log whether it succeeds or not. Failures come back
-    /// classified: token, permission, timeout, network, or bad JSON.
     async fn get<T: DeserializeOwned>(
         &self,
         path: &str,
         query: &[(&str, &str)],
     ) -> Result<T, AppError> {
-        let request = self
+        self.send(Method::GET, path, query, None).await
+    }
+
+    async fn post<T: DeserializeOwned>(&self, path: &str, body: Value) -> Result<T, AppError> {
+        self.send(Method::POST, path, &[], Some(body)).await
+    }
+
+    /// One request, timed and reported to the API log whether it succeeds or not. Failures come
+    /// back classified: token, permission, timeout, network, or bad JSON.
+    async fn send<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        query: &[(&str, &str)],
+        body: Option<Value>,
+    ) -> Result<T, AppError> {
+        let mut builder = self
             .http
-            .get(format!("{}{path}", self.host))
+            .request(method.clone(), format!("{}{path}", self.host))
             .bearer_auth(self.bearer().await?)
-            .query(query)
+            .query(query);
+        if let Some(body) = body {
+            builder = builder.json(&body);
+        }
+        let request = builder
             .build()
             .map_err(|error| AppError::from_reqwest(&error, path))?;
         let url = request.url();
@@ -123,7 +158,7 @@ impl Client {
         let started = Instant::now();
         let response = self.http.execute(request).await;
         let call = ApiCall {
-            method: "GET",
+            method: method.to_string(),
             path: logged_path.clone(),
             status: response.as_ref().ok().map(|r| r.status().as_u16()),
             duration: started.elapsed(),

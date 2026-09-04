@@ -1,6 +1,6 @@
 ---
 source: src/ui/mod.rs
-expression: render(&with_runs())
+expression: render(&app)
 ---
 "┌─[1]─Status──────────────┐┌─[0]─Runs - Detail ⠋───────────────────────────────┐"
 "│◐ dev → adb-1.azuredatabr││Run ID           Started      Duration  Result     │"
@@ -13,9 +13,9 @@ expression: render(&with_runs())
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "│                         ││                                                   │"
-"│                         ││                                                   │"
-"│                         ││                                                   │"
-"└───────────────────1 of 3┘│                                                   │"
+"│               ┌ Confirm ─────────────────────────────────────┐               │"
+"│               │ Start a run of "[someone] okonomi_gold" now? │               │"
+"└───────────────└──────────y: yes │ any other key: no──────────┘               │"
 "┌─[3]─Pipelines───────────┐│                                                   │"
 "│                         │└───────────────────────────────────────────────────┘"
 "│                         │┌─API log───────────────────────────────────────────┐"
@@ -25,4 +25,4 @@ expression: render(&with_runs())
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "└───────────────────0 of 0┘└───────────────────────────────────────────────────┘"
-" Select: j/k │ Filter: / │ Mine: m │ Open: Enter │ Actions: x │ Quit: q   v0.1.0"
+" Send: y │ Back: any other key                                            v0.1.0"

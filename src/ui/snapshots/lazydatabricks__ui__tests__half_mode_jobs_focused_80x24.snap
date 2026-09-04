@@ -25,4 +25,4 @@ expression: render(&app)
 "│                                      ││                                      │"
 "└────────────────────────────────1 of 3┘│                                      │"
 "┌─[3]─Pipelines──────────────────0 of 0┐└──────────────────────────────────────┘"
-" Select: j/k │ Filter: / │ Mine: m │ Open: Enter │ Focus: 0-3 │ Quit: q   v0.1.0"
+" Select: j/k │ Filter: / │ Mine: m │ Open: Enter │ Actions: x │ Quit: q   v0.1.0"

@@ -65,6 +65,30 @@ pub struct Run {
     pub end_time: Option<Timestamp>,
 }
 
+impl Run {
+    /// What a run we just started looks like before Databricks tells us anything about it.
+    #[must_use]
+    pub fn placeholder(job_id: i64, run_id: i64) -> Self {
+        Self {
+            id: run_id,
+            job_id,
+            state: RunState {
+                life_cycle_state: LifeCycleState::Pending,
+                result_state: None,
+                state_message: "just started".to_owned(),
+            },
+            start_time: None,
+            end_time: None,
+        }
+    }
+}
+
+/// `POST /api/2.2/jobs/run-now` response.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct RunNowResponse {
+    pub run_id: i64,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct RunState {
     #[serde(default)]
@@ -95,6 +119,20 @@ pub enum LifeCycleState {
 }
 
 impl LifeCycleState {
+    /// Still going, so it can be cancelled.
+    #[must_use]
+    pub const fn is_active(self) -> bool {
+        matches!(
+            self,
+            Self::Queued
+                | Self::Pending
+                | Self::Running
+                | Self::Terminating
+                | Self::Blocked
+                | Self::Waiting
+        )
+    }
+
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {

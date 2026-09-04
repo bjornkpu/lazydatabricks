@@ -17,7 +17,7 @@ serde_json = "1"                                   # Databricks REST bodies, CLI
 reqwest = { version = "0.13", features = ["json", "query"] } # HTTP client
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }  # async runtime, mpsc
 jiff = "0.2"                                       # datetimes: epoch millis -> local, relative age
-# clap = { version = "4", features = ["derive"] }    # command line parsing (M9)
+clap = { version = "4", features = ["derive"] }    # command line parsing (M9)
 toml = "1"                                         # config file (M7)
 directories = "6"                                  # platform config dir (M7)
 # tui-input = "0.15"                                 # filter input widget (M5)

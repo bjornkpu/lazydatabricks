@@ -19,6 +19,10 @@ pub struct Config {
     pub max_jobs: usize,
     /// Start with the "mine only" filter on.
     pub mine_only: bool,
+    /// Start with this name filter applied.
+    pub filter: Option<String>,
+    /// Enable run-now and cancel in the `x` menu. Read-only without it (or `--allow-actions`).
+    pub allow_actions: bool,
     /// Value of the `dev` tag that marks a job as mine. Derived from the email when unset.
     pub dev_tag: Option<String>,
     /// Background refresh interval for the jobs list.
@@ -35,6 +39,8 @@ impl Default for Config {
             profile: None,
             max_jobs: 200,
             mine_only: false,
+            filter: None,
+            allow_actions: false,
             dev_tag: None,
             jobs_ttl_secs: 300,
             runs_ttl_secs: 120,
