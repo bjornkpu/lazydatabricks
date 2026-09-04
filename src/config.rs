@@ -27,6 +27,9 @@ pub struct Config {
     pub dev_tag: Option<String>,
     /// Chrome colours: `dark` (default) or `light`. Status glyphs keep their colours either way.
     pub theme: Theme,
+    /// Order of the job and pipeline lists: `activity` (default), `name` or `created`. `s`
+    /// cycles it while running.
+    pub sort: Sort,
     /// Background refresh interval for the jobs list.
     pub jobs_ttl_secs: u64,
     /// How long cached runs are shown before being refetched.
@@ -45,9 +48,43 @@ impl Default for Config {
             allow_actions: false,
             dev_tag: None,
             theme: Theme::Dark,
+            sort: Sort::Activity,
             jobs_ttl_secs: 300,
             runs_ttl_secs: 120,
             keys: BTreeMap::new(),
+        }
+    }
+}
+
+/// List order. Ties always break on name, so the order is stable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Sort {
+    /// Newest run or update first; never-run items last.
+    #[default]
+    Activity,
+    Name,
+    /// Newest created first. Pipelines carry no creation time in the list, so they fall back to
+    /// name.
+    Created,
+}
+
+impl Sort {
+    #[must_use]
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Activity => Self::Name,
+            Self::Name => Self::Created,
+            Self::Created => Self::Activity,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Activity => "activity",
+            Self::Name => "name",
+            Self::Created => "created",
         }
     }
 }
@@ -140,6 +177,8 @@ mod tests {
         );
         assert_eq!(config.keys[&Action::Quit], vec![Key::Char('q')]);
         assert_eq!(parse("theme = \"light\"").unwrap().theme, Theme::Light);
+        assert_eq!(parse("sort = \"name\"").unwrap().sort, Sort::Name);
+        assert_eq!(Sort::Created.next(), Sort::Activity);
         assert!(parse("theme = \"neon\"").is_err());
     }
 

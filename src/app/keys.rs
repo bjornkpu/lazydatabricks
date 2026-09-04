@@ -38,6 +38,8 @@ pub enum Action {
     Browse,
     /// Copy the selected item's URL.
     Copy,
+    /// Cycle the list order: activity, name, created.
+    Sort,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -73,6 +75,7 @@ impl Default for Keymap {
             (Action::Help, vec![Key::Char('?')]),
             (Action::Browse, vec![Key::Char('o')]),
             (Action::Copy, vec![Key::Char('y')]),
+            (Action::Sort, vec![Key::Char('s')]),
         ]))
     }
 }

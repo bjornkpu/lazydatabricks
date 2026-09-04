@@ -49,6 +49,10 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
     if app.loading {
         suffix.push_span(format!(" {}", app.spinner_glyph()));
     }
+    suffix.push_span(Span::styled(
+        format!(" by {}", app.sort.as_str()),
+        Style::new().add_modifier(Modifier::DIM),
+    ));
     let filtering = app.input == InputMode::Filter;
     if filtering || !app.filter.text.is_empty() {
         let cursor = if filtering { "▌" } else { "" };
@@ -92,11 +96,15 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
 
 pub fn pipelines(app: &App, area: Rect, frame: &mut Frame) {
     let focused = app.focus == Panel::Pipelines;
-    let spinner = if app.pipelines_loading() {
+    let mut spinner = if app.pipelines_loading() {
         Line::from(format!(" {}", app.spinner_glyph()))
     } else {
         Line::default()
     };
+    spinner.push_span(Span::styled(
+        format!(" by {}", app.sort.as_str()),
+        Style::new().add_modifier(Modifier::DIM),
+    ));
     let counter = app.pipelines.counter();
     let palette = theme::palette(app);
     let block = chrome::panel(Panel::Pipelines, focused, spinner, Some(&counter), &palette);

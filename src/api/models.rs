@@ -24,6 +24,8 @@ pub struct Job {
     pub creator_user_name: String,
     #[serde(default)]
     pub run_as_user_name: String,
+    #[serde(default, deserialize_with = "epoch_millis")]
+    pub created_time: Option<Timestamp>,
     #[serde(default)]
     pub settings: JobSettings,
 }

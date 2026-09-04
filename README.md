@@ -47,6 +47,7 @@ cancel in the `x` menu, each behind a confirmation that names the target.
 | `m` | toggle mine only (by `dev` tag or creator) |
 | `x` | actions menu for the selected job |
 | `r` / `R` | refresh the focused panel / everything |
+| `s` | cycle sort: activity, name, created |
 | `o` / `y` | open in browser / copy URL |
 | `+` | cycle screen mode: normal, half, full |
 | `@` | toggle the API log |
@@ -64,6 +65,7 @@ filter = "gold"
 dev_tag = "bjorn_punsvik"  # tag value that marks a job as mine; derived from the email if unset
 allow_actions = false
 theme = "dark"             # or "light"
+sort = "activity"          # or "name", "created"; newest first, ties by name
 max_jobs = 200
 jobs_ttl_secs = 300        # background refresh interval
 runs_ttl_secs = 120

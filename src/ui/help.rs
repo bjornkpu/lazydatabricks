@@ -73,6 +73,7 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             (k(Action::Refresh), "refresh jobs"),
             (k(Action::Browse), "open job in browser"),
             (k(Action::Copy), "copy job URL"),
+            (k(Action::Sort), "cycle sort: activity, name, created"),
         ],
         Panel::Main => vec![
             (k(Action::Down), "next run"),
@@ -96,6 +97,7 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             (k(Action::Refresh), "refresh pipelines"),
             (k(Action::Browse), "open pipeline in browser"),
             (k(Action::Copy), "copy pipeline URL"),
+            (k(Action::Sort), "cycle sort: activity, name"),
         ],
         Panel::Status => vec![(k(Action::Refresh), "refresh jobs and pipelines")],
     };

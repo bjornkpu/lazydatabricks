@@ -7,6 +7,7 @@ mod list;
 mod menu;
 mod message;
 
+use std::cmp::Reverse;
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
@@ -21,7 +22,7 @@ pub use message::{ApiCall, Command, Key, Message};
 use crate::api::models::{
     Job, LifeCycleState, Pipeline, PipelineState, PipelineUpdate, Run, UpdateState,
 };
-use crate::config::{Loaded, Theme};
+use crate::config::{Loaded, Sort, Theme};
 use crate::error::AppError;
 
 /// Spinner frames, one per `Tick` while loading.
@@ -104,6 +105,8 @@ pub struct App {
     /// Run-now and cancel are allowed. Off by default: reading is safe, triggering is not.
     pub allow_actions: bool,
     pub theme: Theme,
+    /// Order of both lists. Applied in `apply_filter`.
+    pub sort: Sort,
     /// A jobs fetch is in flight. True from launch until the first `JobsLoaded` or `JobsFailed`,
     /// then again during refreshes; the old list stays on screen meanwhile.
     pub loading: bool,
@@ -176,6 +179,7 @@ impl App {
             notice: None,
             allow_actions: config.allow_actions,
             theme: config.theme,
+            sort: config.sort,
             loading: true,
             jobs_fetched_at: None,
             spinner: 0,
@@ -242,6 +246,8 @@ impl App {
                 for run in runs {
                     self.latest_runs.entry(run.job_id).or_insert(run);
                 }
+                // Activity order depends on these.
+                self.apply_filter();
             }
             Message::RunsLoaded { job_id, runs } => self.on_runs_loaded(job_id, runs),
             Message::RunsFailed { job_id, error } => {
@@ -375,6 +381,8 @@ impl App {
                 value: runs,
             },
         );
+        // Activity order may have changed for this job.
+        self.apply_filter();
     }
 
     /// `run-now` accepted. Optimistic: show the new run at once, then reconcile with a refetch.
@@ -584,6 +592,11 @@ impl App {
             }
             Action::Menu => self.open_menu(),
             Action::Help => self.input = InputMode::Help,
+            Action::Sort => {
+                self.sort = self.sort.next();
+                self.apply_filter();
+                self.notice = Some(format!("Sorted by {}", self.sort.as_str()));
+            }
             Action::Browse => {
                 if let Some(url) = self.selected_url() {
                     self.notice = Some(format!("Opening {url}"));
@@ -811,12 +824,13 @@ impl App {
             .pipelines
             .selected()
             .map(|pipeline| pipeline.id.clone());
-        let visible: Vec<Pipeline> = self
+        let mut visible: Vec<Pipeline> = self
             .all_pipelines
             .iter()
             .filter(|pipeline| self.filter.matches_pipeline(pipeline, self.me.as_ref()))
             .cloned()
             .collect();
+        self.sort_pipelines(&mut visible);
         self.pipelines.set_items(visible);
         if let Some(id) = keep_pipeline {
             self.pipelines.select_where(|pipeline| pipeline.id == id);
@@ -825,17 +839,49 @@ impl App {
         let keep = self.jobs.selected().map(|job| job.id);
         // The visible list is a copy of the matching jobs: a few hundred small structs per
         // keystroke, and `Selectable` stays a plain list with a cursor.
-        let visible: Vec<Job> = self
+        let mut visible: Vec<Job> = self
             .all_jobs
             .iter()
             .filter(|job| self.filter.matches(job, self.me.as_ref()))
             .cloned()
             .collect();
+        self.sort_jobs(&mut visible);
         self.jobs.set_items(visible);
         if let Some(id) = keep {
             self.jobs.select_where(|job| job.id == id);
         }
         self.select_runs();
+    }
+
+    /// Orders jobs by `self.sort`; ties and unknown timestamps fall back to the name.
+    fn sort_jobs(&self, jobs: &mut [Job]) {
+        let name = |job: &Job| job.settings.name.to_lowercase();
+        match self.sort {
+            Sort::Activity => jobs.sort_by_cached_key(|job| {
+                let latest = self.latest_runs.get(&job.id).and_then(|run| run.start_time);
+                (Reverse(latest), name(job))
+            }),
+            Sort::Name => jobs.sort_by_cached_key(name),
+            Sort::Created => {
+                jobs.sort_by_cached_key(|job| (Reverse(job.created_time), name(job)));
+            }
+        }
+    }
+
+    /// Orders pipelines by `self.sort`. `Created` is name order here: the list response has no
+    /// creation time.
+    fn sort_pipelines(&self, pipelines: &mut [Pipeline]) {
+        let name = |pipeline: &Pipeline| pipeline.name.to_lowercase();
+        match self.sort {
+            Sort::Activity => pipelines.sort_by_cached_key(|pipeline| {
+                let latest = pipeline
+                    .latest_updates
+                    .first()
+                    .and_then(|update| update.creation_time);
+                (Reverse(latest), name(pipeline))
+            }),
+            Sort::Name | Sort::Created => pipelines.sort_by_cached_key(name),
+        }
     }
 
     fn set_focus(&mut self, panel: Panel) {
@@ -927,6 +973,7 @@ pub mod tests {
             id,
             creator_user_name: "someone@example.com".to_owned(),
             run_as_user_name: "someone@example.com".to_owned(),
+            created_time: None,
             settings: JobSettings {
                 name: name.to_owned(),
                 timeout_seconds: Some(7200),
@@ -1290,13 +1337,13 @@ pub mod tests {
         assert_eq!(app.filter.text, "q", "q is a letter now, not quit");
         app.update(key(Key::Backspace));
         press(&mut app, "GOLD");
-        assert_eq!(names(&app), ["okonomi_gold", "ems_gold"]);
+        assert_eq!(names(&app), ["ems_gold", "okonomi_gold"]);
         assert_eq!(app.filter_summary(), "/GOLD · 0 of 0 pipelines");
         app.update(key(Key::Enter));
         assert_eq!(app.input, InputMode::Normal);
         assert_eq!(
             names(&app),
-            ["okonomi_gold", "ems_gold"],
+            ["ems_gold", "okonomi_gold"],
             "Enter keeps the filter"
         );
         assert_eq!(app.update(key(Key::Char('q'))), vec![Command::Quit]);
@@ -1480,7 +1527,8 @@ pub mod tests {
             runs: runs.clone(),
         });
         assert_eq!(app.runs, Load::Loading);
-        press(&mut app, "G");
+        // Job 3 now has the newest run, so activity order puts it first.
+        press(&mut app, "g");
         assert_eq!(app.runs, Load::Loaded(Selectable::new(runs)));
         assert_eq!(ticks(&mut app, 3), vec![], "no fetch for a cached job");
     }
@@ -1724,9 +1772,10 @@ pub mod tests {
     fn with_pipelines() -> App {
         let mut app = loaded();
         app.update(Message::PipelinesLoaded(vec![
+            // Same update time on all three, so activity order falls back to name: p1, p2, p3.
             pipeline("p1", "felles_gold", "someone@example.com"),
-            pipeline("p2", "aktorer_ingest", "other@example.com"),
-            pipeline("p3", "ems_gold", "someone@example.com"),
+            pipeline("p2", "kodeverk_ingest", "other@example.com"),
+            pipeline("p3", "okonomi_gold", "someone@example.com"),
         ]));
         app
     }
@@ -1993,6 +2042,70 @@ pub mod tests {
             app.pipelines.selected().unwrap().state,
             PipelineState::Stopping
         );
+    }
+
+    #[test]
+    fn sort_cycles_activity_name_created_with_name_tiebreak() {
+        let ts = |ms: i64| jiff::Timestamp::from_millisecond(ms).ok();
+        let mut app = app();
+        let mut b = job(1, "b");
+        b.created_time = ts(1000);
+        let mut a = job(2, "a");
+        a.created_time = ts(3000);
+        let mut c = job(3, "c");
+        c.created_time = ts(2000);
+        app.update(Message::JobsLoaded(vec![b, a, c]));
+        assert_eq!(
+            names(&app),
+            ["a", "b", "c"],
+            "no activity known: name order"
+        );
+        let mut run_b = run(10, 5000, 6000, Some(ResultState::Success));
+        run_b.job_id = 1;
+        let mut run_c = run(11, 9000, 9500, Some(ResultState::Failed));
+        run_c.job_id = 3;
+        app.update(Message::RecentRunsLoaded(vec![run_c, run_b]));
+        assert_eq!(
+            names(&app),
+            ["c", "b", "a"],
+            "newest run first, never-run last"
+        );
+        press(&mut app, "s");
+        assert_eq!(app.sort, Sort::Name);
+        assert_eq!(names(&app), ["a", "b", "c"]);
+        assert_eq!(app.notice.as_deref(), Some("Sorted by name"));
+        press(&mut app, "s");
+        assert_eq!(names(&app), ["a", "c", "b"], "newest created first");
+        press(&mut app, "s");
+        assert_eq!(app.sort, Sort::Activity);
+        assert_eq!(names(&app), ["c", "b", "a"]);
+    }
+
+    #[test]
+    fn pipelines_sort_by_latest_update() {
+        let mut app = app();
+        let mut old = pipeline("p1", "b_old", "x@example.com");
+        old.latest_updates[0].creation_time = jiff::Timestamp::from_millisecond(1000).ok();
+        let mut new = pipeline("p2", "c_new", "x@example.com");
+        new.latest_updates[0].creation_time = jiff::Timestamp::from_millisecond(2000).ok();
+        let mut never = pipeline("p3", "a_never", "x@example.com");
+        never.latest_updates.clear();
+        app.update(Message::PipelinesLoaded(vec![old, never, new]));
+        let names: Vec<&str> = app
+            .pipelines
+            .items()
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
+        assert_eq!(names, ["c_new", "b_old", "a_never"]);
+        press(&mut app, "s");
+        let names: Vec<&str> = app
+            .pipelines
+            .items()
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
+        assert_eq!(names, ["a_never", "b_old", "c_new"]);
     }
 
     #[test]
