@@ -307,7 +307,7 @@ Note: `job_id` and `run_id` are `i64`, and indices are `usize`. Under `as_conver
 crossing is a `try_from`. Keep ids as `i64` end to end and never use them as indices.
 
 Timestamps are **epoch milliseconds**, not seconds. Convert once, at the API boundary, into
-`chrono::DateTime<Local>`; never let raw millis reach the UI layer.
+`jiff::Zoned` (jiff chosen over chrono, see Cargo.toml); never let raw millis reach the UI layer.
 
 `life_cycle_state` and `result_state` are closed sets in practice but open in the API. Model them
 as enums with a `#[serde(other)] Unknown` variant so a new Databricks state cannot break parsing.
@@ -459,15 +459,15 @@ non-US keyboards, where `[` and `]` need AltGr on a Norwegian layout.
 ## 8. Milestones
 
 Each is independently runnable and independently useful. Do not start the next until the current
-one builds clean under `cargo clippy -- -D warnings`.
+one builds clean under `cargo clippy --all-targets` and `cargo nextest run` is green.
 
 ### M0 — Terminal skeleton
 Opens an alternate screen, draws a bordered box, quits on `q`, restores the terminal even on
 panic. No network, no state.
 
-*Teaches:* RAII and `Drop`, `anyhow` at the boundary, why `exit` is denied.
-*Done when:* a forced panic still leaves your shell usable.
-*Add:* `ratatui 0.30`, `crossterm 0.29`, `anyhow`.
+*Teaches:* RAII and `Drop`, `anyhow` at the boundary, why `exit` is denied, `TestBackend`.
+*Done when:* a forced panic still leaves your shell usable, and one insta snapshot of the box passes.
+*Add:* `ratatui 0.30`, `crossterm 0.29`, `anyhow`; dev: `insta`.
 
 ### M1 — Your job list, blocking
 Mint a token via the CLI, `GET /api/2.2/jobs/list`, render names in a list. UI freezes during the
@@ -561,19 +561,20 @@ first.
 *Add:* `clap` (`derive`) — the first milestone that needs real argument parsing, for
 `--profile`, `--filter`, and `--allow-actions`.
 
-### M10 — Tests and polish
-`insta` snapshot tests over ratatui's `TestBackend`. Contextual `?` overlay listing only the
-focused panel's bindings, lazygit-style. Themes. A real `--help`.
+### M10 — Polish
+Contextual `?` overlay listing only the focused panel's bindings, lazygit-style. Themes. A real
+`--help`. Snapshot and state tests already exist from M0 onward (see CLAUDE.md); this milestone
+fills gaps, not the whole suite.
 
-*Teaches:* testing a TUI without a terminal, snapshot review as a workflow.
-*Done when:* `cargo test` catches a layout regression you introduce on purpose.
-*Add:* `insta`, `ratatui` `TestBackend` (feature-gated to dev).
+*Teaches:* snapshot review as a workflow at scale.
+*Done when:* `cargo nextest run` catches a layout regression you introduce on purpose.
 
 ---
 
 ## 9. Testing
 
-Three layers, cheapest first:
+Tests are written with each milestone, not deferred. The `DatabricksApi` trait has a fixture-backed
+fake so `update` is testable without network (see CLAUDE.md). Three layers, cheapest first:
 
 1. **Model tests** — filtering, sorting, duration formatting, state transitions. Pure functions,
    no IO. Most of your assertions live here.

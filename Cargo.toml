@@ -4,17 +4,32 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# Preferred crates (from https://www.namtao.com/rust/). Uncomment when needed, don't add alternatives for the same job.
-# clap = { version = "4.5", features = ["derive"] }  # command line parsing
-# chrono = "0.4"                                     # ergonomic datetimes
-# color-eyre = "0.6"                                 # simple pretty error handling
-# itertools = "0.14"                                 # superpowered iterators
-# rayon = "1.11"                                     # parallel iterators
-# serde = { version = "1", features = ["derive"] }   # serialisation / deserialisation
-
-# TUI stack (chosen for this project)
+# Chosen crates for this project. Uncomment when the milestone needs it (see docs/spec.md).
+# Audited 2026-09-04 against crates.io (version, release cadence, downloads). Don't add an
+# alternative crate for a job a listed one does. Ask before adding anything not listed.
+#
 # ratatui = "0.30"                                   # TUI rendering; TestBackend for snapshot tests
-# crossterm = "0.29"                                 # terminal events, only imported in main
+# crossterm = "0.29"                                 # terminal events; only main.rs imports it
+# anyhow = "1"                                       # error context at the binary boundary
+# thiserror = "2"                                    # AppError enum (M8)
+# serde = { version = "1", features = ["derive"] }   # serialisation / deserialisation
+# serde_json = "1"                                   # Databricks REST bodies, CLI token output
+# reqwest = { version = "0.13", features = ["json"] } # HTTP client
+# tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }  # async runtime, mpsc
+# jiff = "0.2"                                       # datetimes: epoch millis -> local, relative age
+# clap = { version = "4", features = ["derive"] }    # command line parsing (M9)
+# toml = "1"                                         # config file (M7)
+# directories = "6"                                  # platform config dir (M7)
+# tui-input = "0.15"                                 # filter input widget (M5)
+# tracing = "0.1"                                    # logging to file, never stdout
+# tracing-appender = "0.2"
+# tracing-subscriber = "0.3"
+
+# Not needed here, kept as namtao.com/rust reference for future projects:
+# chrono = "0.4"     # datetimes; jiff preferred for new code
+# color-eyre = "0.6" # pretty error reports; pointless in a TUI, use anyhow
+# itertools = "0.15" # superpowered iterators
+# rayon = "1"        # parallel iterators
 
 # [dev-dependencies]
 # insta = "1"                                        # snapshot tests of rendered screens
