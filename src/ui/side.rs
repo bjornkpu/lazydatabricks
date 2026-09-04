@@ -2,7 +2,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListState, Paragraph};
 
@@ -64,12 +64,25 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
         frame.render_widget(chrome::error(error, block, &palette), area);
         return;
     }
-    let names = app
-        .jobs
-        .items()
-        .iter()
-        .map(|job| job.settings.name.as_str());
-    let list = List::new(names)
+    // `2m ✓ name`: age of the latest run, its result, then the name. Blank age and a dot when
+    // no run is known yet.
+    let rows = app.jobs.items().iter().map(|job| {
+        let latest = app.latest_runs.get(&job.id);
+        let age = match (latest.and_then(|run| run.start_time), app.now) {
+            (Some(started), Some(now)) => theme::age_short(now.duration_since(started)),
+            _ => String::new(),
+        };
+        let (glyph, color) = latest.map_or(('·', Color::DarkGray), theme::run_glyph);
+        Line::from(vec![
+            Span::styled(
+                format!("{age:>3} "),
+                Style::new().add_modifier(Modifier::DIM),
+            ),
+            Span::styled(glyph.to_string(), Style::new().fg(color)),
+            Span::raw(format!(" {}", job.settings.name)),
+        ])
+    });
+    let list = List::new(rows)
         .block(block)
         .highlight_style(chrome::highlight(focused, &palette));
     // Local widget state built from `App`: the render stays a pure function of the app.

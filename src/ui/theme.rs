@@ -108,6 +108,21 @@ pub fn clock(ts: Timestamp, tz: &TimeZone) -> String {
     ts.to_zoned(tz.clone()).strftime("%m/%d %H:%M").to_string()
 }
 
+/// One number and one letter, for the leftmost column of a list: `2m`, `4h`, `1d`, `1w`, `3M`.
+/// Under a minute is `now`; a start in the future (clock skew) reads as `now` too.
+#[must_use]
+pub fn age_short(d: SignedDuration) -> String {
+    let secs = u64::try_from(d.as_secs()).unwrap_or(0);
+    match secs {
+        0..60 => "now".to_owned(),
+        60..3600 => format!("{}m", secs / 60),
+        3600..86_400 => format!("{}h", secs / 3600),
+        86_400..604_800 => format!("{}d", secs / 86_400),
+        604_800..2_592_000 => format!("{}w", secs / 604_800),
+        _ => format!("{}M", secs / 2_592_000),
+    }
+}
+
 /// `12s ago`, `3m05s ago`: how old the data on screen is.
 #[must_use]
 pub fn age(d: std::time::Duration) -> String {
@@ -139,6 +154,18 @@ mod tests {
         assert_eq!(duration(SignedDuration::from_secs(3725)), "1h02m");
         assert_eq!(duration(SignedDuration::from_secs(90_000)), "1d01h");
         assert_eq!(duration(SignedDuration::from_secs(-5)), "0s");
+    }
+
+    #[test]
+    fn short_ages_are_one_unit() {
+        let s = SignedDuration::from_secs;
+        assert_eq!(age_short(s(5)), "now");
+        assert_eq!(age_short(s(150)), "2m");
+        assert_eq!(age_short(s(4 * 3600 + 59)), "4h");
+        assert_eq!(age_short(s(86_400)), "1d");
+        assert_eq!(age_short(s(8 * 86_400)), "1w");
+        assert_eq!(age_short(s(70 * 86_400)), "2M");
+        assert_eq!(age_short(s(-30)), "now");
     }
 
     #[test]

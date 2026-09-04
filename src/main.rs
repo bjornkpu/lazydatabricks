@@ -18,6 +18,7 @@ use std::time::Instant;
 use anyhow::{Result, bail};
 use clap::Parser;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
@@ -48,6 +49,11 @@ async fn main() -> Result<()> {
     let client = Arc::new(api::Client::from_profile(&profile, tx.clone())?);
     let app = App::new(&profile, client.host(), TimeZone::system(), &loaded);
     tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone(), app.max_jobs));
+    tokio::spawn(fetch_recent_runs(
+        Arc::clone(&client),
+        tx.clone(),
+        app.max_jobs,
+    ));
     tokio::spawn(fetch_pipelines(
         Arc::clone(&client),
         tx.clone(),
@@ -82,6 +88,9 @@ async fn run(
                 Command::FetchJobs { max } => {
                     tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone(), max));
                 }
+                Command::FetchRecentRuns { max } => {
+                    tokio::spawn(fetch_recent_runs(Arc::clone(&client), tx.clone(), max));
+                }
                 Command::FetchPipelines { max } => {
                     tokio::spawn(fetch_pipelines(Arc::clone(&client), tx.clone(), max));
                 }
@@ -112,6 +121,14 @@ async fn fetch_jobs(client: Arc<api::Client>, tx: mpsc::Sender<Message>, max: us
         Err(error) => Message::JobsFailed(error),
     };
     // A closed channel means the app already quit; nobody is left to tell.
+    let _ = tx.send(message).await;
+}
+
+async fn fetch_recent_runs(client: Arc<api::Client>, tx: mpsc::Sender<Message>, max: usize) {
+    let message = match client.list_recent_runs(max).await {
+        Ok(runs) => Message::RecentRunsLoaded(runs),
+        Err(error) => Message::RecentRunsFailed(error),
+    };
     let _ = tx.send(message).await;
 }
 
@@ -189,7 +206,9 @@ fn spawn_input(tx: mpsc::Sender<Message>) {
             }
             if last_tick.elapsed() >= TICK {
                 last_tick = Instant::now();
-                if tx.blocking_send(Message::Tick).is_err() {
+                if tx.blocking_send(Message::Tick).is_err()
+                    || tx.blocking_send(Message::Clock(Timestamp::now())).is_err()
+                {
                     return;
                 }
             }

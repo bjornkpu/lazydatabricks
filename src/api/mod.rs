@@ -95,6 +95,27 @@ impl Client {
         Ok(pipelines)
     }
 
+    /// The most recent runs across the whole workspace, newest first, up to `max`. Gives every
+    /// job its latest run in a handful of calls instead of one call per job.
+    pub async fn list_recent_runs(&self, max: usize) -> Result<Vec<Run>, AppError> {
+        let mut runs = Vec::new();
+        let mut page_token: Option<String> = None;
+        loop {
+            let mut query = vec![("limit", PAGE_SIZE)];
+            if let Some(token) = &page_token {
+                query.push(("page_token", token.as_str()));
+            }
+            let page: RunsList = self.get("/api/2.2/jobs/runs/list", &query).await?;
+            runs.extend(page.runs);
+            page_token = page.next_page_token.filter(|token| !token.is_empty());
+            if runs.len() >= max || page_token.is_none() {
+                break;
+            }
+        }
+        runs.truncate(max);
+        Ok(runs)
+    }
+
     /// The most recent runs of one job, newest first as Databricks returns them. One page.
     pub async fn list_runs(&self, job_id: i64) -> Result<Vec<Run>, AppError> {
         let job_id = job_id.to_string();

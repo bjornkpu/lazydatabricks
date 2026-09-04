@@ -63,6 +63,10 @@ pub struct App {
     pub host: String,
     /// Zone for rendering timestamps. An input, so tests can pin UTC.
     pub tz: TimeZone,
+    /// Wall-clock time from the last `Clock` message. `None` until the first one arrives.
+    pub now: Option<jiff::Timestamp>,
+    /// Newest known run per job, from the workspace-wide recent runs and from per-job fetches.
+    pub latest_runs: HashMap<i64, Run>,
     pub keys: Keymap,
     /// Where config came from, for the Profile tab.
     pub config_note: String,
@@ -141,6 +145,8 @@ impl App {
             profile: profile.to_owned(),
             host: host.to_owned(),
             tz,
+            now: None,
+            latest_runs: HashMap::new(),
             keys: Keymap::with_overrides(&config.keys),
             config_note,
             dev_tag: config.dev_tag.clone(),
@@ -226,9 +232,19 @@ impl App {
                 self.pipelines_inflight = None;
                 self.pipelines_error = Some(error);
             }
+            Message::Clock(now) => self.now = Some(now),
+            Message::RecentRunsLoaded(runs) => {
+                // Newest first, so the first run seen for a job is its latest.
+                for run in runs {
+                    self.latest_runs.entry(run.job_id).or_insert(run);
+                }
+            }
             Message::RunsLoaded { job_id, runs } => {
                 if self.runs_inflight == Some(job_id) {
                     self.runs_inflight = None;
+                }
+                if let Some(latest) = runs.first() {
+                    self.latest_runs.insert(job_id, latest.clone());
                 }
                 if self.runs_job == Some(job_id) {
                     // Shown now and cached for the next visit: two owners, hence the clone.
@@ -274,7 +290,9 @@ impl App {
             Message::RunCancelled { job_id, run_id } => {
                 self.on_run_cancelled(job_id, run_id, &mut commands);
             }
-            Message::ActionFailed(error) => self.notice = Some(error.to_string()),
+            Message::RecentRunsFailed(error) | Message::ActionFailed(error) => {
+                self.notice = Some(error.to_string());
+            }
         }
         commands
     }
@@ -382,6 +400,9 @@ impl App {
         if !self.loading {
             self.loading = true;
             commands.push(Command::FetchJobs { max: self.max_jobs });
+            // Rebuilt from scratch so jobs whose runs were deleted do not keep a stale age.
+            self.latest_runs.clear();
+            commands.push(Command::FetchRecentRuns { max: self.max_jobs });
         }
     }
 
@@ -1231,7 +1252,10 @@ pub mod tests {
         });
         assert_eq!(
             app.update(key(Key::Char('r'))),
-            vec![Command::FetchJobs { max: 200 }]
+            vec![
+                Command::FetchJobs { max: 200 },
+                Command::FetchRecentRuns { max: 200 }
+            ]
         );
         assert!(app.loading);
         assert_eq!(
@@ -1253,6 +1277,7 @@ pub mod tests {
             app.update(key(Key::Char('R'))),
             vec![
                 Command::FetchJobs { max: 200 },
+                Command::FetchRecentRuns { max: 200 },
                 Command::FetchRuns { job_id: 1 }
             ]
         );
@@ -1309,7 +1334,10 @@ pub mod tests {
         );
         assert_eq!(
             app.update(key(Key::Char('r'))),
-            vec![Command::FetchJobs { max: 50 }]
+            vec![
+                Command::FetchJobs { max: 50 },
+                Command::FetchRecentRuns { max: 50 }
+            ]
         );
         app.update(Message::JobsLoaded(vec![job(1, "a")]));
         ticks(&mut app, 3);
@@ -1575,10 +1603,42 @@ pub mod tests {
             app.update(key(Key::Char('r'))),
             vec![
                 Command::FetchJobs { max: 200 },
+                Command::FetchRecentRuns { max: 200 },
                 Command::FetchPipelines { max: 200 }
             ],
             "status refreshes both lists"
         );
+    }
+
+    #[test]
+    fn latest_run_per_job_comes_from_recent_runs_and_per_job_fetches() {
+        let mut app = loaded();
+        let mut newest = run(30, 3000, 4000, Some(ResultState::Failed));
+        newest.job_id = 2;
+        let mut older = run(20, 1000, 2000, Some(ResultState::Success));
+        older.job_id = 2;
+        let mut other = run(40, 500, 600, None);
+        other.job_id = 3;
+        app.update(Message::RecentRunsLoaded(vec![
+            newest.clone(),
+            older,
+            other,
+        ]));
+        assert_eq!(app.latest_runs[&2], newest);
+        assert_eq!(app.latest_runs[&3].id, 40);
+        assert!(!app.latest_runs.contains_key(&1));
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: vec![run(11, 5000, 0, None), run(10, 1000, 2000, None)],
+        });
+        assert_eq!(
+            app.latest_runs[&1].id, 11,
+            "per-job fetch fills in the newest"
+        );
+        app.update(Message::Clock(
+            jiff::Timestamp::from_millisecond(9000).unwrap(),
+        ));
+        assert_eq!(app.now.unwrap().as_millisecond(), 9000);
     }
 
     #[test]

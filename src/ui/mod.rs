@@ -137,6 +137,18 @@ mod tests {
             Some(200),
             131,
         )));
+        // A fixed "now" two hours after the newest run, and one older run for job 2.
+        app.update(Message::Clock(
+            jiff::Timestamp::from_millisecond(1_788_264_500_000).unwrap(),
+        ));
+        let mut nightly = run(
+            50_851_892_761_070,
+            1_788_170_000_000,
+            1_788_170_060_000,
+            Some(ResultState::Failed),
+        );
+        nightly.job_id = 2;
+        app.update(Message::RecentRunsLoaded(vec![nightly]));
         app
     }
 

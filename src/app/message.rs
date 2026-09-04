@@ -42,10 +42,15 @@ pub enum Message {
     Key(Key),
     /// Periodic heartbeat from the input thread; drives the spinner and debounces fetches.
     Tick,
+    /// Wall-clock time, sent alongside ticks so relative ages can be rendered without IO.
+    Clock(jiff::Timestamp),
     JobsLoaded(Vec<Job>),
     JobsFailed(AppError),
     PipelinesLoaded(Vec<Pipeline>),
     PipelinesFailed(AppError),
+    /// Newest runs across the workspace, for the age and glyph on each job row.
+    RecentRunsLoaded(Vec<Run>),
+    RecentRunsFailed(AppError),
     RunsLoaded {
         job_id: i64,
         runs: Vec<Run>,
@@ -75,6 +80,9 @@ pub enum Message {
 pub enum Command {
     Quit,
     FetchJobs {
+        max: usize,
+    },
+    FetchRecentRuns {
         max: usize,
     },
     FetchPipelines {
