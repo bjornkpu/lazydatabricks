@@ -1,0 +1,11 @@
+{
+  "active": true,
+  "displayName": "Someone Example",
+  "emails": [{ "primary": true, "type": "work", "value": "someone.example@example.com" }],
+  "externalId": "00000000-0000-0000-0000-000000000000",
+  "groups": [{ "display": "users", "value": "1234567890" }],
+  "id": "9876543210",
+  "name": { "familyName": "Example", "givenName": "Someone" },
+  "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+  "userName": "someone.example@example.com"
+}

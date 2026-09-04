@@ -11,7 +11,7 @@ use serde::de::DeserializeOwned;
 use tokio::sync::mpsc;
 
 use crate::app::{ApiCall, Message};
-use models::{Job, JobsList, Run, RunsList};
+use models::{Job, JobsList, Run, RunsList, ScimMe};
 
 /// Page size sent to Databricks. A page size, not a cap: `list_jobs` follows `next_page_token`.
 const PAGE_SIZE: &str = "25";
@@ -69,6 +69,12 @@ impl Client {
         let query = [("job_id", job_id.as_str()), ("limit", PAGE_SIZE)];
         let page: RunsList = self.get("/api/2.2/jobs/runs/list", &query).await?;
         Ok(page.runs)
+    }
+
+    /// The signed-in user's name (an email). Resolved once at startup for the "mine" filter.
+    pub async fn me(&self) -> Result<String> {
+        let me: ScimMe = self.get("/api/2.0/preview/scim/v2/Me", &[]).await?;
+        Ok(me.user_name)
     }
 
     /// One GET, timed and reported to the API log whether it succeeds or not.

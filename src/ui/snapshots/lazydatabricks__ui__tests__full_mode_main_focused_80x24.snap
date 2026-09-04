@@ -25,4 +25,4 @@ expression: render(&app)
 "│                                                                              │"
 "│                                                                              │"
 "└──────────────────────────────────────────────────────────────────────────────┘"
-" Tabs: h/l │ Back: 1-3/Tab │ Screen: + │ Log: @ │ Quit: q                 v0.1.0"
+" Tabs: h/l │ Back: Esc │ Screen: + │ Log: @ │ Quit: q                     v0.1.0"

@@ -15,6 +15,8 @@ pub enum Key {
     Left,
     Right,
     Enter,
+    Esc,
+    Backspace,
     CtrlC,
 }
 
@@ -47,6 +49,9 @@ pub enum Message {
         error: String,
     },
     ApiCalled(ApiCall),
+    /// Who the token belongs to, as an email.
+    MeLoaded(String),
+    MeFailed(String),
 }
 
 /// Side effects `update` asks `main` to perform. `update` itself never does IO.

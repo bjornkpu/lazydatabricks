@@ -46,6 +46,13 @@ impl<T> Selectable<T> {
         self.items.get(self.selected?)
     }
 
+    /// Moves the cursor to the first item matching `pred`, if any; otherwise leaves it alone.
+    pub fn select_where(&mut self, pred: impl FnMut(&T) -> bool) {
+        if let Some(index) = self.items.iter().position(pred) {
+            self.selected = Some(index);
+        }
+    }
+
     pub fn apply(&mut self, movement: Move) {
         let Some(last) = self.last_index() else {
             return;
@@ -114,6 +121,15 @@ mod tests {
         assert_eq!(list.selected(), Some(&"c"));
         list.apply(Move::First);
         assert_eq!(list.selected(), Some(&"a"));
+    }
+
+    #[test]
+    fn select_where_finds_or_keeps() {
+        let mut list = three();
+        list.select_where(|item| *item == "c");
+        assert_eq!(list.selected_index(), Some(2));
+        list.select_where(|item| *item == "zzz");
+        assert_eq!(list.selected_index(), Some(2));
     }
 
     #[test]

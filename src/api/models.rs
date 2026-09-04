@@ -148,6 +148,13 @@ impl ResultState {
     }
 }
 
+/// `GET /api/2.0/preview/scim/v2/Me`: who the token belongs to.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct ScimMe {
+    #[serde(rename = "userName")]
+    pub user_name: String,
+}
+
 /// Databricks sends epoch milliseconds and uses `0` for "not yet". Converted here, once, so no
 /// raw millis reach the UI.
 fn epoch_millis<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Timestamp>, D::Error> {
@@ -165,6 +172,7 @@ mod tests {
 
     const JOBS_LIST: &str = include_str!("../../tests/fixtures/jobs_list.json");
     const RUNS_LIST: &str = include_str!("../../tests/fixtures/runs_list.json");
+    const SCIM_ME: &str = include_str!("../../tests/fixtures/scim_me.json");
 
     #[test]
     fn parses_jobs_list_fixture() {
@@ -213,6 +221,12 @@ mod tests {
         assert_eq!(running.state.life_cycle_state, LifeCycleState::Running);
         assert_eq!(running.state.result_state, None);
         assert_eq!(running.end_time, None, "end_time 0 means not finished");
+    }
+
+    #[test]
+    fn parses_scim_me_fixture() {
+        let me: ScimMe = serde_json::from_str(SCIM_ME).unwrap();
+        assert_eq!(me.user_name, "someone.example@example.com");
     }
 
     #[test]

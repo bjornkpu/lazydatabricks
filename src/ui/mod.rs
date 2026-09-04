@@ -47,10 +47,10 @@ pub fn draw(app: &App, frame: &mut Frame) {
             draw_panel(app, Panel::Main, main, frame);
         }
     }
-    hints::draw(app.focus, hint_bar, frame);
+    hints::draw(app.focus, app.filtering, hint_bar, frame);
 }
 
-/// Height of one side panel. Status is one line of text; the lists share the rest.
+/// Height of one side panel. Status is two lines of text; the lists share the rest.
 fn side_constraint(panel: Panel, focus: Panel, collapse_unfocused: bool) -> Constraint {
     if collapse_unfocused {
         return if panel == focus {
@@ -60,7 +60,7 @@ fn side_constraint(panel: Panel, focus: Panel, collapse_unfocused: bool) -> Cons
         };
     }
     match panel {
-        Panel::Status => Constraint::Length(3),
+        Panel::Status => Constraint::Length(4),
         Panel::Jobs | Panel::Pipelines | Panel::Main => Constraint::Fill(1),
     }
 }
@@ -81,7 +81,7 @@ mod tests {
 
     use super::*;
     use crate::api::models::ResultState;
-    use crate::app::tests::{api_call, app, job, run};
+    use crate::app::tests::{api_call, app, job, run, theirs};
     use crate::app::{Key, Message};
 
     fn render(app: &App) -> String {
@@ -226,6 +226,34 @@ mod tests {
             None,
             30_000,
         )));
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn filtering_80x24() {
+        let mut app = with_runs();
+        app.update(Message::MeLoaded("someone@example.com".to_owned()));
+        press(&mut app, "/gol");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn mine_only_80x24() {
+        let mut app = with_runs();
+        app.update(Message::MeLoaded("someone@example.com".to_owned()));
+        let mut all = app.all_jobs.clone();
+        all.push(theirs(4, "[other] aktorer_ingest"));
+        app.update(Message::JobsLoaded(all));
+        press(&mut app, "m");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn me_failed_80x24() {
+        let mut app = with_runs();
+        app.update(Message::MeFailed(
+            "HTTP status client error (403 Forbidden)".to_owned(),
+        ));
         insta::assert_snapshot!(render(&app));
     }
 

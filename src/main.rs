@@ -36,6 +36,7 @@ async fn main() -> Result<()> {
     let client = Arc::new(api::Client::from_profile(&profile, tx.clone())?);
     let app = App::new(&profile, client.host(), TimeZone::system());
     tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone()));
+    tokio::spawn(fetch_me(Arc::clone(&client), tx.clone()));
     spawn_input(tx.clone());
     // `ratatui::init` enters the alternate screen and raw mode and installs a panic hook that
     // restores both. `clippy::exit` is denied, so the loop returns instead of exiting; that is
@@ -76,6 +77,15 @@ async fn fetch_jobs(client: Arc<api::Client>, tx: mpsc::Sender<Message>) {
         Err(error) => Message::JobsFailed(format!("{error:#}")),
     };
     // A closed channel means the app already quit; nobody is left to tell.
+    let _ = tx.send(message).await;
+}
+
+/// Who the token belongs to, for the "mine" filter.
+async fn fetch_me(client: Arc<api::Client>, tx: mpsc::Sender<Message>) {
+    let message = match client.me().await {
+        Ok(email) => Message::MeLoaded(email),
+        Err(error) => Message::MeFailed(format!("{error:#}")),
+    };
     let _ = tx.send(message).await;
 }
 
@@ -127,6 +137,8 @@ fn next_message() -> Result<Option<Message>> {
         KeyCode::Left => Key::Left,
         KeyCode::Right => Key::Right,
         KeyCode::Enter => Key::Enter,
+        KeyCode::Esc => Key::Esc,
+        KeyCode::Backspace => Key::Backspace,
         _ => return Ok(None),
     };
     Ok(Some(Message::Key(key)))

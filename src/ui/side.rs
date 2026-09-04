@@ -3,7 +3,7 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListState, Paragraph, Wrap};
 
 use super::chrome;
@@ -16,20 +16,42 @@ pub fn status(app: &App, area: Rect, frame: &mut Frame) {
         Line::default(),
         None,
     );
+    // Whether we know who we are: resolved, failed, or still asking.
+    let (glyph, color) = match (&app.me, &app.me_error) {
+        (Some(_), _) => ('✓', Color::Green),
+        (None, Some(_)) => ('✗', Color::Red),
+        (None, None) => ('◐', Color::Yellow),
+    };
     let host = app.host.trim_start_matches("https://");
-    let text = format!("{} → {host}", app.profile);
-    frame.render_widget(Paragraph::new(text).block(block), area);
+    let identity = Line::from(vec![
+        Span::styled(glyph.to_string(), Style::new().fg(color)),
+        Span::raw(format!(" {} → {host}", app.profile)),
+    ]);
+    let second = app
+        .me_error
+        .as_ref()
+        .map_or_else(|| app.filter_summary(), |error| format!("me: {error}"));
+    frame.render_widget(
+        Paragraph::new(vec![identity, Line::from(second)]).block(block),
+        area,
+    );
 }
 
 pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
     let focused = app.focus == Panel::Jobs;
-    let spinner = if app.loading {
-        Line::from(format!(" {}", app.spinner_glyph()))
-    } else {
-        Line::default()
-    };
+    let mut suffix = Line::default();
+    if app.loading {
+        suffix.push_span(format!(" {}", app.spinner_glyph()));
+    }
+    if app.filtering || !app.filter.text.is_empty() {
+        let cursor = if app.filtering { "▌" } else { "" };
+        suffix.push_span(Span::styled(
+            format!(" /{}{cursor}", app.filter.text),
+            Style::new().fg(Color::Yellow),
+        ));
+    }
     let counter = app.jobs.counter();
-    let block = chrome::panel(Panel::Jobs, focused, spinner, Some(&counter));
+    let block = chrome::panel(Panel::Jobs, focused, suffix, Some(&counter));
     if let Some(error) = &app.error {
         let paragraph = Paragraph::new(error.as_str())
             .style(Style::new().fg(Color::Red))

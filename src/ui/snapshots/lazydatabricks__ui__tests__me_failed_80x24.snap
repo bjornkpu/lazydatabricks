@@ -3,10 +3,10 @@ source: src/ui/mod.rs
 expression: render(&app)
 ---
 "┌─[1]─Status──────────────┐┌─[0]─Runs - Detail─────────────────────────────────┐"
-"│◐ dev → adb-1.azuredatabr││HTTP status client error (429 Too Many Requests)   │"
-"│3 of 3                   ││for url                                            │"
-"└─────────────────────────┘│(https://adb-1.azuredatabricks.net/api/2.2/jobs/run│"
-"┌─[2]─Jobs────────────────┐│s/list?job_id=1&limit=25)                          │"
+"│✗ dev → adb-1.azuredatabr││Run ID           Started      Duration  Result     │"
+"│me: HTTP status client er││50851892761075   09/01 10:08  -         ◐ RUNNING  │"
+"└─────────────────────────┘│50851892761073   08/31 10:08  1m12s     ✓ SUCCESS  │"
+"┌─[2]─Jobs────────────────┐│50851892761074   08/30 10:08  57s       ✗ FAILED   │"
 "│[someone] okonomi_gold   ││                                                   │"
 "│nightly_bronze_ingest    ││                                                   │"
 "│weekly_report            ││                                                   │"
@@ -20,7 +20,7 @@ expression: render(&app)
 "│                         │└───────────────────────────────────────────────────┘"
 "│                         │┌─API log───────────────────────────────────────────┐"
 "│                         ││GET  /api/2.2/jobs/list?limit=25        200    84ms│"
-"│                         ││                                                   │"
+"│                         ││GET  /api/2.2/jobs/runs/list?job_id=1&… 200   131ms│"
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "│                         ││                                                   │"

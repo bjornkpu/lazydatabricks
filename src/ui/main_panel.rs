@@ -8,11 +8,11 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 
 use super::{chrome, theme};
-use crate::app::{App, Panel, Tab};
+use crate::app::{App, Load, Panel, Tab};
 
 pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
     let mut title = tabs_title(app);
-    if app.runs_loading {
+    if app.runs.is_loading() {
         title.push_span(Span::raw(format!(" {}", app.spinner_glyph())));
     }
     let block = chrome::panel(Panel::Main, app.focus == Panel::Main, title, None);
@@ -42,17 +42,21 @@ fn tabs_title(app: &App) -> Line<'static> {
 }
 
 fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
-    if let Some(error) = &app.runs_error {
-        let paragraph = Paragraph::new(error.as_str())
-            .style(Style::new().fg(Color::Red))
-            .wrap(Wrap { trim: false })
-            .block(block);
-        frame.render_widget(paragraph, area);
-        return;
-    }
+    let runs = match &app.runs {
+        Load::Failed(error) => {
+            let paragraph = Paragraph::new(error.as_str())
+                .style(Style::new().fg(Color::Red))
+                .wrap(Wrap { trim: false })
+                .block(block);
+            frame.render_widget(paragraph, area);
+            return;
+        }
+        Load::Loaded(runs) => runs.as_slice(),
+        Load::Idle | Load::Loading => &[],
+    };
     let header = Row::new(["Run ID", "Started", "Duration", "Result"])
         .style(Style::new().add_modifier(Modifier::BOLD));
-    let rows = app.runs.iter().map(|run| {
+    let rows = runs.iter().map(|run| {
         let (glyph, color) = theme::run_glyph(run);
         let started = run
             .start_time

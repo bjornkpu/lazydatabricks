@@ -1,11 +1,13 @@
 //! Application state and the one place it changes.
 
+mod filter;
 mod focus;
 mod list;
 mod message;
 
 use std::collections::VecDeque;
 
+pub use filter::{Filter, Me};
 pub use focus::{Panel, ScreenMode, Tab};
 use jiff::tz::TimeZone;
 pub use list::{Move, Selectable};
@@ -21,6 +23,25 @@ const RUNS_DEBOUNCE_TICKS: u8 = 3;
 /// API log entries kept; older ones fall off.
 const API_LOG_CAPACITY: usize = 200;
 
+/// A remote value and where its fetch stands.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Load<T> {
+    /// Nothing to fetch (no job selected).
+    #[default]
+    Idle,
+    Loading,
+    Loaded(T),
+    /// The full error chain, ready to display.
+    Failed(String),
+}
+
+impl<T> Load<T> {
+    #[must_use]
+    pub const fn is_loading(&self) -> bool {
+        matches!(self, Self::Loading)
+    }
+}
+
 /// All application state. Rendering is a pure function of this.
 #[derive(Debug)]
 pub struct App {
@@ -28,7 +49,16 @@ pub struct App {
     pub host: String,
     /// Zone for rendering timestamps. An input, so tests can pin UTC.
     pub tz: TimeZone,
+    /// Who the token belongs to, once the SCIM call has answered.
+    pub me: Option<Me>,
+    pub me_error: Option<String>,
+    /// Every job fetched. `jobs` is the filtered view of this.
+    pub all_jobs: Vec<Job>,
+    /// The visible jobs, with the cursor.
     pub jobs: Selectable<Job>,
+    pub filter: Filter,
+    /// `/` was pressed: keys edit `filter.text` until Enter or Esc.
+    pub filtering: bool,
     /// A jobs fetch is in flight. True from launch until the first `JobsLoaded` or `JobsFailed`.
     pub loading: bool,
     /// Index into `SPINNER`.
@@ -40,12 +70,10 @@ pub struct App {
     /// Index into `context.tabs()`.
     pub tab: usize,
     pub mode: ScreenMode,
-    /// Runs of the selected job, once fetched.
-    pub runs: Vec<Run>,
+    /// Runs of the selected job.
+    pub runs: Load<Vec<Run>>,
     /// The job `runs` belongs to, or is being fetched for.
     pub runs_job: Option<i64>,
-    pub runs_loading: bool,
-    pub runs_error: Option<String>,
     /// Runs fetch waiting for the cursor to rest: (job, ticks left).
     pending_runs: Option<(i64, u8)>,
     pub api_log: VecDeque<ApiCall>,
@@ -53,14 +81,19 @@ pub struct App {
 }
 
 impl App {
-    /// A freshly launched app: `main` has already kicked off the first jobs fetch.
+    /// A freshly launched app: `main` has already kicked off the jobs and `Me` fetches.
     #[must_use]
     pub fn new(profile: &str, host: &str, tz: TimeZone) -> Self {
         Self {
             profile: profile.to_owned(),
             host: host.to_owned(),
             tz,
+            me: None,
+            me_error: None,
+            all_jobs: Vec::new(),
             jobs: Selectable::default(),
+            filter: Filter::default(),
+            filtering: false,
             loading: true,
             spinner: 0,
             error: None,
@@ -68,10 +101,8 @@ impl App {
             context: Panel::Jobs,
             tab: 0,
             mode: ScreenMode::Normal,
-            runs: Vec::new(),
+            runs: Load::Idle,
             runs_job: None,
-            runs_loading: false,
-            runs_error: None,
             pending_runs: None,
             api_log: VecDeque::new(),
             show_api_log: true,
@@ -83,24 +114,10 @@ impl App {
     pub fn update(&mut self, message: Message) -> Vec<Command> {
         let mut commands = Vec::new();
         match message {
-            Message::Key(Key::Char('q') | Key::CtrlC) => commands.push(Command::Quit),
-            Message::Key(Key::Char('+')) => self.mode = self.mode.next(),
-            Message::Key(Key::Char('@')) => self.show_api_log = !self.show_api_log,
-            Message::Key(Key::Tab) => self.set_focus(self.focus.next_side()),
-            Message::Key(Key::Enter) => self.set_focus(Panel::Main),
-            Message::Key(Key::Char('j') | Key::Down) => self.move_cursor(Move::Down),
-            Message::Key(Key::Char('k') | Key::Up) => self.move_cursor(Move::Up),
-            Message::Key(Key::Char('g')) => self.move_cursor(Move::First),
-            Message::Key(Key::Char('G')) => self.move_cursor(Move::Last),
-            Message::Key(Key::Char('l' | ']') | Key::Right) => self.next_tab(),
-            Message::Key(Key::Char('h' | '[') | Key::Left) => self.prev_tab(),
-            Message::Key(Key::Char(digit)) => {
-                if let Some(panel) = Panel::from_digit(digit) {
-                    self.set_focus(panel);
-                }
-            }
+            Message::Key(key) if self.filtering => self.filter_key(key, &mut commands),
+            Message::Key(key) => self.key(key, &mut commands),
             Message::Tick => {
-                if self.loading || self.runs_loading {
+                if self.loading || self.runs.is_loading() {
                     self.spinner = self
                         .spinner
                         .wrapping_add(1)
@@ -118,10 +135,10 @@ impl App {
                 }
             }
             Message::JobsLoaded(jobs) => {
-                self.jobs.set_items(jobs);
+                self.all_jobs = jobs;
                 self.loading = false;
                 self.error = None;
-                self.select_runs();
+                self.apply_filter();
             }
             Message::JobsFailed(error) => {
                 self.loading = false;
@@ -130,15 +147,12 @@ impl App {
             Message::RunsLoaded { job_id, runs } => {
                 // A reply for a job the cursor has since left is stale; drop it.
                 if self.runs_job == Some(job_id) {
-                    self.runs = runs;
-                    self.runs_loading = false;
-                    self.runs_error = None;
+                    self.runs = Load::Loaded(runs);
                 }
             }
             Message::RunsFailed { job_id, error } => {
                 if self.runs_job == Some(job_id) {
-                    self.runs_loading = false;
-                    self.runs_error = Some(error);
+                    self.runs = Load::Failed(error);
                 }
             }
             Message::ApiCalled(call) => {
@@ -147,6 +161,14 @@ impl App {
                 }
                 self.api_log.push_back(call);
             }
+            Message::MeLoaded(email) => {
+                self.me = Some(Me::from_email(&email));
+                self.me_error = None;
+                if self.filter.mine_only {
+                    self.apply_filter();
+                }
+            }
+            Message::MeFailed(error) => self.me_error = Some(error),
         }
         commands
     }
@@ -160,6 +182,104 @@ impl App {
     #[must_use]
     pub fn spinner_glyph(&self) -> char {
         SPINNER.get(self.spinner).copied().unwrap_or(' ')
+    }
+
+    /// What the status panel says about the list: `mine only · /gold · 22 of 85`. Never a
+    /// mystery why a list looks short.
+    #[must_use]
+    pub fn filter_summary(&self) -> String {
+        let mut parts = Vec::new();
+        if self.filter.mine_only {
+            parts.push("mine only".to_owned());
+        }
+        if !self.filter.text.is_empty() {
+            parts.push(format!("/{}", self.filter.text));
+        }
+        parts.push(format!(
+            "{} of {}",
+            self.jobs.items().len(),
+            self.all_jobs.len()
+        ));
+        parts.join(" · ")
+    }
+
+    /// Keys outside filter editing.
+    fn key(&mut self, key: Key, commands: &mut Vec<Command>) {
+        match key {
+            Key::Char('q') | Key::CtrlC => commands.push(Command::Quit),
+            Key::Char('+') => self.mode = self.mode.next(),
+            Key::Char('@') => self.show_api_log = !self.show_api_log,
+            Key::Char('/') => {
+                self.set_focus(Panel::Jobs);
+                self.filtering = true;
+            }
+            Key::Char('m') => {
+                self.filter.mine_only = !self.filter.mine_only;
+                self.apply_filter();
+            }
+            Key::Tab => self.set_focus(self.focus.next_side()),
+            Key::Enter => self.set_focus(Panel::Main),
+            Key::Esc => {
+                if self.focus == Panel::Main {
+                    self.set_focus(self.context);
+                }
+            }
+            Key::Char('j') | Key::Down => self.move_cursor(Move::Down),
+            Key::Char('k') | Key::Up => self.move_cursor(Move::Up),
+            Key::Char('g') => self.move_cursor(Move::First),
+            Key::Char('G') => self.move_cursor(Move::Last),
+            Key::Char('l' | ']') | Key::Right => self.next_tab(),
+            Key::Char('h' | '[') | Key::Left => self.prev_tab(),
+            Key::Char(digit) => {
+                if let Some(panel) = Panel::from_digit(digit) {
+                    self.set_focus(panel);
+                }
+            }
+            Key::Backspace => {}
+        }
+    }
+
+    /// Keys while `/` filter editing is active. Letters go to the filter, not to bindings.
+    fn filter_key(&mut self, key: Key, commands: &mut Vec<Command>) {
+        match key {
+            Key::CtrlC => commands.push(Command::Quit),
+            Key::Enter => self.filtering = false,
+            Key::Esc => {
+                self.filtering = false;
+                self.filter.text.clear();
+                self.apply_filter();
+            }
+            Key::Backspace => {
+                self.filter.text.pop();
+                self.apply_filter();
+            }
+            Key::Char(c) => {
+                self.filter.text.push(c);
+                self.apply_filter();
+            }
+            Key::Down => self.move_cursor(Move::Down),
+            Key::Up => self.move_cursor(Move::Up),
+            Key::Tab | Key::Left | Key::Right => {}
+        }
+    }
+
+    /// Rebuilds the visible list from `all_jobs`, keeping the cursor on the same job when it
+    /// survives the filter.
+    fn apply_filter(&mut self) {
+        let keep = self.jobs.selected().map(|job| job.id);
+        // The visible list is a copy of the matching jobs: a few hundred small structs per
+        // keystroke, and `Selectable` stays a plain list with a cursor.
+        let visible: Vec<Job> = self
+            .all_jobs
+            .iter()
+            .filter(|job| self.filter.matches(job, self.me.as_ref()))
+            .cloned()
+            .collect();
+        self.jobs.set_items(visible);
+        if let Some(id) = keep {
+            self.jobs.select_where(|job| job.id == id);
+        }
+        self.select_runs();
     }
 
     fn set_focus(&mut self, panel: Panel) {
@@ -188,9 +308,11 @@ impl App {
             return;
         }
         self.runs_job = selected;
-        self.runs.clear();
-        self.runs_error = None;
-        self.runs_loading = selected.is_some();
+        self.runs = if selected.is_some() {
+            Load::Loading
+        } else {
+            Load::Idle
+        };
         self.pending_runs = selected.map(|job_id| (job_id, RUNS_DEBOUNCE_TICKS));
     }
 
@@ -239,6 +361,16 @@ pub mod tests {
         }
     }
 
+    /// A job owned by somebody else: different creator and `dev` tag.
+    pub fn theirs(id: i64, name: &str) -> Job {
+        let mut job = job(id, name);
+        job.creator_user_name = "other@example.com".to_owned();
+        job.settings
+            .tags
+            .insert("dev".to_owned(), "other".to_owned());
+        job
+    }
+
     pub fn run(run_id: i64, start_ms: i64, end_ms: i64, result: Option<ResultState>) -> Run {
         let life_cycle_state = if end_ms == 0 {
             LifeCycleState::Running
@@ -276,6 +408,12 @@ pub mod tests {
         Message::Key(key)
     }
 
+    fn press(app: &mut App, keys: &str) {
+        for c in keys.chars() {
+            app.update(key(Key::Char(c)));
+        }
+    }
+
     fn loaded() -> App {
         let mut app = app();
         app.update(Message::JobsLoaded(vec![
@@ -284,6 +422,14 @@ pub mod tests {
             job(3, "c"),
         ]));
         app
+    }
+
+    fn names(app: &App) -> Vec<&str> {
+        app.jobs
+            .items()
+            .iter()
+            .map(|job| job.settings.name.as_str())
+            .collect()
     }
 
     #[test]
@@ -345,7 +491,7 @@ pub mod tests {
     }
 
     #[test]
-    fn digits_tab_and_enter_move_focus() {
+    fn digits_tab_enter_and_esc_move_focus() {
         let mut app = app();
         assert_eq!(app.focus, Panel::Jobs);
         app.update(key(Key::Char('1')));
@@ -354,6 +500,12 @@ pub mod tests {
         assert_eq!(app.focus, Panel::Jobs);
         app.update(key(Key::Char('0')));
         assert_eq!(app.focus, Panel::Main);
+        app.update(key(Key::Esc));
+        assert_eq!(
+            app.focus,
+            Panel::Jobs,
+            "Esc backs out of main to its context"
+        );
         app.update(key(Key::Char('3')));
         app.update(key(Key::Enter));
         assert_eq!(app.focus, Panel::Main);
@@ -394,7 +546,7 @@ pub mod tests {
         let mut app = loaded();
         app.update(key(Key::Char('j')));
         app.update(key(Key::Char('j')));
-        assert!(app.runs_loading);
+        assert!(app.runs.is_loading());
         assert_eq!(app.update(Message::Tick), vec![]);
         assert_eq!(app.update(Message::Tick), vec![]);
         assert_eq!(
@@ -415,8 +567,10 @@ pub mod tests {
             runs: vec![run(10, 1000, 2000, Some(ResultState::Success))],
         });
         app.update(key(Key::Char('k')));
-        assert_eq!(app.runs.len(), 1);
-        assert!(!app.runs_loading);
+        assert_eq!(
+            app.runs,
+            Load::Loaded(vec![run(10, 1000, 2000, Some(ResultState::Success))])
+        );
     }
 
     #[test]
@@ -427,14 +581,15 @@ pub mod tests {
             job_id: 1,
             runs: vec![run(10, 1000, 2000, Some(ResultState::Success))],
         });
-        assert!(app.runs.is_empty());
-        assert!(app.runs_loading);
+        assert_eq!(app.runs, Load::Loading);
         app.update(Message::RunsLoaded {
             job_id: 2,
             runs: vec![run(11, 1000, 2000, Some(ResultState::Failed))],
         });
-        assert_eq!(app.runs.len(), 1);
-        assert!(!app.runs_loading);
+        assert_eq!(
+            app.runs,
+            Load::Loaded(vec![run(11, 1000, 2000, Some(ResultState::Failed))])
+        );
     }
 
     #[test]
@@ -444,13 +599,12 @@ pub mod tests {
             job_id: 2,
             error: "nope".to_owned(),
         });
-        assert_eq!(app.runs_error, None);
+        assert_eq!(app.runs, Load::Loading);
         app.update(Message::RunsFailed {
             job_id: 1,
             error: "nope".to_owned(),
         });
-        assert_eq!(app.runs_error.as_deref(), Some("nope"));
-        assert!(!app.runs_loading);
+        assert_eq!(app.runs, Load::Failed("nope".to_owned()));
     }
 
     #[test]
@@ -490,5 +644,85 @@ pub mod tests {
         }
         assert_eq!(app.api_log.len(), API_LOG_CAPACITY);
         assert_eq!(app.api_log.back().unwrap().path, "/249");
+    }
+
+    #[test]
+    fn slash_types_a_filter_and_letters_stop_being_bindings() {
+        let mut app = app();
+        app.update(Message::JobsLoaded(vec![
+            job(1, "okonomi_gold"),
+            job(2, "ems_gold"),
+            job(3, "aktorer_ingest"),
+        ]));
+        press(&mut app, "3/");
+        assert_eq!(app.focus, Panel::Jobs, "/ focuses jobs");
+        assert!(app.filtering);
+        press(&mut app, "q");
+        assert_eq!(app.filter.text, "q", "q is a letter now, not quit");
+        app.update(key(Key::Backspace));
+        press(&mut app, "GOLD");
+        assert_eq!(names(&app), ["okonomi_gold", "ems_gold"]);
+        assert_eq!(app.filter_summary(), "/GOLD · 2 of 3");
+        app.update(key(Key::Enter));
+        assert!(!app.filtering);
+        assert_eq!(
+            names(&app),
+            ["okonomi_gold", "ems_gold"],
+            "Enter keeps the filter"
+        );
+        assert_eq!(app.update(key(Key::Char('q'))), vec![Command::Quit]);
+    }
+
+    #[test]
+    fn esc_clears_the_filter() {
+        let mut app = loaded();
+        press(&mut app, "/zzz");
+        assert!(names(&app).is_empty());
+        assert_eq!(app.jobs.selected_index(), None);
+        app.update(key(Key::Esc));
+        assert!(!app.filtering);
+        assert_eq!(names(&app), ["a", "b", "c"]);
+        assert_eq!(app.filter_summary(), "3 of 3");
+    }
+
+    #[test]
+    fn filter_keeps_the_cursor_on_the_same_job() {
+        let mut app = app();
+        app.update(Message::JobsLoaded(vec![
+            job(1, "aa"),
+            job(2, "ab"),
+            job(3, "bb"),
+        ]));
+        press(&mut app, "G/b");
+        assert_eq!(names(&app), ["ab", "bb"]);
+        assert_eq!(app.jobs.selected(), Some(&job(3, "bb")));
+        assert_eq!(app.runs_job, Some(3), "runs view stays on the same job");
+    }
+
+    #[test]
+    fn mine_only_needs_me_and_reapplies_when_me_arrives() {
+        let mut app = app();
+        app.update(Message::JobsLoaded(vec![
+            job(1, "mine"),
+            theirs(2, "theirs"),
+        ]));
+        press(&mut app, "m");
+        assert!(app.filter.mine_only);
+        assert!(names(&app).is_empty(), "who am I? nothing matches yet");
+        assert_eq!(app.filter_summary(), "mine only · 0 of 2");
+        app.update(Message::MeLoaded("someone@example.com".to_owned()));
+        assert_eq!(names(&app), ["mine"]);
+        press(&mut app, "m");
+        assert_eq!(names(&app), ["mine", "theirs"]);
+    }
+
+    #[test]
+    fn me_failure_is_kept() {
+        let mut app = app();
+        app.update(Message::MeFailed("403".to_owned()));
+        assert_eq!(app.me_error.as_deref(), Some("403"));
+        app.update(Message::MeLoaded("someone@example.com".to_owned()));
+        assert_eq!(app.me_error, None);
+        assert_eq!(app.me.as_ref().map(|me| me.tag.as_str()), Some("someone"));
     }
 }

@@ -3,7 +3,8 @@ source: src/ui/mod.rs
 expression: render(&app)
 ---
 "┌─[1]─Status──────────────┐┌─[0]─Runs - Detail─────────────────────────────────┐"
-"│dev → adb-1.azuredatabric││Run ID           Started      Duration  Result     │"
+"│◐ dev → adb-1.azuredatabr││Run ID           Started      Duration  Result     │"
+"│0 of 0                   ││                                                   │"
 "└─────────────────────────┘│                                                   │"
 "┌─[2]─Jobs────────────────┐│                                                   │"
 "│HTTP status client error ││                                                   │"
@@ -16,7 +17,6 @@ expression: render(&app)
 "│                         ││                                                   │"
 "└───────────────────0 of 0┘│                                                   │"
 "┌─[3]─Pipelines───────────┐│                                                   │"
-"│                         ││                                                   │"
 "│                         │└───────────────────────────────────────────────────┘"
 "│                         │┌─API log───────────────────────────────────────────┐"
 "│                         ││                                                   │"
@@ -25,4 +25,4 @@ expression: render(&app)
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "└───────────────────0 of 0┘└───────────────────────────────────────────────────┘"
-" Select: j/k │ Open: Enter │ Focus: 0-3 │ Screen: + │ Log: @ │ Quit: q    v0.1.0"
+" Select: j/k │ Filter: / │ Mine: m │ Open: Enter │ Focus: 0-3 │ Quit: q   v0.1.0"
