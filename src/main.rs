@@ -12,6 +12,7 @@ mod error;
 mod shell;
 mod ui;
 
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -22,6 +23,8 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::EnvFilter;
 
 use crate::app::{App, Command, Key, Message, TICK};
 use crate::error::AppError;
@@ -33,6 +36,9 @@ const CHANNEL_CAPACITY: usize = 64;
 async fn main() -> Result<()> {
     let cli = cli::Cli::parse();
     let mut loaded = config::load()?;
+    // Kept alive until exit so the last log lines are flushed.
+    let _log_guard = init_tracing(loaded.path.parent().unwrap_or_else(|| Path::new(".")))?;
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "starting");
     // Flags beat environment beat config beat the CLI's own default profile name.
     let profile = cli
         .profile
@@ -83,6 +89,7 @@ async fn run(
             bail!("all message producers stopped");
         };
         for command in app.update(message) {
+            tracing::debug!(?command);
             match command {
                 Command::Quit => return Ok(()),
                 Command::FetchJobs { max } => {
@@ -121,6 +128,23 @@ async fn run(
             }
         }
     }
+}
+
+/// Logs to a file next to the config when `LAZYDATABRICKS_LOG` is set (`debug`, `info`, or a
+/// full `tracing` filter). Never to stdout: that is the UI's.
+fn init_tracing(dir: &Path) -> Result<Option<WorkerGuard>> {
+    let Ok(filter) = std::env::var("LAZYDATABRICKS_LOG") else {
+        return Ok(None);
+    };
+    std::fs::create_dir_all(dir)?;
+    let (writer, guard) =
+        tracing_appender::non_blocking(tracing_appender::rolling::never(dir, "lazydatabricks.log"));
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_new(&filter)?)
+        .with_writer(writer)
+        .with_ansi(false)
+        .init();
+    Ok(Some(guard))
 }
 
 /// One jobs fetch, reported back as a message. Never touches `App`.

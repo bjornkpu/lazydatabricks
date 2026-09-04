@@ -77,8 +77,9 @@ Use the typestate pattern for screens whose transitions must not be mixed at run
 4. **Headless run** — not built. Snapshot and state tests covered every milestone, and herdr
    lets Claude drive the real binary in a pane and read the screen back. Revisit only if a bug
    needs a scripted end-to-end run; it would need the fixture-backed `DatabricksApi` fake.
-5. **Logs** (add when the first real-API bug hides) — `tracing` to a file via
-   `tracing-appender`, never stdout. `LAZYDATABRICKS_LOG=debug`.
+5. **Logs** — `LAZYDATABRICKS_LOG=debug` writes `tracing` output to `lazydatabricks.log` next
+   to the config file via `tracing-appender`, never stdout. Requests, statuses and executed
+   commands are logged; `warn!` on every failed response.
 
 Not now: pty/tmux end-to-end tests, proptest on the state machine. Add when a real bug
 motivates them.

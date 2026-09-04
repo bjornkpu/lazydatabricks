@@ -21,9 +21,9 @@ clap = { version = "4", features = ["derive"] }    # command line parsing (M9)
 toml = "1"                                         # config file (M7)
 directories = "6"                                  # platform config dir (M7)
 # tui-input = "0.15"                                 # filter input widget (M5)
-# tracing = "0.1"                                    # logging to file, never stdout
-# tracing-appender = "0.2"
-# tracing-subscriber = "0.3"
+tracing = "0.1"                                    # logging to file, never stdout
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Not needed here, kept as namtao.com/rust reference for future projects:
 # chrono = "0.4"     # datetimes; jiff preferred for new code

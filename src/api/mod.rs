@@ -233,12 +233,23 @@ impl Client {
             status: response.as_ref().ok().map(|r| r.status().as_u16()),
             duration: started.elapsed(),
         };
+        tracing::debug!(
+            method = %method,
+            path = %logged_path,
+            status = ?call.status,
+            ms = call.duration.as_millis(),
+            "request"
+        );
         // Best effort: a closed channel means the app has already quit.
         let _ = self.log.send(Message::ApiCalled(call)).await;
-        let response = response.map_err(|error| AppError::from_reqwest(&error, &logged_path))?;
+        let response = response.map_err(|error| {
+            tracing::warn!(path = %logged_path, %error, "transport failure");
+            AppError::from_reqwest(&error, &logged_path)
+        })?;
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
+            tracing::warn!(path = %logged_path, %status, body = %body, "error response");
             return Err(AppError::from_status(
                 status.as_u16(),
                 &logged_path,

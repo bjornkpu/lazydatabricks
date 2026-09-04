@@ -78,6 +78,12 @@ Actions: `quit`, `screen_mode`, `toggle_log`, `filter`, `mine_only`, `refresh`, 
 `help`, `browse`, `copy`. Key names: one character, or `tab`, `up`, `down`, `left`, `right`,
 `enter`, `esc`, `backspace`, `ctrl+c`.
 
+## Debugging
+
+`LAZYDATABRICKS_LOG=debug lazydatabricks` writes every request, response status and executed
+command to `lazydatabricks.log` next to the config file. Accepts any `tracing` filter, such as
+`lazydatabricks::api=trace`. Nothing is ever logged to the terminal.
+
 ## Development
 
 ```
