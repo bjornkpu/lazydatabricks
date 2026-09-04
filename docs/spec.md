@@ -569,6 +569,29 @@ fills gaps, not the whole suite.
 *Teaches:* snapshot review as a workflow at scale.
 *Done when:* `cargo nextest run` catches a layout regression you introduce on purpose.
 
+### M11 — Pipelines
+`[3]` stops being chrome. `GET /api/2.0/pipelines` fills it, paged on `next_page_token` like
+jobs. Each row is a health glyph and the name; the glyph comes from the newest entry in
+`latest_updates` (`✓` completed, `✗` failed or cancelled, `◐` in progress) and falls back to the
+pipeline's own `state`, with `·` for one that has never run. The main panel gets **Updates** and
+**Detail** tabs for the pipeline in context. Updates come from the `latest_updates` the list call
+already returns, so no second request per selection.
+
+Filtering is client-side here too, despite §5. The server-side `filter=name LIKE` would mean one
+request per keystroke, which M6 forbade, and eighty rows filter for free. "Mine" is the creator
+alone: the list response carries no tags. One filter text applies to both lists, `/` edits it
+from whichever list is in context, and the status line counts the list you are looking at
+(`23 of 80 pipelines`). `r` on Status refreshes both lists.
+
+Shapes worth knowing: `pipeline_id` and `update_id` are UUID strings, not `i64`, and
+`creation_time` is RFC 3339, not epoch millis. jiff's `serde` feature parses it directly.
+
+*Teaches:* a second resource on the same skeleton, string ids next to integer ids, two
+timestamp encodings in one API.
+*Done when:* your pipelines list matches `databricks pipelines list-pipelines`, and `m` cuts it
+to yours.
+*Not yet:* start and stop update in the `x` menu, the `Config` tab, relative age in the row.
+
 ---
 
 ## 9. Testing
@@ -593,7 +616,7 @@ No test should require network or a live workspace.
 
 ## 10. Deferred
 
-Deliberately out of the first ten milestones. Revisit only if you actually want them:
+Deliberately out of the first eleven milestones. Revisit only if you actually want them:
 
 - Cluster and warehouse panes (endpoints verified, just more of the same)
 - Log tailing for a run
@@ -612,6 +635,7 @@ Deliberately out of the first ten milestones. Revisit only if you actually want 
 2. **Tag key stability.** Filtering leans on `settings.tags.dev`. Confirm that convention holds
    across the whole workspace, not just your own jobs, before making it the default.
 3. **Pipelines drill-down.** Pipelines have updates rather than runs, so the three-pane shape may
-   not transfer directly. Defer the decision until M4 is working for jobs.
+   not transfer directly. Defer the decision until M4 is working for jobs. *Resolved at M11:* the
+   shape transfers as-is, with an Updates tab in place of Runs, fed by `latest_updates`.
 
 
