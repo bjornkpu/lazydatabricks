@@ -1,0 +1,6 @@
+default_job = "clippy-all"
+
+[keybindings]
+c = "job:clippy-all"
+n = "job:nextest"
+t = "job:nextest"
