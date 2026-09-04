@@ -7,6 +7,11 @@ use crate::api::models::Job;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
     Char(char),
+    Tab,
+    Up,
+    Down,
+    Enter,
+    CtrlC,
 }
 
 /// One thing that happened. `App::update` folds these into state.

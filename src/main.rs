@@ -11,7 +11,7 @@ mod ui;
 use std::time::Duration;
 
 use anyhow::{Result, bail};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
 
@@ -31,6 +31,7 @@ async fn main() -> Result<()> {
     // Auth before the terminal is taken over: the CLI may print or open a browser, and its
     // errors should land in a normal shell.
     let client = api::Client::from_profile(&profile)?;
+    let app = App::new(&profile, client.host());
     let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
     tokio::spawn(fetch_jobs(client, tx.clone()));
     spawn_input(tx);
@@ -38,13 +39,16 @@ async fn main() -> Result<()> {
     // restores both. `clippy::exit` is denied, so the loop returns instead of exiting; that is
     // what lets `restore` run on the error path too.
     let mut terminal = ratatui::init();
-    let result = run(&mut terminal, rx).await;
+    let result = run(&mut terminal, app, rx).await;
     ratatui::restore();
     result
 }
 
-async fn run(terminal: &mut DefaultTerminal, mut rx: mpsc::Receiver<Message>) -> Result<()> {
-    let mut app = App::default();
+async fn run(
+    terminal: &mut DefaultTerminal,
+    mut app: App,
+    mut rx: mpsc::Receiver<Message>,
+) -> Result<()> {
     loop {
         terminal.draw(|frame| ui::draw(&app, frame))?;
         let Some(message) = rx.recv().await else {
@@ -96,7 +100,12 @@ fn next_message() -> Result<Option<Message>> {
         return Ok(None);
     }
     let key = match key.code {
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Key::CtrlC,
         KeyCode::Char(c) => Key::Char(c),
+        KeyCode::Tab => Key::Tab,
+        KeyCode::Up => Key::Up,
+        KeyCode::Down => Key::Down,
+        KeyCode::Enter => Key::Enter,
         _ => return Ok(None),
     };
     Ok(Some(Message::Key(key)))

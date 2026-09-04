@@ -29,6 +29,11 @@ impl Client {
         Ok(Self { host, token, http })
     }
 
+    #[must_use]
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
     /// Lists jobs, following `next_page_token` until `max` jobs or the last page.
     pub async fn list_jobs(&self, max: usize) -> Result<Vec<Job>> {
         let mut jobs = Vec::new();
