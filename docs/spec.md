@@ -590,7 +590,65 @@ Shapes worth knowing: `pipeline_id` and `update_id` are UUID strings, not `i64`,
 timestamp encodings in one API.
 *Done when:* your pipelines list matches `databricks pipelines list-pipelines`, and `m` cuts it
 to yours.
-*Not yet:* start and stop update in the `x` menu, the `Config` tab, relative age in the row.
+*Not yet:* the `Config` tab. Start and stop landed in M14, the row age in M12.
+
+### M12 — Age and result on job rows
+The sketch's `2m okonomi_gold ✓` row, at last. `GET /api/2.2/jobs/runs/list` **without** `job_id`
+returns the newest runs across the workspace, newest first, so a handful of pages gives every
+active job its latest run in one sweep instead of one call per job. Per-job fetches (M4) refresh
+the entry when they land. Jobs with no run in that window show `·` and no age; that is honest,
+not a bug.
+
+Ages need wall-clock time, and `update` does no IO, so the input thread sends
+`Message::Clock(Timestamp)` with every tick. `App.now` is state like anything else and tests pin
+it. The age column is one unit wide: `now`, `2m`, `4h`, `1d`, `1w`, `3M`.
+
+*Teaches:* a second use of an endpoint you already had, time as a message.
+*Done when:* your most recently run job shows a minutes-old age and a `✓`.
+
+### M13 — Runs cursor and run detail
+The main panel becomes a real third pane. With `[0]` focused, `j`/`k` move a cursor in the runs
+table (`Load<Selectable<Run>>`, the same cursor type the side lists use), `Enter` opens the run via
+`GET /api/2.2/jobs/runs/get?run_id=` with its state message, page URL and tasks, and `Esc` backs
+out one level at a time: run, then panel. `x` in the main panel cancels the run under the cursor
+only; from the side panel it still lists every active run. `o` and `y` use the run's URL when a
+run is under the cursor.
+
+`runs/get` carries `tasks[]` and `run_page_url`; list responses do not. One `Run` type with
+`#[serde(default)]` on both covers it.
+
+*Teaches:* drill-down as state (`viewing_run`), not as a new screen; one model for two shapes.
+*Done when:* `0`, `j`, `Enter` shows the tasks of a real run and `Esc` twice puts you back on the
+job list.
+
+### M14 — Pipeline actions
+`x` on a pipeline offers *Start update*, and *Stop* while an update is in progress
+(`POST /api/2.0/pipelines/{id}/updates` and `/stop`). Same confirmation, same `--allow-actions`
+gate, same optimistic update: the pipeline shows the new update queued, or its state as stopping,
+until the refetch says otherwise.
+
+*Teaches:* the menu is data, so a second resource is two more variants.
+*Done when:* the confirmation names the pipeline and a read-only session refuses at Enter.
+
+### M15 — Logs
+`LAZYDATABRICKS_LOG=debug` writes `tracing` output to `lazydatabricks.log` next to the config
+file through `tracing-appender`, never to stdout, which belongs to the UI. Every request logs
+method, path, status and milliseconds; every executed `Command` logs; failed responses `warn!`
+with the body. Any `tracing` filter works, such as `lazydatabricks::api=trace`.
+
+*Teaches:* `tracing` with a non-blocking file writer, and why the guard must live until exit.
+*Done when:* one session leaves a log you could debug an API problem from.
+
+### M16 — Sort
+Both lists were in API order: jobs newest-created first, pipelines by UUID, which is random. Now
+`sort` in config and `s` at runtime pick **activity** (newest run or update first, never-run
+items last), **name**, or **created**. Ties always break on name so the order is stable. Pipelines
+have no creation time in the list response, so `created` is name order there. Lists re-sort when
+a newer run arrives and the cursor follows the item by id, so the row under you never changes
+because the order did. Panel titles say which order is on.
+
+*Teaches:* `sort_by_cached_key` with `Reverse<Option<_>>` to put unknowns last.
+*Done when:* `s` cycles the three orders and the title follows.
 
 ---
 
@@ -616,7 +674,7 @@ No test should require network or a live workspace.
 
 ## 10. Deferred
 
-Deliberately out of the first eleven milestones. Revisit only if you actually want them:
+Deliberately out of the first sixteen milestones. Revisit only if you actually want them:
 
 - Cluster and warehouse panes (endpoints verified, just more of the same)
 - Log tailing for a run
