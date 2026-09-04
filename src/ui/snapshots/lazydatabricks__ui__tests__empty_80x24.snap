@@ -1,8 +1,8 @@
 ---
 source: src/ui/mod.rs
-expression: terminal.backend()
+expression: "render(&App::default())"
 ---
-"┌ lazydatabricks ──────────────────────────────────────────────────────────────┐"
+"┌ Jobs ────────────────────────────────────────────────────────────────────────┐"
 "│                                                                              │"
 "│                                                                              │"
 "│                                                                              │"

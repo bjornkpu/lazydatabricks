@@ -1,0 +1,27 @@
+{
+  "jobs": [
+    {
+      "job_id": 1025322370191789,
+      "creator_user_name": "someone@example.com",
+      "run_as_user_name": "someone@example.com",
+      "settings": {
+        "name": "[someone] okonomi_gold",
+        "timeout_seconds": 7200,
+        "max_concurrent_runs": 4,
+        "tags": { "dev": "someone", "domain": "okonomi" },
+        "format": "MULTI_TASK"
+      }
+    },
+    {
+      "job_id": 4478210398817225,
+      "creator_user_name": "other@example.com",
+      "run_as_user_name": "svc-etl@example.com",
+      "settings": {
+        "name": "nightly_bronze_ingest",
+        "max_concurrent_runs": 1,
+        "format": "MULTI_TASK"
+      }
+    }
+  ],
+  "next_page_token": "CAIo0JeenYM0Sg80MzEwMTU5NzM2MjUyMDA="
+}
