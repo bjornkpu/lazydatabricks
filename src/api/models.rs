@@ -261,6 +261,20 @@ pub enum PipelineState {
 }
 
 impl PipelineState {
+    /// An update is in progress, so the pipeline can be stopped.
+    #[must_use]
+    pub const fn is_active(self) -> bool {
+        matches!(
+            self,
+            Self::Deploying
+                | Self::Starting
+                | Self::Running
+                | Self::Stopping
+                | Self::Recovering
+                | Self::Resetting
+        )
+    }
+
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -321,6 +335,12 @@ impl UpdateState {
     pub const fn is_done(self) -> bool {
         matches!(self, Self::Completed | Self::Failed | Self::Canceled)
     }
+}
+
+/// `POST /api/2.0/pipelines/{id}/updates` response.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct UpdateStartResponse {
+    pub update_id: String,
 }
 
 /// `GET /api/2.0/preview/scim/v2/Me`: who the token belongs to.

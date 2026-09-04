@@ -18,7 +18,9 @@ pub use list::{Move, Selectable};
 pub use menu::{InputMode, MenuItem};
 pub use message::{ApiCall, Command, Key, Message};
 
-use crate::api::models::{Job, LifeCycleState, Pipeline, Run};
+use crate::api::models::{
+    Job, LifeCycleState, Pipeline, PipelineState, PipelineUpdate, Run, UpdateState,
+};
 use crate::config::{Loaded, Theme};
 use crate::error::AppError;
 
@@ -199,21 +201,7 @@ impl App {
     pub fn update(&mut self, message: Message) -> Vec<Command> {
         let mut commands = Vec::new();
         match message {
-            Message::Key(key) => {
-                // Any key dismisses the last notice; the handler may set a new one.
-                self.notice = None;
-                match self.input {
-                    InputMode::Normal => self.key(key, &mut commands),
-                    InputMode::Filter => self.filter_key(key, &mut commands),
-                    InputMode::Menu { .. } => self.menu_key(key),
-                    InputMode::Confirm(_) => self.confirm_key(key, &mut commands),
-                    InputMode::Help => {
-                        if matches!(key, Key::Esc | Key::Char('?' | 'q')) {
-                            self.input = InputMode::Normal;
-                        }
-                    }
-                }
-            }
+            Message::Key(key) => self.on_key(key, &mut commands),
             Message::Tick => self.tick(&mut commands),
             Message::JobsLoaded(jobs) => {
                 self.all_jobs = jobs;
@@ -236,6 +224,17 @@ impl App {
             Message::PipelinesFailed(error) => {
                 self.pipelines_inflight = None;
                 self.pipelines_error = Some(error);
+            }
+            Message::UpdateStarted {
+                pipeline_id,
+                update_id,
+            } => self.on_update_started(&pipeline_id, &update_id, &mut commands),
+            Message::PipelineStopped { pipeline_id } => {
+                self.notice = Some("Stop requested".to_owned());
+                self.patch_pipeline(&pipeline_id, |pipeline| {
+                    pipeline.state = PipelineState::Stopping;
+                });
+                self.refresh_pipelines(&mut commands);
             }
             Message::Clock(now) => self.now = Some(now),
             Message::RecentRunsLoaded(runs) => {
@@ -292,6 +291,23 @@ impl App {
             }
         }
         commands
+    }
+
+    /// Routes a key by input mode. Any key dismisses the last notice; the handler may set a new one.
+    fn on_key(&mut self, key: Key, commands: &mut Vec<Command>) {
+        // Any key dismisses the last notice; the handler may set a new one.
+        self.notice = None;
+        match self.input {
+            InputMode::Normal => self.key(key, commands),
+            InputMode::Filter => self.filter_key(key, commands),
+            InputMode::Menu { .. } => self.menu_key(key),
+            InputMode::Confirm(_) => self.confirm_key(key, commands),
+            InputMode::Help => {
+                if matches!(key, Key::Esc | Key::Char('?' | 'q')) {
+                    self.input = InputMode::Normal;
+                }
+            }
+        }
     }
 
     /// One heartbeat: the clock, the spinner, the debounced runs fetch and TTL-driven refreshes.
@@ -370,6 +386,39 @@ impl App {
             }
             self.refresh_runs(commands);
         }
+    }
+
+    /// An update was accepted. Optimistic: the pipeline shows it queued until the refetch.
+    fn on_update_started(
+        &mut self,
+        pipeline_id: &str,
+        update_id: &str,
+        commands: &mut Vec<Command>,
+    ) {
+        let short: String = update_id.chars().take(8).collect();
+        self.notice = Some(format!("Started update {short}"));
+        let now = self.now;
+        self.patch_pipeline(pipeline_id, |pipeline| {
+            pipeline.state = PipelineState::Starting;
+            pipeline.latest_updates.insert(
+                0,
+                PipelineUpdate {
+                    id: update_id.to_owned(),
+                    state: UpdateState::Queued,
+                    creation_time: now,
+                },
+            );
+        });
+        self.refresh_pipelines(commands);
+    }
+
+    /// Applies `change` to a pipeline in both the full and the filtered list.
+    fn patch_pipeline(&mut self, pipeline_id: &str, mut change: impl FnMut(&mut Pipeline)) {
+        self.all_pipelines
+            .iter_mut()
+            .chain(self.pipelines.items_mut().iter_mut())
+            .filter(|pipeline| pipeline.id == pipeline_id)
+            .for_each(&mut change);
     }
 
     /// Cancel accepted. The run shows as terminating until the refetch says otherwise.
@@ -657,6 +706,9 @@ impl App {
 
     /// Actions valid for what is selected: run the job, cancel any of its active runs.
     fn menu_items(&self) -> Vec<MenuItem> {
+        if self.context == Panel::Pipelines {
+            return self.pipeline_menu_items();
+        }
         if self.context != Panel::Jobs {
             return Vec::new();
         }
@@ -685,6 +737,24 @@ impl App {
                     .filter(|run| run.state.life_cycle_state.is_active())
                     .map(cancel),
             );
+        }
+        items
+    }
+
+    /// Start an update; stop it too while one is in progress.
+    fn pipeline_menu_items(&self) -> Vec<MenuItem> {
+        let Some(pipeline) = self.pipelines.selected() else {
+            return Vec::new();
+        };
+        let mut items = vec![MenuItem::StartUpdate {
+            pipeline_id: pipeline.id.clone(),
+            name: pipeline.name.clone(),
+        }];
+        if pipeline.state.is_active() {
+            items.push(MenuItem::StopPipeline {
+                pipeline_id: pipeline.id.clone(),
+                name: pipeline.name.clone(),
+            });
         }
         items
     }
@@ -1862,6 +1932,66 @@ pub mod tests {
             vec![Command::Copy(
                 "https://adb-1.azuredatabricks.net/jobs/1/runs/9".to_owned()
             )]
+        );
+    }
+
+    #[test]
+    fn pipeline_menu_starts_and_stops() {
+        let mut app = with_pipelines();
+        app.allow_actions = true;
+        press(&mut app, "3x");
+        assert_eq!(
+            app.input,
+            InputMode::Menu {
+                items: vec![MenuItem::StartUpdate {
+                    pipeline_id: "p1".to_owned(),
+                    name: "felles_gold".to_owned(),
+                }],
+                selected: 0,
+            },
+            "idle pipeline: start only"
+        );
+        app.update(key(Key::Enter));
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![Command::StartUpdate {
+                pipeline_id: "p1".to_owned()
+            }]
+        );
+        let commands = app.update(Message::UpdateStarted {
+            pipeline_id: "p1".to_owned(),
+            update_id: "abcdef12-0000".to_owned(),
+        });
+        assert_eq!(commands, vec![Command::FetchPipelines { max: 200 }]);
+        assert_eq!(app.notice.as_deref(), Some("Started update abcdef12"));
+        let shown = app.pipelines.selected().unwrap();
+        assert_eq!(shown.state, PipelineState::Starting);
+        assert_eq!(shown.latest_updates[0].id, "abcdef12-0000");
+        assert_eq!(
+            app.all_pipelines[0].state,
+            PipelineState::Starting,
+            "both lists patched"
+        );
+        app.update(Message::PipelinesLoaded(app.all_pipelines.clone()));
+        press(&mut app, "x");
+        assert!(
+            matches!(&app.input, InputMode::Menu { items, .. } if items.len() == 2),
+            "an active pipeline can be stopped"
+        );
+        press(&mut app, "j");
+        app.update(key(Key::Enter));
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![Command::StopPipeline {
+                pipeline_id: "p1".to_owned()
+            }]
+        );
+        app.update(Message::PipelineStopped {
+            pipeline_id: "p1".to_owned(),
+        });
+        assert_eq!(
+            app.pipelines.selected().unwrap().state,
+            PipelineState::Stopping
         );
     }
 

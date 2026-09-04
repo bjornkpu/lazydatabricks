@@ -394,6 +394,20 @@ mod tests {
     }
 
     #[test]
+    fn pipelines_menu_80x24() {
+        let mut app = with_runs();
+        let mut running = pipeline(
+            "3c9f0d5e-4a3b-4f2c-8d6e-7b6c5d4e3f2a",
+            "[someone] aktorer_ingest",
+            "someone@example.com",
+        );
+        running.state = crate::api::models::PipelineState::Running;
+        app.update(Message::PipelinesLoaded(vec![running]));
+        press(&mut app, "3x");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn error_80x24() {
         let mut app = app();
         app.update(Message::JobsFailed(AppError::Unauthorized {

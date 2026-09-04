@@ -9,6 +9,8 @@ use super::Command;
 pub enum MenuItem {
     RunNow { job_id: i64, name: String },
     CancelRun { job_id: i64, run_id: i64 },
+    StartUpdate { pipeline_id: String, name: String },
+    StopPipeline { pipeline_id: String, name: String },
 }
 
 impl MenuItem {
@@ -17,6 +19,8 @@ impl MenuItem {
         match self {
             Self::RunNow { name, .. } => format!("Run now: {name}"),
             Self::CancelRun { run_id, .. } => format!("Cancel run {run_id}"),
+            Self::StartUpdate { name, .. } => format!("Start update: {name}"),
+            Self::StopPipeline { name, .. } => format!("Stop: {name}"),
         }
     }
 
@@ -26,14 +30,26 @@ impl MenuItem {
         match self {
             Self::RunNow { name, .. } => format!("Start a run of \"{name}\" now?"),
             Self::CancelRun { run_id, .. } => format!("Cancel run {run_id}?"),
+            Self::StartUpdate { name, .. } => format!("Start an update of \"{name}\" now?"),
+            Self::StopPipeline { name, .. } => format!("Stop the running update of \"{name}\"?"),
         }
     }
 
+    /// The command that carries this out. Pipeline ids are strings, so the command owns a copy.
     #[must_use]
-    pub const fn command(&self) -> Command {
-        match *self {
-            Self::RunNow { job_id, .. } => Command::RunNow { job_id },
-            Self::CancelRun { job_id, run_id } => Command::CancelRun { job_id, run_id },
+    pub fn command(&self) -> Command {
+        match self {
+            Self::RunNow { job_id, .. } => Command::RunNow { job_id: *job_id },
+            Self::CancelRun { job_id, run_id } => Command::CancelRun {
+                job_id: *job_id,
+                run_id: *run_id,
+            },
+            Self::StartUpdate { pipeline_id, .. } => Command::StartUpdate {
+                pipeline_id: pipeline_id.clone(),
+            },
+            Self::StopPipeline { pipeline_id, .. } => Command::StopPipeline {
+                pipeline_id: pipeline_id.clone(),
+            },
         }
     }
 }

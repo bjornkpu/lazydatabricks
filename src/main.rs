@@ -106,6 +106,12 @@ async fn run(
                 Command::CancelRun { job_id, run_id } => {
                     tokio::spawn(cancel_run(Arc::clone(&client), tx.clone(), job_id, run_id));
                 }
+                Command::StartUpdate { pipeline_id } => {
+                    tokio::spawn(start_update(Arc::clone(&client), tx.clone(), pipeline_id));
+                }
+                Command::StopPipeline { pipeline_id } => {
+                    tokio::spawn(stop_pipeline(Arc::clone(&client), tx.clone(), pipeline_id));
+                }
                 Command::OpenUrl(url) => {
                     tokio::spawn(desktop(tx.clone(), move || shell::open_url(&url)));
                 }
@@ -179,6 +185,25 @@ async fn run_now(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id: i6
 async fn cancel_run(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id: i64, run_id: i64) {
     let message = match client.cancel_run(run_id).await {
         Ok(()) => Message::RunCancelled { job_id, run_id },
+        Err(error) => Message::ActionFailed(error),
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn start_update(client: Arc<api::Client>, tx: mpsc::Sender<Message>, pipeline_id: String) {
+    let message = match client.start_update(&pipeline_id).await {
+        Ok(update_id) => Message::UpdateStarted {
+            pipeline_id,
+            update_id,
+        },
+        Err(error) => Message::ActionFailed(error),
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn stop_pipeline(client: Arc<api::Client>, tx: mpsc::Sender<Message>, pipeline_id: String) {
+    let message = match client.stop_pipeline(&pipeline_id).await {
+        Ok(()) => Message::PipelineStopped { pipeline_id },
         Err(error) => Message::ActionFailed(error),
     };
     let _ = tx.send(message).await;

@@ -92,6 +92,7 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             (k(Action::Filter), "filter by name"),
             (k(Action::MineOnly), "toggle mine only"),
             (k(Action::Open), "focus the main panel"),
+            (k(Action::Menu), "actions menu"),
             (k(Action::Refresh), "refresh pipelines"),
             (k(Action::Browse), "open pipeline in browser"),
             (k(Action::Copy), "copy pipeline URL"),

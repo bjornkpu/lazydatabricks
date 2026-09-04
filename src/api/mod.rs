@@ -13,7 +13,10 @@ use tokio::sync::{Mutex, mpsc};
 use crate::app::{ApiCall, Message};
 use crate::error::AppError;
 use auth::Token;
-use models::{Job, JobsList, Pipeline, PipelinesList, Run, RunNowResponse, RunsList, ScimMe};
+use models::{
+    Job, JobsList, Pipeline, PipelinesList, Run, RunNowResponse, RunsList, ScimMe,
+    UpdateStartResponse,
+};
 
 /// Page size sent to Databricks. A page size, not a cap: `list_jobs` follows `next_page_token`.
 const PAGE_SIZE: &str = "25";
@@ -149,6 +152,25 @@ impl Client {
     pub async fn cancel_run(&self, run_id: i64) -> Result<(), AppError> {
         let _: Value = self
             .post("/api/2.2/jobs/runs/cancel", json!({ "run_id": run_id }))
+            .await?;
+        Ok(())
+    }
+
+    /// Starts an update of `pipeline_id` and returns the new update's id.
+    pub async fn start_update(&self, pipeline_id: &str) -> Result<String, AppError> {
+        let started: UpdateStartResponse = self
+            .post(
+                &format!("/api/2.0/pipelines/{pipeline_id}/updates"),
+                json!({}),
+            )
+            .await?;
+        Ok(started.update_id)
+    }
+
+    /// Stops the running update of `pipeline_id`.
+    pub async fn stop_pipeline(&self, pipeline_id: &str) -> Result<(), AppError> {
+        let _: Value = self
+            .post(&format!("/api/2.0/pipelines/{pipeline_id}/stop"), json!({}))
             .await?;
         Ok(())
     }

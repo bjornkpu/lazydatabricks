@@ -78,6 +78,13 @@ pub enum Message {
         job_id: i64,
         run_id: i64,
     },
+    UpdateStarted {
+        pipeline_id: String,
+        update_id: String,
+    },
+    PipelineStopped {
+        pipeline_id: String,
+    },
     ActionFailed(AppError),
 }
 
@@ -106,6 +113,12 @@ pub enum Command {
     CancelRun {
         job_id: i64,
         run_id: i64,
+    },
+    StartUpdate {
+        pipeline_id: String,
+    },
+    StopPipeline {
+        pipeline_id: String,
     },
     /// Hand a URL to the browser.
     OpenUrl(String),
