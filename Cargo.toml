@@ -1,0 +1,41 @@
+[package]
+name = "lazydatabricks"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Preferred crates (from https://www.namtao.com/rust/). Uncomment when needed, don't add alternatives for the same job.
+# clap = { version = "4.5", features = ["derive"] }  # command line parsing
+# chrono = "0.4"                                     # ergonomic datetimes
+# color-eyre = "0.6"                                 # simple pretty error handling
+# itertools = "0.14"                                 # superpowered iterators
+# rayon = "1.11"                                     # parallel iterators
+# serde = { version = "1", features = ["derive"] }   # serialisation / deserialisation
+
+# TUI stack (chosen for this project)
+# ratatui = "0.30"                                   # TUI rendering; TestBackend for snapshot tests
+# crossterm = "0.29"                                 # terminal events, only imported in main
+
+# [dev-dependencies]
+# insta = "1"                                        # snapshot tests of rendered screens
+# criterion = "0.8"                                  # benchmarking
+
+[lints.clippy]
+# UM, ACTUALLY
+pedantic = { level = "deny", priority = -1 }
+# DEVELOPING LINTS
+nursery = { level = "deny", priority = -1 }
+# DENY PANICS
+unwrap_used = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"
+arithmetic_side_effects = "deny"
+unreachable = "deny"
+unimplemented = "deny"
+unchecked_time_subtraction = "deny"
+todo = "deny"
+string_slice = "deny"
+panic_in_result_fn = "deny"
+panic = "deny"
+exit = "deny"
+as_conversions = "deny"
