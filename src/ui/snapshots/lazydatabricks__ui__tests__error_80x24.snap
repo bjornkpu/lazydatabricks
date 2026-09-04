@@ -1,10 +1,10 @@
 ---
 source: src/ui/mod.rs
-expression: "render(&App::default())"
+expression: render(&app)
 ---
 "┌ Jobs ────────────────────────────────────────────────────────────────────────┐"
-"│                                                                              │"
-"│                                                                              │"
+"│HTTP status client error (403 Forbidden) for url                              │"
+"│(https://adb-1.azuredatabricks.net/api/2.2/jobs/list?limit=25)                │"
 "│                                                                              │"
 "│                                                                              │"
 "│                                                                              │"

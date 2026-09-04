@@ -13,5 +13,9 @@ pub enum Key {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
     Key(Key),
+    /// Periodic heartbeat from the input thread; drives the spinner.
+    Tick,
     JobsLoaded(Vec<Job>),
+    /// The fetch failed. The string is the full error chain, ready to display.
+    JobsFailed(String),
 }

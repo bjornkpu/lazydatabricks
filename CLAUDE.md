@@ -55,7 +55,8 @@ Elm-style. Three pure pieces, one thin IO shell:
   crossterm `Event`s are converted to `Message` at the boundary in `main`; nothing else
   imports crossterm. Async tasks never touch `App`; they send `Message`s down an mpsc channel.
 - `App::update(&mut self, Message) -> Flow` — the only place state mutates, no IO. Spawns
-  API tasks; returns `Flow::Quit` instead of calling `exit`.
+  API tasks (from M6; until then `main` spawns the first fetch); returns `Flow::Quit` instead
+  of calling `exit`.
 - `ui::draw(&App, &mut Frame)` — pure render. No state mutation.
 - `DatabricksApi` trait — the only network boundary. Two impls: real reqwest client, and a fake
   fed from JSON fixtures in `tests/fixtures/`. This is the one trait allowed to exist with a

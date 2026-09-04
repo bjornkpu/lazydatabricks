@@ -6,7 +6,7 @@ pub mod models;
 use std::time::Duration;
 
 use anyhow::Result;
-use reqwest::blocking::Client as Http;
+use reqwest::Client as Http;
 
 use models::{Job, JobsList};
 
@@ -30,7 +30,7 @@ impl Client {
     }
 
     /// Lists jobs, following `next_page_token` until `max` jobs or the last page.
-    pub fn list_jobs(&self, max: usize) -> Result<Vec<Job>> {
+    pub async fn list_jobs(&self, max: usize) -> Result<Vec<Job>> {
         let mut jobs = Vec::new();
         let mut page_token: Option<String> = None;
         loop {
@@ -42,7 +42,7 @@ impl Client {
             if let Some(token) = &page_token {
                 request = request.query(&[("page_token", token)]);
             }
-            let page: JobsList = request.send()?.error_for_status()?.json()?;
+            let page: JobsList = request.send().await?.error_for_status()?.json().await?;
             jobs.extend(page.jobs);
             page_token = page.next_page_token.filter(|token| !token.is_empty());
             if jobs.len() >= max || page_token.is_none() {

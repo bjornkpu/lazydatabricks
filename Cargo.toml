@@ -14,8 +14,8 @@ anyhow = "1"                                       # error context at the binary
 # thiserror = "2"                                    # AppError enum (M8)
 serde = { version = "1", features = ["derive"] }   # serialisation / deserialisation
 serde_json = "1"                                   # Databricks REST bodies, CLI token output
-reqwest = { version = "0.13", features = ["json", "query", "blocking"] } # HTTP client; "blocking" goes at M2
-# tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }  # async runtime, mpsc
+reqwest = { version = "0.13", features = ["json", "query"] } # HTTP client
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }  # async runtime, mpsc
 # jiff = "0.2"                                       # datetimes: epoch millis -> local, relative age
 # clap = { version = "4", features = ["derive"] }    # command line parsing (M9)
 # toml = "1"                                         # config file (M7)
