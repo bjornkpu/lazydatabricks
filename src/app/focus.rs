@@ -1,4 +1,4 @@
-//! Which panel has focus, and how much of the screen it takes.
+//! Which panel has focus, how much of the screen it takes, and which main-panel tabs it offers.
 
 /// The panels, numbered as in their titles. `Main` is `[0]`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,10 +23,11 @@ impl Panel {
         }
     }
 
+    /// Title text after the number. The main panel's title is its tab list instead.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::Main => "Main",
+            Self::Main => "",
             Self::Status => "Status",
             Self::Jobs => "Jobs",
             Self::Pipelines => "Pipelines",
@@ -57,6 +58,35 @@ impl Panel {
             Self::Status => Self::Jobs,
             Self::Jobs => Self::Pipelines,
             Self::Pipelines | Self::Main => Self::Status,
+        }
+    }
+
+    /// Main-panel tabs for this side panel. Empty until the panel has data worth viewing.
+    #[must_use]
+    pub const fn tabs(self) -> &'static [Tab] {
+        match self {
+            Self::Status => &[Tab::Profile],
+            Self::Jobs => &[Tab::Runs, Tab::Detail],
+            Self::Pipelines | Self::Main => &[],
+        }
+    }
+}
+
+/// A view in the main panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tab {
+    Profile,
+    Runs,
+    Detail,
+}
+
+impl Tab {
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Profile => "Profile",
+            Self::Runs => "Runs",
+            Self::Detail => "Detail",
         }
     }
 }
@@ -102,6 +132,12 @@ mod tests {
         assert_eq!(Panel::Jobs.next_side(), Panel::Pipelines);
         assert_eq!(Panel::Pipelines.next_side(), Panel::Status);
         assert_eq!(Panel::Main.next_side(), Panel::Status);
+    }
+
+    #[test]
+    fn jobs_offer_runs_first() {
+        assert_eq!(Panel::Jobs.tabs().first(), Some(&Tab::Runs));
+        assert!(Panel::Pipelines.tabs().is_empty());
     }
 
     #[test]

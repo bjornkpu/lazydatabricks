@@ -1,0 +1,46 @@
+{
+  "runs": [
+    {
+      "job_id": 1025322370191789,
+      "run_id": 50851892761073,
+      "creator_user_name": "someone@example.com",
+      "state": {
+        "life_cycle_state": "TERMINATED",
+        "result_state": "SUCCESS",
+        "state_message": "",
+        "user_cancelled_or_timedout": false
+      },
+      "start_time": 1788170893271,
+      "end_time": 1788170965431,
+      "execution_duration": 0
+    },
+    {
+      "job_id": 1025322370191789,
+      "run_id": 50851892761074,
+      "creator_user_name": "someone@example.com",
+      "state": {
+        "life_cycle_state": "TERMINATED",
+        "result_state": "FAILED",
+        "state_message": "Task okonomi_gold failed with message: division by zero",
+        "user_cancelled_or_timedout": false
+      },
+      "start_time": 1788084493271,
+      "end_time": 1788084551000,
+      "execution_duration": 0
+    },
+    {
+      "job_id": 1025322370191789,
+      "run_id": 50851892761075,
+      "creator_user_name": "someone@example.com",
+      "state": {
+        "life_cycle_state": "RUNNING",
+        "state_message": "In run",
+        "user_cancelled_or_timedout": false
+      },
+      "start_time": 1788257300000,
+      "end_time": 0,
+      "execution_duration": 0
+    }
+  ],
+  "has_more": false
+}

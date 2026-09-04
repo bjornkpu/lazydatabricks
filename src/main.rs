@@ -1,21 +1,23 @@
 //! lazydatabricks: a lazygit-style TUI for Databricks.
 //!
 //! This file is wiring only. It owns the terminal, converts terminal events into `Message`s,
-//! spawns the fetch task and runs the draw/update loop. Nothing outside this file imports
-//! crossterm.
+//! spawns fetch tasks for the `Command`s `update` returns, and runs the draw/update loop.
+//! Nothing outside this file imports crossterm.
 
 mod api;
 mod app;
 mod ui;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Result, bail};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use jiff::tz::TimeZone;
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
 
-use crate::app::{App, Flow, Key, Message};
+use crate::app::{App, Command, Key, Message};
 
 /// Upper bound on jobs fetched across pages. Becomes config at M7.
 const MAX_JOBS: usize = 200;
@@ -28,18 +30,18 @@ const CHANNEL_CAPACITY: usize = 64;
 async fn main() -> Result<()> {
     let profile =
         std::env::var("DATABRICKS_CONFIG_PROFILE").unwrap_or_else(|_| "DEFAULT".to_owned());
+    let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
     // Auth before the terminal is taken over: the CLI may print or open a browser, and its
     // errors should land in a normal shell.
-    let client = api::Client::from_profile(&profile)?;
-    let app = App::new(&profile, client.host());
-    let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
-    tokio::spawn(fetch_jobs(client, tx.clone()));
-    spawn_input(tx);
+    let client = Arc::new(api::Client::from_profile(&profile, tx.clone())?);
+    let app = App::new(&profile, client.host(), TimeZone::system());
+    tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone()));
+    spawn_input(tx.clone());
     // `ratatui::init` enters the alternate screen and raw mode and installs a panic hook that
     // restores both. `clippy::exit` is denied, so the loop returns instead of exiting; that is
     // what lets `restore` run on the error path too.
     let mut terminal = ratatui::init();
-    let result = run(&mut terminal, app, rx).await;
+    let result = run(&mut terminal, app, rx, client, tx).await;
     ratatui::restore();
     result
 }
@@ -48,21 +50,27 @@ async fn run(
     terminal: &mut DefaultTerminal,
     mut app: App,
     mut rx: mpsc::Receiver<Message>,
+    client: Arc<api::Client>,
+    tx: mpsc::Sender<Message>,
 ) -> Result<()> {
     loop {
         terminal.draw(|frame| ui::draw(&app, frame))?;
         let Some(message) = rx.recv().await else {
-            bail!("input thread stopped");
+            bail!("all message producers stopped");
         };
-        match app.update(message) {
-            Flow::Continue => {}
-            Flow::Quit => return Ok(()),
+        for command in app.update(message) {
+            match command {
+                Command::Quit => return Ok(()),
+                Command::FetchRuns { job_id } => {
+                    tokio::spawn(fetch_runs(Arc::clone(&client), tx.clone(), job_id));
+                }
+            }
         }
     }
 }
 
-/// One fetch, reported back as a message. Never touches `App`.
-async fn fetch_jobs(client: api::Client, tx: mpsc::Sender<Message>) {
+/// One jobs fetch, reported back as a message. Never touches `App`.
+async fn fetch_jobs(client: Arc<api::Client>, tx: mpsc::Sender<Message>) {
     let message = match client.list_jobs(MAX_JOBS).await {
         Ok(jobs) => Message::JobsLoaded(jobs),
         Err(error) => Message::JobsFailed(format!("{error:#}")),
@@ -71,9 +79,20 @@ async fn fetch_jobs(client: api::Client, tx: mpsc::Sender<Message>) {
     let _ = tx.send(message).await;
 }
 
+async fn fetch_runs(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id: i64) {
+    let message = match client.list_runs(job_id).await {
+        Ok(runs) => Message::RunsLoaded { job_id, runs },
+        Err(error) => Message::RunsFailed {
+            job_id,
+            error: format!("{error:#}"),
+        },
+    };
+    let _ = tx.send(message).await;
+}
+
 /// Reads terminal events on a plain thread, since crossterm's reader blocks. Sends a `Tick`
 /// whenever `TICK` passes without a key. Exits when the channel closes or the terminal read
-/// fails; `run` then sees a closed channel and bails.
+/// fails.
 fn spawn_input(tx: mpsc::Sender<Message>) {
     std::thread::spawn(move || {
         while let Ok(message) = next_message() {
@@ -105,6 +124,8 @@ fn next_message() -> Result<Option<Message>> {
         KeyCode::Tab => Key::Tab,
         KeyCode::Up => Key::Up,
         KeyCode::Down => Key::Down,
+        KeyCode::Left => Key::Left,
+        KeyCode::Right => Key::Right,
         KeyCode::Enter => Key::Enter,
         _ => return Ok(None),
     };

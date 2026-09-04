@@ -2,15 +2,20 @@
 //!
 //! This file splits the frame and dispatches; the panels draw themselves in submodules.
 
+mod apilog;
 mod chrome;
 mod hints;
+mod main_panel;
 mod side;
+mod theme;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::widgets::Paragraph;
 
 use crate::app::{App, Panel, ScreenMode};
+
+/// Rows for the API log under the main panel.
+const API_LOG_HEIGHT: u16 = 7;
 
 /// Draws the whole screen for the current state.
 pub fn draw(app: &App, frame: &mut Frame) {
@@ -32,12 +37,20 @@ pub fn draw(app: &App, frame: &mut Frame) {
         for (panel, area) in Panel::SIDE.into_iter().zip(areas) {
             draw_panel(app, panel, area, frame);
         }
-        draw_panel(app, Panel::Main, main, frame);
+        if app.show_api_log {
+            let [main, log] =
+                Layout::vertical([Constraint::Fill(1), Constraint::Length(API_LOG_HEIGHT)])
+                    .areas(main);
+            draw_panel(app, Panel::Main, main, frame);
+            apilog::draw(app, log, frame);
+        } else {
+            draw_panel(app, Panel::Main, main, frame);
+        }
     }
     hints::draw(app.focus, hint_bar, frame);
 }
 
-/// Height of one side panel. Status is two lines of text; the lists share the rest.
+/// Height of one side panel. Status is one line of text; the lists share the rest.
 fn side_constraint(panel: Panel, focus: Panel, collapse_unfocused: bool) -> Constraint {
     if collapse_unfocused {
         return if panel == focus {
@@ -57,17 +70,8 @@ fn draw_panel(app: &App, panel: Panel, area: Rect, frame: &mut Frame) {
         Panel::Status => side::status(app, area, frame),
         Panel::Jobs => side::jobs(app, area, frame),
         Panel::Pipelines => side::pipelines(app, area, frame),
-        Panel::Main => main_placeholder(app, area, frame),
+        Panel::Main => main_panel::draw(app, area, frame),
     }
-}
-
-/// `[0]` until M4 gives it tabs: shows what is selected.
-fn main_placeholder(app: &App, area: Rect, frame: &mut Frame) {
-    let block = chrome::panel(Panel::Main, app.focus == Panel::Main, "", None);
-    let text = app.jobs.selected().map_or_else(String::new, |job| {
-        format!("{}\njob_id {}", job.settings.name, job.job_id)
-    });
-    frame.render_widget(Paragraph::new(text).block(block), area);
 }
 
 #[cfg(test)]
@@ -76,7 +80,8 @@ mod tests {
     use ratatui::backend::TestBackend;
 
     use super::*;
-    use crate::app::tests::{app, job};
+    use crate::api::models::ResultState;
+    use crate::app::tests::{api_call, app, job, run};
     use crate::app::{Key, Message};
 
     fn render(app: &App) -> String {
@@ -92,6 +97,40 @@ mod tests {
             job(2, "nightly_bronze_ingest"),
             job(3, "weekly_report"),
         ]));
+        app.update(Message::ApiCalled(api_call(
+            "/api/2.2/jobs/list?limit=25",
+            Some(200),
+            84,
+        )));
+        app
+    }
+
+    /// Jobs loaded and the first job's runs arrived.
+    fn with_runs() -> App {
+        let mut app = loaded();
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: vec![
+                run(50_851_892_761_075, 1_788_257_300_000, 0, None),
+                run(
+                    50_851_892_761_073,
+                    1_788_170_893_271,
+                    1_788_170_965_431,
+                    Some(ResultState::Success),
+                ),
+                run(
+                    50_851_892_761_074,
+                    1_788_084_493_271,
+                    1_788_084_551_000,
+                    Some(ResultState::Failed),
+                ),
+            ],
+        });
+        app.update(Message::ApiCalled(api_call(
+            "/api/2.2/jobs/runs/list?job_id=1&limit=25",
+            Some(200),
+            131,
+        )));
         app
     }
 
@@ -117,37 +156,76 @@ mod tests {
     }
 
     #[test]
-    fn jobs_focused_80x24() {
+    fn runs_tab_80x24() {
+        insta::assert_snapshot!(render(&with_runs()));
+    }
+
+    #[test]
+    fn runs_loading_80x24() {
         let mut app = loaded();
         press(&mut app, "j");
+        app.update(Message::Tick);
         insta::assert_snapshot!(render(&app));
     }
 
     #[test]
-    fn status_focused_80x24() {
+    fn runs_error_80x24() {
         let mut app = loaded();
+        app.update(Message::RunsFailed {
+            job_id: 1,
+            error: "HTTP status client error (429 Too Many Requests) for url (https://adb-1.azuredatabricks.net/api/2.2/jobs/runs/list?job_id=1&limit=25)".to_owned(),
+        });
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn detail_tab_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "l");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn profile_tab_status_focused_80x24() {
+        let mut app = with_runs();
         press(&mut app, "1");
         insta::assert_snapshot!(render(&app));
     }
 
     #[test]
-    fn main_focused_80x24() {
-        let mut app = loaded();
-        press(&mut app, "0");
+    fn main_focused_log_hidden_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "0@");
         insta::assert_snapshot!(render(&app));
     }
 
     #[test]
     fn half_mode_jobs_focused_80x24() {
-        let mut app = loaded();
+        let mut app = with_runs();
         press(&mut app, "+");
         insta::assert_snapshot!(render(&app));
     }
 
     #[test]
-    fn full_mode_jobs_focused_80x24() {
-        let mut app = loaded();
-        press(&mut app, "++");
+    fn full_mode_main_focused_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "0++");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn api_log_truncates_long_paths_80x24() {
+        let mut app = with_runs();
+        app.update(Message::ApiCalled(api_call(
+            "/api/2.2/jobs/runs/list?job_id=1025322370191789&limit=25&page_token=CAIo0JeenYM0Sg80MzEwMTU5NzM2MjUyMDA=",
+            Some(500),
+            12_345,
+        )));
+        app.update(Message::ApiCalled(api_call(
+            "/api/2.2/jobs/list",
+            None,
+            30_000,
+        )));
         insta::assert_snapshot!(render(&app));
     }
 

@@ -12,11 +12,11 @@ const VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"));
 #[must_use]
 pub const fn hints(focus: Panel) -> &'static str {
     match focus {
-        Panel::Status => " Focus: 0-3/Tab │ Screen: + │ Quit: q",
+        Panel::Status => " Focus: 0-3/Tab │ Screen: + │ Log: @ │ Quit: q",
         Panel::Jobs | Panel::Pipelines => {
-            " Select: j/k │ Open: Enter │ Focus: 0-3/Tab │ Screen: + │ Quit: q"
+            " Select: j/k │ Open: Enter │ Focus: 0-3 │ Screen: + │ Log: @ │ Quit: q"
         }
-        Panel::Main => " Back: 1-3/Tab │ Screen: + │ Quit: q",
+        Panel::Main => " Tabs: h/l │ Back: 1-3/Tab │ Screen: + │ Log: @ │ Quit: q",
     }
 }
 

@@ -1,7 +1,10 @@
 //! Serde mirrors of the Databricks REST shapes. Only the fields we use, and `#[serde(default)]`
 //! on everything optional, because Databricks omits empty fields rather than nulling them.
 
-use serde::Deserialize;
+use std::collections::BTreeMap;
+
+use jiff::Timestamp;
+use serde::{Deserialize, Deserializer};
 
 /// `GET /api/2.2/jobs/list` response.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -15,7 +18,12 @@ pub struct JobsList {
 /// One job. Ids are `i64` end to end and are never used as indices.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Job {
-    pub job_id: i64,
+    #[serde(rename = "job_id")]
+    pub id: i64,
+    #[serde(default)]
+    pub creator_user_name: String,
+    #[serde(default)]
+    pub run_as_user_name: String,
     #[serde(default)]
     pub settings: JobSettings,
 }
@@ -24,6 +32,131 @@ pub struct Job {
 pub struct JobSettings {
     #[serde(default)]
     pub name: String,
+    #[serde(default)]
+    pub timeout_seconds: Option<i64>,
+    #[serde(default)]
+    pub max_concurrent_runs: Option<u32>,
+    #[serde(default)]
+    pub tags: BTreeMap<String, String>,
+    #[serde(default)]
+    pub format: Option<String>,
+}
+
+/// `GET /api/2.2/jobs/runs/list` response.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct RunsList {
+    #[serde(default)]
+    pub runs: Vec<Run>,
+    #[serde(default)]
+    pub next_page_token: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Run {
+    #[serde(rename = "run_id")]
+    pub id: i64,
+    #[serde(default)]
+    pub job_id: i64,
+    #[serde(default)]
+    pub state: RunState,
+    #[serde(default, deserialize_with = "epoch_millis")]
+    pub start_time: Option<Timestamp>,
+    #[serde(default, deserialize_with = "epoch_millis")]
+    pub end_time: Option<Timestamp>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct RunState {
+    #[serde(default)]
+    pub life_cycle_state: LifeCycleState,
+    #[serde(default)]
+    pub result_state: Option<ResultState>,
+    #[serde(default)]
+    pub state_message: String,
+}
+
+/// Closed set in practice, open in the API: anything new lands in `Unknown` instead of
+/// breaking the parse.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum LifeCycleState {
+    Queued,
+    Pending,
+    Running,
+    Terminating,
+    Terminated,
+    Skipped,
+    InternalError,
+    Blocked,
+    Waiting,
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+impl LifeCycleState {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "QUEUED",
+            Self::Pending => "PENDING",
+            Self::Running => "RUNNING",
+            Self::Terminating => "TERMINATING",
+            Self::Terminated => "TERMINATED",
+            Self::Skipped => "SKIPPED",
+            Self::InternalError => "INTERNAL_ERROR",
+            Self::Blocked => "BLOCKED",
+            Self::Waiting => "WAITING",
+            Self::Unknown => "UNKNOWN",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ResultState {
+    Success,
+    Failed,
+    Timedout,
+    Canceled,
+    MaximumConcurrentRunsReached,
+    ExcludedFromRun,
+    SuccessWithFailures,
+    UpstreamFailed,
+    UpstreamCanceled,
+    Disabled,
+    #[serde(other)]
+    Unknown,
+}
+
+impl ResultState {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "SUCCESS",
+            Self::Failed => "FAILED",
+            Self::Timedout => "TIMEDOUT",
+            Self::Canceled => "CANCELED",
+            Self::MaximumConcurrentRunsReached => "MAX_CONCURRENT",
+            Self::ExcludedFromRun => "EXCLUDED",
+            Self::SuccessWithFailures => "SUCCESS_WITH_FAILURES",
+            Self::UpstreamFailed => "UPSTREAM_FAILED",
+            Self::UpstreamCanceled => "UPSTREAM_CANCELED",
+            Self::Disabled => "DISABLED",
+            Self::Unknown => "UNKNOWN",
+        }
+    }
+}
+
+/// Databricks sends epoch milliseconds and uses `0` for "not yet". Converted here, once, so no
+/// raw millis reach the UI.
+fn epoch_millis<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Timestamp>, D::Error> {
+    let millis = Option::<i64>::deserialize(deserializer)?;
+    millis
+        .filter(|ms| *ms > 0)
+        .map(Timestamp::from_millisecond)
+        .transpose()
+        .map_err(serde::de::Error::custom)
 }
 
 #[cfg(test)]
@@ -31,14 +164,22 @@ mod tests {
     use super::*;
 
     const JOBS_LIST: &str = include_str!("../../tests/fixtures/jobs_list.json");
+    const RUNS_LIST: &str = include_str!("../../tests/fixtures/runs_list.json");
 
     #[test]
     fn parses_jobs_list_fixture() {
         let page: JobsList = serde_json::from_str(JOBS_LIST).unwrap();
         assert_eq!(page.jobs.len(), 2);
-        assert_eq!(page.jobs[0].job_id, 1_025_322_370_191_789);
-        assert_eq!(page.jobs[0].settings.name, "[someone] okonomi_gold");
-        assert_eq!(page.jobs[1].settings.name, "nightly_bronze_ingest");
+        let first = &page.jobs[0];
+        assert_eq!(first.id, 1_025_322_370_191_789);
+        assert_eq!(first.settings.name, "[someone] okonomi_gold");
+        assert_eq!(first.creator_user_name, "someone@example.com");
+        assert_eq!(first.settings.timeout_seconds, Some(7200));
+        assert_eq!(first.settings.max_concurrent_runs, Some(4));
+        assert_eq!(first.settings.tags["domain"], "okonomi");
+        assert_eq!(first.settings.format.as_deref(), Some("MULTI_TASK"));
+        assert_eq!(page.jobs[1].settings.timeout_seconds, None);
+        assert!(page.jobs[1].settings.tags.is_empty());
         assert_eq!(
             page.next_page_token.as_deref(),
             Some("CAIo0JeenYM0Sg80MzEwMTU5NzM2MjUyMDA=")
@@ -56,5 +197,32 @@ mod tests {
     fn empty_object_is_empty_page() {
         let page: JobsList = serde_json::from_str("{}").unwrap();
         assert!(page.jobs.is_empty());
+    }
+
+    #[test]
+    fn parses_runs_list_fixture() {
+        let page: RunsList = serde_json::from_str(RUNS_LIST).unwrap();
+        assert_eq!(page.runs.len(), 3);
+        let ok = &page.runs[0];
+        assert_eq!(ok.id, 50_851_892_761_073);
+        assert_eq!(ok.state.life_cycle_state, LifeCycleState::Terminated);
+        assert_eq!(ok.state.result_state, Some(ResultState::Success));
+        assert_eq!(ok.start_time.unwrap().as_millisecond(), 1_788_170_893_271);
+        assert_eq!(ok.end_time.unwrap().as_millisecond(), 1_788_170_965_431);
+        let running = &page.runs[2];
+        assert_eq!(running.state.life_cycle_state, LifeCycleState::Running);
+        assert_eq!(running.state.result_state, None);
+        assert_eq!(running.end_time, None, "end_time 0 means not finished");
+    }
+
+    #[test]
+    fn unknown_states_do_not_break_parsing() {
+        let run: Run = serde_json::from_str(
+            r#"{"run_id":1,"state":{"life_cycle_state":"BRAND_NEW","result_state":"SHRUG"}}"#,
+        )
+        .unwrap();
+        assert_eq!(run.state.life_cycle_state, LifeCycleState::Unknown);
+        assert_eq!(run.state.result_state, Some(ResultState::Unknown));
+        assert_eq!(run.start_time, None);
     }
 }

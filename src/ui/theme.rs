@@ -1,0 +1,103 @@
+//! Glyphs, colours and time formatting shared by the panels.
+
+use jiff::tz::TimeZone;
+use jiff::{SignedDuration, Timestamp};
+use ratatui::style::Color;
+
+use crate::api::models::{LifeCycleState, ResultState, Run};
+
+/// Status as a glyph, not a word: colour carries the state, the glyph makes it work without.
+#[must_use]
+pub const fn run_glyph(run: &Run) -> (char, Color) {
+    match (run.state.life_cycle_state, run.state.result_state) {
+        (_, Some(ResultState::Success)) => ('✓', Color::Green),
+        (_, Some(_)) => ('✗', Color::Red),
+        (
+            LifeCycleState::Terminated
+            | LifeCycleState::Skipped
+            | LifeCycleState::InternalError
+            | LifeCycleState::Unknown,
+            None,
+        ) => ('?', Color::DarkGray),
+        (_, None) => ('◐', Color::Yellow),
+    }
+}
+
+/// The result if there is one, else where the run is in its life cycle.
+#[must_use]
+pub const fn run_result(run: &Run) -> &'static str {
+    match run.state.result_state {
+        Some(result) => result.as_str(),
+        None => run.state.life_cycle_state.as_str(),
+    }
+}
+
+/// Wall-clock start to end, when both are known.
+#[must_use]
+pub fn run_duration(run: &Run) -> Option<SignedDuration> {
+    Some(run.end_time?.duration_since(run.start_time?))
+}
+
+/// `MM/DD HH:MM` in `tz`. Absolute times belong in tables; ages belong in side lists.
+#[must_use]
+pub fn clock(ts: Timestamp, tz: &TimeZone) -> String {
+    // TimeZone is an Arc inside; the clone is a refcount bump.
+    ts.to_zoned(tz.clone()).strftime("%m/%d %H:%M").to_string()
+}
+
+/// Compact duration: `58s`, `1m12s`, `2h05m`, `3d01h`. Negative durations read as `0s`.
+#[must_use]
+pub fn duration(d: SignedDuration) -> String {
+    let secs = u64::try_from(d.as_secs()).unwrap_or(0);
+    match secs {
+        0..60 => format!("{secs}s"),
+        60..3600 => format!("{}m{:02}s", secs / 60, secs % 60),
+        3600..86_400 => format!("{}h{:02}m", secs / 3600, (secs % 3600) / 60),
+        _ => format!("{}d{:02}h", secs / 86_400, (secs % 86_400) / 3600),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::tests::run;
+
+    #[test]
+    fn durations_are_compact() {
+        assert_eq!(duration(SignedDuration::from_secs(32)), "32s");
+        assert_eq!(duration(SignedDuration::from_secs(72)), "1m12s");
+        assert_eq!(duration(SignedDuration::from_secs(3725)), "1h02m");
+        assert_eq!(duration(SignedDuration::from_secs(90_000)), "1d01h");
+        assert_eq!(duration(SignedDuration::from_secs(-5)), "0s");
+    }
+
+    #[test]
+    fn clock_uses_given_zone() {
+        let ts = Timestamp::from_millisecond(1_788_170_893_271).unwrap();
+        assert_eq!(clock(ts, &TimeZone::UTC), "08/31 10:08");
+        let oslo = TimeZone::get("Europe/Oslo").unwrap();
+        assert_eq!(clock(ts, &oslo), "08/31 12:08");
+    }
+
+    #[test]
+    fn glyphs_follow_state() {
+        assert_eq!(run_glyph(&run(1, 1, 2, Some(ResultState::Success))).0, '✓');
+        assert_eq!(run_glyph(&run(1, 1, 2, Some(ResultState::Canceled))).0, '✗');
+        assert_eq!(run_glyph(&run(1, 1, 0, None)).0, '◐');
+        assert_eq!(run_glyph(&run(1, 1, 2, None)).0, '?');
+        assert_eq!(run_result(&run(1, 1, 0, None)), "RUNNING");
+        assert_eq!(
+            run_result(&run(1, 1, 2, Some(ResultState::Failed))),
+            "FAILED"
+        );
+    }
+
+    #[test]
+    fn running_run_has_no_duration() {
+        assert_eq!(run_duration(&run(1, 1000, 0, None)), None);
+        assert_eq!(
+            run_duration(&run(1, 1000, 73_000, None)),
+            Some(SignedDuration::from_secs(72))
+        );
+    }
+}
