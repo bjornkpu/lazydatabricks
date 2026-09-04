@@ -2,9 +2,9 @@
 source: src/ui/mod.rs
 expression: render(&app)
 ---
-"┌─[1]─Status──────────────┐┌─[0]─Runs - Detail─────────────────────────────────┐"
+"┌─[1]─Status──────────────┐┌─[0]─Runs - Detail ⠋───────────────────────────────┐"
 "│◐ dev → adb-1.azuredatabr││Name           [someone] okonomi_gold              │"
-"│3 of 3                   ││Job ID         1                                   │"
+"│3 of 3 · 0s ago          ││Job ID         1                                   │"
 "└─────────────────────────┘│Creator        someone@example.com                 │"
 "┌─[2]─Jobs────────────────┐│Run as         someone@example.com                 │"
 "│[someone] okonomi_gold   ││Format         MULTI_TASK                          │"

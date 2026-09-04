@@ -8,18 +8,23 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use reqwest::Client as Http;
 use serde::de::DeserializeOwned;
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 
 use crate::app::{ApiCall, Message};
+use auth::Token;
 use models::{Job, JobsList, Run, RunsList, ScimMe};
 
 /// Page size sent to Databricks. A page size, not a cap: `list_jobs` follows `next_page_token`.
 const PAGE_SIZE: &str = "25";
+/// Mint a fresh token when the current one has less than this left. Tokens live an hour.
+const TOKEN_REFRESH_MARGIN: Duration = Duration::from_secs(300);
 
 /// Authenticated HTTP client for one workspace. Every call is reported to the API log.
 pub struct Client {
     host: String,
-    token: String,
+    profile: String,
+    /// Refreshed in place before it expires; the lock serialises that refresh.
+    token: Mutex<Token>,
     http: Http,
     log: mpsc::Sender<Message>,
 }
@@ -28,11 +33,12 @@ impl Client {
     /// Reads the host for `profile` from `~/.databrickscfg` and mints a token via the CLI.
     pub fn from_profile(profile: &str, log: mpsc::Sender<Message>) -> Result<Self> {
         let host = auth::host(profile)?;
-        let token = auth::token(profile)?;
+        let token = auth::mint(profile)?;
         let http = Http::builder().timeout(Duration::from_secs(30)).build()?;
         Ok(Self {
             host,
-            token,
+            profile: profile.to_owned(),
+            token: Mutex::new(token),
             http,
             log,
         })
@@ -77,12 +83,24 @@ impl Client {
         Ok(me.user_name)
     }
 
+    /// The current bearer token, minted anew via the CLI when it is about to expire.
+    async fn bearer(&self) -> Result<String> {
+        let mut token = self.token.lock().await;
+        if token.expires_within(TOKEN_REFRESH_MARGIN) {
+            // The CLI call blocks on a subprocess, so it leaves the async threads alone.
+            let profile = self.profile.clone();
+            *token = tokio::task::spawn_blocking(move || auth::mint(&profile)).await??;
+        }
+        // Copied out so the lock is not held across the request.
+        Ok(token.access_token.clone())
+    }
+
     /// One GET, timed and reported to the API log whether it succeeds or not.
     async fn get<T: DeserializeOwned>(&self, path: &str, query: &[(&str, &str)]) -> Result<T> {
         let request = self
             .http
             .get(format!("{}{path}", self.host))
-            .bearer_auth(&self.token)
+            .bearer_auth(self.bearer().await?)
             .query(query)
             .build()?;
         let url = request.url();

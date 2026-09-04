@@ -58,5 +58,6 @@ pub enum Message {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Quit,
+    FetchJobs,
     FetchRuns { job_id: i64 },
 }

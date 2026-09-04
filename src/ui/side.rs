@@ -6,7 +6,7 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListState, Paragraph, Wrap};
 
-use super::chrome;
+use super::{chrome, theme};
 use crate::app::{App, Panel};
 
 pub fn status(app: &App, area: Rect, frame: &mut Frame) {
@@ -27,10 +27,15 @@ pub fn status(app: &App, area: Rect, frame: &mut Frame) {
         Span::styled(glyph.to_string(), Style::new().fg(color)),
         Span::raw(format!(" {} → {host}", app.profile)),
     ]);
+    let mut summary = app.filter_summary();
+    if let Some(age) = app.jobs_age() {
+        summary.push_str(" · ");
+        summary.push_str(&theme::age(age));
+    }
     let second = app
         .me_error
         .as_ref()
-        .map_or_else(|| app.filter_summary(), |error| format!("me: {error}"));
+        .map_or(summary, |error| format!("me: {error}"));
     frame.render_widget(
         Paragraph::new(vec![identity, Line::from(second)]).block(block),
         area,

@@ -5,7 +5,8 @@ mod focus;
 mod list;
 mod message;
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
+use std::time::Duration;
 
 pub use filter::{Filter, Me};
 pub use focus::{Panel, ScreenMode, Tab};
@@ -22,6 +23,20 @@ pub const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦'
 const RUNS_DEBOUNCE_TICKS: u8 = 3;
 /// API log entries kept; older ones fall off.
 const API_LOG_CAPACITY: usize = 200;
+/// Heartbeat period. The input thread sends `Message::Tick` this often; ages and TTLs count
+/// ticks, so tests drive time by sending ticks.
+pub const TICK: Duration = Duration::from_millis(100);
+/// Jobs older than this are refetched in the background: 5 minutes in ticks.
+const JOBS_TTL_TICKS: u64 = 3000;
+/// Cached runs older than this are refetched when shown: 2 minutes in ticks.
+const RUNS_TTL_TICKS: u64 = 1200;
+
+/// A fetched value and the tick it arrived on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Cached<T> {
+    at: u64,
+    value: T,
+}
 
 /// A remote value and where its fetch stands.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -35,13 +50,6 @@ pub enum Load<T> {
     Failed(String),
 }
 
-impl<T> Load<T> {
-    #[must_use]
-    pub const fn is_loading(&self) -> bool {
-        matches!(self, Self::Loading)
-    }
-}
-
 /// All application state. Rendering is a pure function of this.
 #[derive(Debug)]
 pub struct App {
@@ -49,6 +57,8 @@ pub struct App {
     pub host: String,
     /// Zone for rendering timestamps. An input, so tests can pin UTC.
     pub tz: TimeZone,
+    /// Ticks since launch; the app's clock.
+    pub ticks: u64,
     /// Who the token belongs to, once the SCIM call has answered.
     pub me: Option<Me>,
     pub me_error: Option<String>,
@@ -59,8 +69,11 @@ pub struct App {
     pub filter: Filter,
     /// `/` was pressed: keys edit `filter.text` until Enter or Esc.
     pub filtering: bool,
-    /// A jobs fetch is in flight. True from launch until the first `JobsLoaded` or `JobsFailed`.
+    /// A jobs fetch is in flight. True from launch until the first `JobsLoaded` or `JobsFailed`,
+    /// then again during refreshes; the old list stays on screen meanwhile.
     pub loading: bool,
+    /// Tick the current `all_jobs` arrived on.
+    jobs_fetched_at: Option<u64>,
     /// Index into `SPINNER`.
     pub spinner: usize,
     pub error: Option<String>,
@@ -76,6 +89,11 @@ pub struct App {
     pub runs_job: Option<i64>,
     /// Runs fetch waiting for the cursor to rest: (job, ticks left).
     pending_runs: Option<(i64, u8)>,
+    /// Job whose runs fetch is in flight.
+    // ponytail: one in-flight id, not a set; a second fetch just overwrites it.
+    runs_inflight: Option<i64>,
+    /// Runs already fetched, by job. Revisits within `RUNS_TTL_TICKS` cost no call.
+    runs_cache: HashMap<i64, Cached<Vec<Run>>>,
     pub api_log: VecDeque<ApiCall>,
     pub show_api_log: bool,
 }
@@ -88,6 +106,7 @@ impl App {
             profile: profile.to_owned(),
             host: host.to_owned(),
             tz,
+            ticks: 0,
             me: None,
             me_error: None,
             all_jobs: Vec::new(),
@@ -95,6 +114,7 @@ impl App {
             filter: Filter::default(),
             filtering: false,
             loading: true,
+            jobs_fetched_at: None,
             spinner: 0,
             error: None,
             focus: Panel::Jobs,
@@ -104,6 +124,8 @@ impl App {
             runs: Load::Idle,
             runs_job: None,
             pending_runs: None,
+            runs_inflight: None,
+            runs_cache: HashMap::new(),
             api_log: VecDeque::new(),
             show_api_log: true,
         }
@@ -117,7 +139,8 @@ impl App {
             Message::Key(key) if self.filtering => self.filter_key(key, &mut commands),
             Message::Key(key) => self.key(key, &mut commands),
             Message::Tick => {
-                if self.loading || self.runs.is_loading() {
+                self.ticks = self.ticks.saturating_add(1);
+                if self.loading || self.runs_busy() {
                     self.spinner = self
                         .spinner
                         .wrapping_add(1)
@@ -128,14 +151,34 @@ impl App {
                     let left = ticks.saturating_sub(1);
                     if left == 0 {
                         self.pending_runs = None;
-                        commands.push(Command::FetchRuns { job_id });
+                        if self.runs_inflight != Some(job_id) {
+                            self.runs_inflight = Some(job_id);
+                            commands.push(Command::FetchRuns { job_id });
+                        }
                     } else {
                         self.pending_runs = Some((job_id, left));
                     }
                 }
+                // Background refresh of what is on screen, once it is older than its TTL.
+                if self
+                    .jobs_fetched_at
+                    .is_some_and(|at| self.age_ticks(at) >= JOBS_TTL_TICKS)
+                {
+                    self.refresh_jobs(&mut commands);
+                }
+                if let Some(job_id) = self.runs_job
+                    && self.pending_runs.is_none()
+                    && self
+                        .runs_cache
+                        .get(&job_id)
+                        .is_some_and(|cached| self.age_ticks(cached.at) >= RUNS_TTL_TICKS)
+                {
+                    self.refresh_runs(&mut commands);
+                }
             }
             Message::JobsLoaded(jobs) => {
                 self.all_jobs = jobs;
+                self.jobs_fetched_at = Some(self.ticks);
                 self.loading = false;
                 self.error = None;
                 self.apply_filter();
@@ -145,12 +188,25 @@ impl App {
                 self.error = Some(error);
             }
             Message::RunsLoaded { job_id, runs } => {
-                // A reply for a job the cursor has since left is stale; drop it.
-                if self.runs_job == Some(job_id) {
-                    self.runs = Load::Loaded(runs);
+                if self.runs_inflight == Some(job_id) {
+                    self.runs_inflight = None;
                 }
+                if self.runs_job == Some(job_id) {
+                    // Shown now and cached for the next visit: two owners, hence the clone.
+                    self.runs = Load::Loaded(runs.clone());
+                }
+                self.runs_cache.insert(
+                    job_id,
+                    Cached {
+                        at: self.ticks,
+                        value: runs,
+                    },
+                );
             }
             Message::RunsFailed { job_id, error } => {
+                if self.runs_inflight == Some(job_id) {
+                    self.runs_inflight = None;
+                }
                 if self.runs_job == Some(job_id) {
                     self.runs = Load::Failed(error);
                 }
@@ -182,6 +238,42 @@ impl App {
     #[must_use]
     pub fn spinner_glyph(&self) -> char {
         SPINNER.get(self.spinner).copied().unwrap_or(' ')
+    }
+
+    /// A runs fetch is scheduled or in flight for the shown job.
+    #[must_use]
+    pub const fn runs_busy(&self) -> bool {
+        self.pending_runs.is_some() || self.runs_inflight.is_some()
+    }
+
+    /// How old the jobs list on screen is.
+    #[must_use]
+    pub fn jobs_age(&self) -> Option<Duration> {
+        self.jobs_fetched_at
+            .map(|at| TICK.saturating_mul(u32::try_from(self.age_ticks(at)).unwrap_or(u32::MAX)))
+    }
+
+    const fn age_ticks(&self, at: u64) -> u64 {
+        self.ticks.saturating_sub(at)
+    }
+
+    /// One jobs fetch at a time; the list on screen stays until the new one lands.
+    fn refresh_jobs(&mut self, commands: &mut Vec<Command>) {
+        if !self.loading {
+            self.loading = true;
+            commands.push(Command::FetchJobs);
+        }
+    }
+
+    /// Refetches the shown job's runs now, skipping the debounce and the cache.
+    fn refresh_runs(&mut self, commands: &mut Vec<Command>) {
+        if let Some(job_id) = self.runs_job
+            && self.runs_inflight.is_none()
+        {
+            self.pending_runs = None;
+            self.runs_inflight = Some(job_id);
+            commands.push(Command::FetchRuns { job_id });
+        }
     }
 
     /// What the status panel says about the list: `mine only · /gold · 22 of 85`. Never a
@@ -216,6 +308,14 @@ impl App {
             Key::Char('m') => {
                 self.filter.mine_only = !self.filter.mine_only;
                 self.apply_filter();
+            }
+            Key::Char('r') => match self.focus {
+                Panel::Main => self.refresh_runs(commands),
+                Panel::Status | Panel::Jobs | Panel::Pipelines => self.refresh_jobs(commands),
+            },
+            Key::Char('R') => {
+                self.refresh_jobs(commands);
+                self.refresh_runs(commands);
             }
             Key::Tab => self.set_focus(self.focus.next_side()),
             Key::Enter => self.set_focus(Panel::Main),
@@ -308,12 +408,20 @@ impl App {
             return;
         }
         self.runs_job = selected;
-        self.runs = if selected.is_some() {
-            Load::Loading
-        } else {
-            Load::Idle
+        let Some(job_id) = selected else {
+            self.runs = Load::Idle;
+            self.pending_runs = None;
+            return;
         };
-        self.pending_runs = selected.map(|job_id| (job_id, RUNS_DEBOUNCE_TICKS));
+        let Some(cached) = self.runs_cache.get(&job_id) else {
+            self.runs = Load::Loading;
+            self.pending_runs = Some((job_id, RUNS_DEBOUNCE_TICKS));
+            return;
+        };
+        // Show what we have at once; refetch behind it only if it has gone stale.
+        self.runs = Load::Loaded(cached.value.clone());
+        let stale = self.age_ticks(cached.at) >= RUNS_TTL_TICKS;
+        self.pending_runs = stale.then_some((job_id, RUNS_DEBOUNCE_TICKS));
     }
 
     fn next_tab(&mut self) {
@@ -546,7 +654,7 @@ pub mod tests {
         let mut app = loaded();
         app.update(key(Key::Char('j')));
         app.update(key(Key::Char('j')));
-        assert!(app.runs.is_loading());
+        assert!(app.runs_busy());
         assert_eq!(app.update(Message::Tick), vec![]);
         assert_eq!(app.update(Message::Tick), vec![]);
         assert_eq!(
@@ -574,7 +682,7 @@ pub mod tests {
     }
 
     #[test]
-    fn stale_runs_are_dropped() {
+    fn replies_for_other_jobs_are_not_shown() {
         let mut app = loaded();
         app.update(key(Key::Char('j')));
         app.update(Message::RunsLoaded {
@@ -714,6 +822,129 @@ pub mod tests {
         assert_eq!(names(&app), ["mine"]);
         press(&mut app, "m");
         assert_eq!(names(&app), ["mine", "theirs"]);
+    }
+
+    fn ticks(app: &mut App, n: u64) -> Vec<Command> {
+        (0..n).flat_map(|_| app.update(Message::Tick)).collect()
+    }
+
+    #[test]
+    fn revisiting_a_job_within_ttl_uses_the_cache() {
+        let mut app = loaded();
+        assert_eq!(ticks(&mut app, 3), vec![Command::FetchRuns { job_id: 1 }]);
+        let runs = vec![run(10, 1000, 2000, Some(ResultState::Success))];
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: runs.clone(),
+        });
+        press(&mut app, "j");
+        assert_eq!(ticks(&mut app, 3), vec![Command::FetchRuns { job_id: 2 }]);
+        app.update(Message::RunsLoaded {
+            job_id: 2,
+            runs: vec![],
+        });
+        press(&mut app, "k");
+        assert_eq!(app.runs, Load::Loaded(runs));
+        assert!(!app.runs_busy());
+        assert_eq!(ticks(&mut app, 600), vec![], "a minute of ticks, no calls");
+    }
+
+    #[test]
+    fn stale_cache_is_shown_then_refreshed() {
+        let mut app = loaded();
+        ticks(&mut app, 3);
+        let runs = vec![run(10, 1000, 2000, None)];
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: runs.clone(),
+        });
+        press(&mut app, "j");
+        ticks(&mut app, RUNS_TTL_TICKS);
+        press(&mut app, "k");
+        assert_eq!(app.runs, Load::Loaded(runs), "stale data shown at once");
+        assert!(app.runs_busy());
+        assert_eq!(ticks(&mut app, 3), vec![Command::FetchRuns { job_id: 1 }]);
+    }
+
+    #[test]
+    fn background_refresh_after_ttl() {
+        let mut app = loaded();
+        ticks(&mut app, 3);
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: vec![],
+        });
+        assert_eq!(
+            ticks(&mut app, RUNS_TTL_TICKS),
+            vec![Command::FetchRuns { job_id: 1 }]
+        );
+        assert_eq!(ticks(&mut app, 50), vec![], "one refresh while in flight");
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: vec![],
+        });
+        let commands = ticks(&mut app, JOBS_TTL_TICKS);
+        assert!(commands.contains(&Command::FetchJobs));
+        assert!(app.loading);
+        assert_eq!(
+            ticks(&mut app, JOBS_TTL_TICKS),
+            vec![],
+            "no second jobs fetch while loading"
+        );
+    }
+
+    #[test]
+    fn r_refreshes_the_focused_panel_and_shift_r_everything() {
+        let mut app = loaded();
+        ticks(&mut app, 3);
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: vec![],
+        });
+        assert_eq!(app.update(key(Key::Char('r'))), vec![Command::FetchJobs]);
+        assert!(app.loading);
+        assert_eq!(
+            app.update(key(Key::Char('r'))),
+            vec![],
+            "one jobs fetch at a time"
+        );
+        app.update(Message::JobsLoaded(vec![job(1, "a")]));
+        press(&mut app, "0");
+        assert_eq!(
+            app.update(key(Key::Char('r'))),
+            vec![Command::FetchRuns { job_id: 1 }]
+        );
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: vec![],
+        });
+        assert_eq!(
+            app.update(key(Key::Char('R'))),
+            vec![Command::FetchJobs, Command::FetchRuns { job_id: 1 }]
+        );
+    }
+
+    #[test]
+    fn jobs_age_counts_ticks() {
+        let mut app = app();
+        assert_eq!(app.jobs_age(), None);
+        app.update(Message::JobsLoaded(vec![]));
+        ticks(&mut app, 25);
+        assert_eq!(app.jobs_age(), Some(Duration::from_millis(2500)));
+    }
+
+    #[test]
+    fn replies_for_other_jobs_are_cached_for_later() {
+        let mut app = loaded();
+        let runs = vec![run(30, 1000, 2000, None)];
+        app.update(Message::RunsLoaded {
+            job_id: 3,
+            runs: runs.clone(),
+        });
+        assert_eq!(app.runs, Load::Loading);
+        press(&mut app, "G");
+        assert_eq!(app.runs, Load::Loaded(runs));
+        assert_eq!(ticks(&mut app, 3), vec![], "no fetch for a cached job");
     }
 
     #[test]

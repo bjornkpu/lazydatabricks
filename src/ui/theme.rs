@@ -45,6 +45,13 @@ pub fn clock(ts: Timestamp, tz: &TimeZone) -> String {
     ts.to_zoned(tz.clone()).strftime("%m/%d %H:%M").to_string()
 }
 
+/// `12s ago`, `3m05s ago`: how old the data on screen is.
+#[must_use]
+pub fn age(d: std::time::Duration) -> String {
+    let d = SignedDuration::try_from(d).unwrap_or(SignedDuration::MAX);
+    format!("{} ago", duration(d))
+}
+
 /// Compact duration: `58s`, `1m12s`, `2h05m`, `3d01h`. Negative durations read as `0s`.
 #[must_use]
 pub fn duration(d: SignedDuration) -> String {
@@ -69,6 +76,12 @@ mod tests {
         assert_eq!(duration(SignedDuration::from_secs(3725)), "1h02m");
         assert_eq!(duration(SignedDuration::from_secs(90_000)), "1d01h");
         assert_eq!(duration(SignedDuration::from_secs(-5)), "0s");
+    }
+
+    #[test]
+    fn age_reads_naturally() {
+        assert_eq!(age(std::time::Duration::from_millis(2500)), "2s ago");
+        assert_eq!(age(std::time::Duration::from_secs(125)), "2m05s ago");
     }
 
     #[test]

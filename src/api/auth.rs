@@ -2,6 +2,7 @@
 //! handles OAuth, PATs and keyring storage; we only read `~/.databrickscfg` for the host.
 
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
@@ -10,10 +11,29 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 struct TokenResponse {
     access_token: String,
+    /// Seconds until expiry. The CLI always sends it; 3600 is its documented value.
+    expires_in: Option<u64>,
+}
+
+/// A bearer token and when it stops working. Never written to disk: the CLI's keyring is the
+/// source of truth and minting again is cheap.
+#[derive(Debug, Clone)]
+pub struct Token {
+    pub access_token: String,
+    expires_at: Instant,
+}
+
+impl Token {
+    /// True once less than `margin` of the token's life is left, so callers refresh before a
+    /// request can fail on expiry.
+    #[must_use]
+    pub fn expires_within(&self, margin: Duration) -> bool {
+        self.expires_at.saturating_duration_since(Instant::now()) <= margin
+    }
 }
 
 /// Mints a bearer token for `profile` by shelling out to the Databricks CLI.
-pub fn token(profile: &str) -> Result<String> {
+pub fn mint(profile: &str) -> Result<Token> {
     let out = Command::new("databricks")
         .args(["auth", "token", "-p", profile])
         .output()
@@ -27,7 +47,13 @@ pub fn token(profile: &str) -> Result<String> {
     );
     let parsed: TokenResponse = serde_json::from_slice(&out.stdout)
         .context("unexpected output from `databricks auth token`")?;
-    Ok(parsed.access_token)
+    let expires_at = Instant::now()
+        .checked_add(Duration::from_secs(parsed.expires_in.unwrap_or(3600)))
+        .context("token expiry out of range")?;
+    Ok(Token {
+        access_token: parsed.access_token,
+        expires_at,
+    })
 }
 
 /// Reads the workspace host for `profile` from `~/.databrickscfg`.
@@ -70,6 +96,23 @@ host = https://adb-2.azuredatabricks.net
 hostname_unrelated = nope
 auth_type = databricks-cli
 ";
+
+    #[test]
+    fn token_expiry_margin() {
+        let token = |secs| Token {
+            access_token: String::new(),
+            expires_at: Instant::now()
+                .checked_add(Duration::from_secs(secs))
+                .unwrap(),
+        };
+        let margin = Duration::from_secs(300);
+        assert!(!token(3600).expires_within(margin));
+        assert!(token(60).expires_within(margin));
+        assert!(
+            token(0).expires_within(margin),
+            "already expired counts too"
+        );
+    }
 
     #[test]
     fn finds_host_and_strips_trailing_slash() {

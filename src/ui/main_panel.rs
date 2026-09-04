@@ -12,7 +12,7 @@ use crate::app::{App, Load, Panel, Tab};
 
 pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
     let mut title = tabs_title(app);
-    if app.runs.is_loading() {
+    if app.runs_busy() {
         title.push_span(Span::raw(format!(" {}", app.spinner_glyph())));
     }
     let block = chrome::panel(Panel::Main, app.focus == Panel::Main, title, None);

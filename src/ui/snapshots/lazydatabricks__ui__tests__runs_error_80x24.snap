@@ -2,9 +2,9 @@
 source: src/ui/mod.rs
 expression: render(&app)
 ---
-"┌─[1]─Status──────────────┐┌─[0]─Runs - Detail─────────────────────────────────┐"
+"┌─[1]─Status──────────────┐┌─[0]─Runs - Detail ⠋───────────────────────────────┐"
 "│◐ dev → adb-1.azuredatabr││HTTP status client error (429 Too Many Requests)   │"
-"│3 of 3                   ││for url                                            │"
+"│3 of 3 · 0s ago          ││for url                                            │"
 "└─────────────────────────┘│(https://adb-1.azuredatabricks.net/api/2.2/jobs/run│"
 "┌─[2]─Jobs────────────────┐│s/list?job_id=1&limit=25)                          │"
 "│[someone] okonomi_gold   ││                                                   │"

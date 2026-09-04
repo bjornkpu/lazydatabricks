@@ -9,7 +9,7 @@ mod app;
 mod ui;
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::Instant;
 
 use anyhow::{Result, bail};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -17,12 +17,10 @@ use jiff::tz::TimeZone;
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
 
-use crate::app::{App, Command, Key, Message};
+use crate::app::{App, Command, Key, Message, TICK};
 
 /// Upper bound on jobs fetched across pages. Becomes config at M7.
 const MAX_JOBS: usize = 200;
-/// How long the input thread waits for a key before sending a `Tick`; also the spinner rate.
-const TICK: Duration = Duration::from_millis(100);
 /// Messages buffered between producers and the update loop.
 const CHANNEL_CAPACITY: usize = 64;
 
@@ -62,6 +60,9 @@ async fn run(
         for command in app.update(message) {
             match command {
                 Command::Quit => return Ok(()),
+                Command::FetchJobs => {
+                    tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone()));
+                }
                 Command::FetchRuns { job_id } => {
                     tokio::spawn(fetch_runs(Arc::clone(&client), tx.clone(), job_id));
                 }
@@ -101,25 +102,36 @@ async fn fetch_runs(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id:
 }
 
 /// Reads terminal events on a plain thread, since crossterm's reader blocks. Sends a `Tick`
-/// whenever `TICK` passes without a key. Exits when the channel closes or the terminal read
-/// fails.
+/// every `TICK` of wall-clock time, keys or no keys, so the app's tick count stays a usable
+/// clock. Exits when the channel closes or the terminal read fails.
 fn spawn_input(tx: mpsc::Sender<Message>) {
     std::thread::spawn(move || {
-        while let Ok(message) = next_message() {
-            if let Some(message) = message
+        let mut last_tick = Instant::now();
+        loop {
+            let until_tick = TICK.saturating_sub(last_tick.elapsed());
+            let Ok(key) = read_key(until_tick) else {
+                return;
+            };
+            if let Some(message) = key
                 && tx.blocking_send(message).is_err()
             {
                 return;
+            }
+            if last_tick.elapsed() >= TICK {
+                last_tick = Instant::now();
+                if tx.blocking_send(Message::Tick).is_err() {
+                    return;
+                }
             }
         }
     });
 }
 
-/// Blocks for at most `TICK`, then converts what happened into a `Message`. `None` for events
-/// the app has no use for.
-fn next_message() -> Result<Option<Message>> {
-    if !event::poll(TICK)? {
-        return Ok(Some(Message::Tick));
+/// Waits up to `timeout` for a terminal event and converts a key press into a `Message`.
+/// `None` for timeouts and events the app has no use for.
+fn read_key(timeout: std::time::Duration) -> Result<Option<Message>> {
+    if !event::poll(timeout)? {
+        return Ok(None);
     }
     let Event::Key(key) = event::read()? else {
         return Ok(None);
