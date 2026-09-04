@@ -3,9 +3,9 @@
 use jiff::SignedDuration;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
+use ratatui::widgets::{Block, Cell, Paragraph, Row, Table};
 
 use super::{chrome, theme};
 use crate::app::{App, Load, Panel, Tab};
@@ -44,11 +44,7 @@ fn tabs_title(app: &App) -> Line<'static> {
 fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
     let runs = match &app.runs {
         Load::Failed(error) => {
-            let paragraph = Paragraph::new(error.as_str())
-                .style(Style::new().fg(Color::Red))
-                .wrap(Wrap { trim: false })
-                .block(block);
-            frame.render_widget(paragraph, area);
+            frame.render_widget(chrome::error(error, block), area);
             return;
         }
         Load::Loaded(runs) => runs.as_slice(),

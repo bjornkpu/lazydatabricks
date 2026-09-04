@@ -83,6 +83,7 @@ mod tests {
     use crate::api::models::ResultState;
     use crate::app::tests::{api_call, app, job, run, theirs};
     use crate::app::{Key, Message};
+    use crate::error::AppError;
 
     fn render(app: &App) -> String {
         let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
@@ -173,7 +174,11 @@ mod tests {
         let mut app = loaded();
         app.update(Message::RunsFailed {
             job_id: 1,
-            error: "HTTP status client error (429 Too Many Requests) for url (https://adb-1.azuredatabricks.net/api/2.2/jobs/runs/list?job_id=1&limit=25)".to_owned(),
+            error: AppError::Http {
+                status: 429,
+                path: "/api/2.2/jobs/runs/list?job_id=1&limit=25".to_owned(),
+                message: "REQUEST_LIMIT_EXCEEDED: Too many requests".to_owned(),
+            },
         });
         insta::assert_snapshot!(render(&app));
     }
@@ -251,18 +256,22 @@ mod tests {
     #[test]
     fn me_failed_80x24() {
         let mut app = with_runs();
-        app.update(Message::MeFailed(
-            "HTTP status client error (403 Forbidden)".to_owned(),
-        ));
+        app.update(Message::MeFailed(AppError::Unauthorized {
+            status: 401,
+            path: "/api/2.0/preview/scim/v2/Me".to_owned(),
+            profile: "dev".to_owned(),
+        }));
         insta::assert_snapshot!(render(&app));
     }
 
     #[test]
     fn error_80x24() {
         let mut app = app();
-        app.update(Message::JobsFailed(
-            "HTTP status client error (403 Forbidden) for url (https://adb-1.azuredatabricks.net/api/2.2/jobs/list?limit=25)".to_owned(),
-        ));
+        app.update(Message::JobsFailed(AppError::Unauthorized {
+            status: 401,
+            path: "/api/2.2/jobs/list?limit=25".to_owned(),
+            profile: "dev".to_owned(),
+        }));
         insta::assert_snapshot!(render(&app));
     }
 }

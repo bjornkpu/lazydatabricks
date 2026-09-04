@@ -11,7 +11,7 @@ edition = "2024"
 ratatui = "0.30"                                   # TUI rendering; TestBackend for snapshot tests
 crossterm = "0.29"                                 # terminal events; only main.rs imports it
 anyhow = "1"                                       # error context at the binary boundary
-# thiserror = "2"                                    # AppError enum (M8)
+thiserror = "2"                                    # AppError enum (M8)
 serde = { version = "1", features = ["derive"] }   # serialisation / deserialisation
 serde_json = "1"                                   # Databricks REST bodies, CLI token output
 reqwest = { version = "0.13", features = ["json", "query"] } # HTTP client

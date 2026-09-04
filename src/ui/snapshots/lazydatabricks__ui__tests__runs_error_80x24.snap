@@ -3,10 +3,10 @@ source: src/ui/mod.rs
 expression: render(&app)
 ---
 "┌─[1]─Status──────────────┐┌─[0]─Runs - Detail ⠋───────────────────────────────┐"
-"│◐ dev → adb-1.azuredatabr││HTTP status client error (429 Too Many Requests)   │"
-"│3 of 3 · 0s ago          ││for url                                            │"
-"└─────────────────────────┘│(https://adb-1.azuredatabricks.net/api/2.2/jobs/run│"
-"┌─[2]─Jobs────────────────┐│s/list?job_id=1&limit=25)                          │"
+"│◐ dev → adb-1.azuredatabr││HTTP 429 for                                       │"
+"│3 of 3 · 0s ago          ││/api/2.2/jobs/runs/list?job_id=1&limit=25:         │"
+"└─────────────────────────┘│REQUEST_LIMIT_EXCEEDED: Too many requests          │"
+"┌─[2]─Jobs────────────────┐│                                                   │"
 "│[someone] okonomi_gold   ││                                                   │"
 "│nightly_bronze_ingest    ││                                                   │"
 "│weekly_report            ││                                                   │"

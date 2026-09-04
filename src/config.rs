@@ -4,11 +4,11 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use serde::Deserialize;
 
 use crate::app::{Action, Key};
+use crate::error::AppError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -54,9 +54,9 @@ pub struct Loaded {
 
 /// Reads the config file if present. A missing file is defaults; an unreadable or invalid one
 /// is an error, since silently ignoring a typo would be worse.
-pub fn load() -> Result<Loaded> {
+pub fn load() -> Result<Loaded, AppError> {
     let path = ProjectDirs::from("", "", "lazydatabricks")
-        .context("could not determine the config directory")?
+        .ok_or(AppError::ConfigDir)?
         .config_dir()
         .join("config.toml");
     let text = match std::fs::read_to_string(&path) {
@@ -69,10 +69,16 @@ pub fn load() -> Result<Loaded> {
             });
         }
         Err(error) => {
-            return Err(error).with_context(|| format!("could not read {}", path.display()));
+            return Err(AppError::FileRead {
+                path: path.display().to_string(),
+                detail: error.to_string(),
+            });
         }
     };
-    let config = parse(&text).with_context(|| format!("invalid config {}", path.display()))?;
+    let config = parse(&text).map_err(|detail| AppError::ConfigParse {
+        path: path.display().to_string(),
+        detail,
+    })?;
     Ok(Loaded {
         config,
         path,
@@ -80,8 +86,8 @@ pub fn load() -> Result<Loaded> {
     })
 }
 
-fn parse(text: &str) -> Result<Config> {
-    Ok(toml::from_str(text)?)
+fn parse(text: &str) -> Result<Config, String> {
+    toml::from_str(text).map_err(|error| error.to_string())
 }
 
 #[cfg(test)]
@@ -120,11 +126,9 @@ mod tests {
 
     #[test]
     fn typos_are_errors() {
-        let error = parse("max_job = 5").unwrap_err().to_string();
+        let error = parse("max_job = 5").unwrap_err();
         assert!(error.contains("max_job"), "{error}");
-        let error = parse("[keys]\nnext_tab = [\"ctrl+x\"]")
-            .unwrap_err()
-            .to_string();
+        let error = parse("[keys]\nnext_tab = [\"ctrl+x\"]").unwrap_err();
         assert!(error.contains("ctrl+x"), "{error}");
         assert!(parse("[keys]\nfly = [\"f\"]").is_err());
     }

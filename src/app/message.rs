@@ -6,6 +6,7 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use crate::api::models::{Job, Run};
+use crate::error::AppError;
 
 /// A key press, decoupled from the terminal library. Parsed from config via `FromStr` in
 /// `keys.rs`.
@@ -42,20 +43,19 @@ pub enum Message {
     /// Periodic heartbeat from the input thread; drives the spinner and debounces fetches.
     Tick,
     JobsLoaded(Vec<Job>),
-    /// The fetch failed. The string is the full error chain, ready to display.
-    JobsFailed(String),
+    JobsFailed(AppError),
     RunsLoaded {
         job_id: i64,
         runs: Vec<Run>,
     },
     RunsFailed {
         job_id: i64,
-        error: String,
+        error: AppError,
     },
     ApiCalled(ApiCall),
     /// Who the token belongs to, as an email.
     MeLoaded(String),
-    MeFailed(String),
+    MeFailed(AppError),
 }
 
 /// Side effects `update` asks `main` to perform. `update` itself never does IO.

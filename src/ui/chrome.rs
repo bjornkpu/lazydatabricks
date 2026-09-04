@@ -2,9 +2,10 @@
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Block;
+use ratatui::widgets::{Block, Paragraph, Wrap};
 
 use crate::app::Panel;
+use crate::error::AppError;
 
 /// A bordered panel titled `─[n]─Name`, accented when focused. `suffix` continues the title
 /// (a spinner, the tab list); `counter` is the `n of m` bottom-right.
@@ -32,6 +33,14 @@ pub fn panel(
         block = block.title_bottom(Line::from(counter.to_owned()).right_aligned());
     }
     block
+}
+
+/// A failure in place of a panel's content: red, wrapped, worded by `AppError`.
+pub fn error(error: &AppError, block: Block<'static>) -> Paragraph<'static> {
+    Paragraph::new(error.to_string())
+        .style(Style::new().fg(Color::Red))
+        .wrap(Wrap { trim: false })
+        .block(block)
 }
 
 /// Highlight for the selected row: loud when the panel is focused, dim when it is not, so the

@@ -44,7 +44,7 @@ listed one does. Ask before adding anything not on the list.
 - Follow the ponytail rule: smallest working change. No speculative abstractions, no traits
   with one implementation, no config for constants.
 - Typestate pattern (see namtao page) for states that must not be mixed at runtime.
-- Errors: `Result` everywhere, `color-eyre` at the top level when added. Never swallow errors.
+- Errors: `Result<_, AppError>` everywhere (`src/error.rs`, thiserror), `anyhow` only in `main`. Never swallow errors.
 - Every non-trivial branch, parser, or state transition leaves one test behind.
 
 ## Architecture (LLM-first: everything must be checkable as text)

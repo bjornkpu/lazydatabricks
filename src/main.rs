@@ -7,6 +7,7 @@
 mod api;
 mod app;
 mod config;
+mod error;
 mod ui;
 
 use std::sync::Arc;
@@ -78,7 +79,7 @@ async fn run(
 async fn fetch_jobs(client: Arc<api::Client>, tx: mpsc::Sender<Message>, max: usize) {
     let message = match client.list_jobs(max).await {
         Ok(jobs) => Message::JobsLoaded(jobs),
-        Err(error) => Message::JobsFailed(format!("{error:#}")),
+        Err(error) => Message::JobsFailed(error),
     };
     // A closed channel means the app already quit; nobody is left to tell.
     let _ = tx.send(message).await;
@@ -88,7 +89,7 @@ async fn fetch_jobs(client: Arc<api::Client>, tx: mpsc::Sender<Message>, max: us
 async fn fetch_me(client: Arc<api::Client>, tx: mpsc::Sender<Message>) {
     let message = match client.me().await {
         Ok(email) => Message::MeLoaded(email),
-        Err(error) => Message::MeFailed(format!("{error:#}")),
+        Err(error) => Message::MeFailed(error),
     };
     let _ = tx.send(message).await;
 }
@@ -96,10 +97,7 @@ async fn fetch_me(client: Arc<api::Client>, tx: mpsc::Sender<Message>) {
 async fn fetch_runs(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id: i64) {
     let message = match client.list_runs(job_id).await {
         Ok(runs) => Message::RunsLoaded { job_id, runs },
-        Err(error) => Message::RunsFailed {
-            job_id,
-            error: format!("{error:#}"),
-        },
+        Err(error) => Message::RunsFailed { job_id, error },
     };
     let _ = tx.send(message).await;
 }

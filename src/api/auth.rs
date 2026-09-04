@@ -1,11 +1,13 @@
 //! Host and token discovery. Authentication is delegated to the Databricks CLI, which already
 //! handles OAuth, PATs and keyring storage; we only read `~/.databrickscfg` for the host.
 
+use std::io::ErrorKind;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
+
+use crate::error::AppError;
 
 /// The part of `databricks auth token` output we use.
 #[derive(Deserialize)]
@@ -33,23 +35,33 @@ impl Token {
 }
 
 /// Mints a bearer token for `profile` by shelling out to the Databricks CLI.
-pub fn mint(profile: &str) -> Result<Token> {
+pub fn mint(profile: &str) -> Result<Token, AppError> {
+    let failed = |detail: String| AppError::CliFailed {
+        profile: profile.to_owned(),
+        detail,
+    };
     let out = Command::new("databricks")
         .args(["auth", "token", "-p", profile])
         .output()
-        .context(
-            "could not run `databricks`; install the CLI: winget install Databricks.DatabricksCLI",
-        )?;
-    ensure!(
-        out.status.success(),
-        "`databricks auth token -p {profile}` failed: {}",
-        String::from_utf8_lossy(&out.stderr).trim()
-    );
-    let parsed: TokenResponse = serde_json::from_slice(&out.stdout)
-        .context("unexpected output from `databricks auth token`")?;
+        .map_err(|error| {
+            if error.kind() == ErrorKind::NotFound {
+                AppError::CliMissing
+            } else {
+                failed(error.to_string())
+            }
+        })?;
+    if !out.status.success() {
+        return Err(failed(
+            String::from_utf8_lossy(&out.stderr).trim().to_owned(),
+        ));
+    }
+    let parsed: TokenResponse =
+        serde_json::from_slice(&out.stdout).map_err(|error| AppError::CliOutput {
+            detail: error.to_string(),
+        })?;
     let expires_at = Instant::now()
         .checked_add(Duration::from_secs(parsed.expires_in.unwrap_or(3600)))
-        .context("token expiry out of range")?;
+        .ok_or_else(|| AppError::Internal("token expiry out of range".to_owned()))?;
     Ok(Token {
         access_token: parsed.access_token,
         expires_at,
@@ -57,14 +69,18 @@ pub fn mint(profile: &str) -> Result<Token> {
 }
 
 /// Reads the workspace host for `profile` from `~/.databrickscfg`.
-pub fn host(profile: &str) -> Result<String> {
+pub fn host(profile: &str) -> Result<String, AppError> {
     let path = std::env::home_dir()
-        .context("could not determine home directory")?
+        .ok_or(AppError::HomeDir)?
         .join(".databrickscfg");
-    let cfg = std::fs::read_to_string(&path)
-        .with_context(|| format!("could not read {}", path.display()))?;
-    host_from_cfg(&cfg, profile)
-        .with_context(|| format!("no host for profile [{profile}] in {}", path.display()))
+    let cfg = std::fs::read_to_string(&path).map_err(|error| AppError::FileRead {
+        path: path.display().to_string(),
+        detail: error.to_string(),
+    })?;
+    host_from_cfg(&cfg, profile).ok_or_else(|| AppError::NoHost {
+        profile: profile.to_owned(),
+        path: path.display().to_string(),
+    })
 }
 
 /// Minimal INI scan: the `host` key inside the `[profile]` section. Trailing slash dropped so

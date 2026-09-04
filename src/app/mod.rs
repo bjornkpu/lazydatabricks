@@ -18,6 +18,7 @@ pub use message::{ApiCall, Command, Key, Message};
 
 use crate::api::models::{Job, Run};
 use crate::config::Loaded;
+use crate::error::AppError;
 
 /// Spinner frames, one per `Tick` while loading.
 pub const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -47,8 +48,7 @@ pub enum Load<T> {
     Idle,
     Loading,
     Loaded(T),
-    /// The full error chain, ready to display.
-    Failed(String),
+    Failed(AppError),
 }
 
 /// All application state. Rendering is a pure function of this.
@@ -73,7 +73,7 @@ pub struct App {
     pub ticks: u64,
     /// Who the token belongs to, once the SCIM call has answered.
     pub me: Option<Me>,
-    pub me_error: Option<String>,
+    pub me_error: Option<AppError>,
     /// Every job fetched. `jobs` is the filtered view of this.
     pub all_jobs: Vec<Job>,
     /// The visible jobs, with the cursor.
@@ -88,7 +88,7 @@ pub struct App {
     jobs_fetched_at: Option<u64>,
     /// Index into `SPINNER`.
     pub spinner: usize,
-    pub error: Option<String>,
+    pub error: Option<AppError>,
     pub focus: Panel,
     /// The side panel whose selection the main panel shows. Always a side panel.
     pub context: Panel,
@@ -550,6 +550,14 @@ pub mod tests {
         }
     }
 
+    fn boom() -> AppError {
+        AppError::Internal("boom".to_owned())
+    }
+
+    fn nope() -> AppError {
+        AppError::Internal("nope".to_owned())
+    }
+
     pub fn app() -> App {
         App::new(
             "dev",
@@ -632,15 +640,15 @@ pub mod tests {
     #[test]
     fn failure_stops_loading_and_keeps_message() {
         let mut app = app();
-        app.update(Message::JobsFailed("boom".to_owned()));
+        app.update(Message::JobsFailed(boom()));
         assert!(!app.loading);
-        assert_eq!(app.error.as_deref(), Some("boom"));
+        assert_eq!(app.error, Some(boom()));
     }
 
     #[test]
     fn success_after_failure_clears_error() {
         let mut app = app();
-        app.update(Message::JobsFailed("boom".to_owned()));
+        app.update(Message::JobsFailed(boom()));
         app.update(Message::JobsLoaded(vec![job(1, "a")]));
         assert_eq!(app.error, None);
     }
@@ -752,14 +760,14 @@ pub mod tests {
         let mut app = loaded();
         app.update(Message::RunsFailed {
             job_id: 2,
-            error: "nope".to_owned(),
+            error: nope(),
         });
         assert_eq!(app.runs, Load::Loading);
         app.update(Message::RunsFailed {
             job_id: 1,
-            error: "nope".to_owned(),
+            error: nope(),
         });
-        assert_eq!(app.runs, Load::Failed("nope".to_owned()));
+        assert_eq!(app.runs, Load::Failed(nope()));
     }
 
     #[test]
@@ -1049,8 +1057,8 @@ pub mod tests {
     #[test]
     fn me_failure_is_kept() {
         let mut app = app();
-        app.update(Message::MeFailed("403".to_owned()));
-        assert_eq!(app.me_error.as_deref(), Some("403"));
+        app.update(Message::MeFailed(boom()));
+        assert_eq!(app.me_error, Some(boom()));
         app.update(Message::MeLoaded("someone@example.com".to_owned()));
         assert_eq!(app.me_error, None);
         assert_eq!(app.me.as_ref().map(|me| me.tag.as_str()), Some("someone"));

@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListState, Paragraph, Wrap};
+use ratatui::widgets::{List, ListState, Paragraph};
 
 use super::{chrome, theme};
 use crate::app::{App, Panel};
@@ -58,11 +58,7 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
     let counter = app.jobs.counter();
     let block = chrome::panel(Panel::Jobs, focused, suffix, Some(&counter));
     if let Some(error) = &app.error {
-        let paragraph = Paragraph::new(error.as_str())
-            .style(Style::new().fg(Color::Red))
-            .wrap(Wrap { trim: false })
-            .block(block);
-        frame.render_widget(paragraph, area);
+        frame.render_widget(chrome::error(error, block), area);
         return;
     }
     let names = app
