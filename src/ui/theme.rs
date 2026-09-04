@@ -4,7 +4,9 @@ use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp};
 use ratatui::style::{Color, Modifier, Style};
 
-use crate::api::models::{LifeCycleState, Pipeline, PipelineState, ResultState, Run, UpdateState};
+use crate::api::models::{
+    LifeCycleState, Pipeline, PipelineState, ResultState, Run, RunState, UpdateState,
+};
 use crate::app::App;
 use crate::config::Theme;
 
@@ -55,7 +57,12 @@ pub const fn palette(app: &App) -> Palette {
 /// Status as a glyph, not a word: colour carries the state, the glyph makes it work without.
 #[must_use]
 pub const fn run_glyph(run: &Run) -> (char, Color) {
-    match (run.state.life_cycle_state, run.state.result_state) {
+    state_glyph(&run.state)
+}
+
+#[must_use]
+pub const fn state_glyph(state: &RunState) -> (char, Color) {
+    match (state.life_cycle_state, state.result_state) {
         (_, Some(ResultState::Success)) => ('✓', Color::Green),
         (_, Some(_)) => ('✗', Color::Red),
         (
@@ -89,16 +96,26 @@ pub fn pipeline_glyph(pipeline: &Pipeline) -> (char, Color) {
 /// The result if there is one, else where the run is in its life cycle.
 #[must_use]
 pub const fn run_result(run: &Run) -> &'static str {
-    match run.state.result_state {
+    state_result(&run.state)
+}
+
+#[must_use]
+pub const fn state_result(state: &RunState) -> &'static str {
+    match state.result_state {
         Some(result) => result.as_str(),
-        None => run.state.life_cycle_state.as_str(),
+        None => state.life_cycle_state.as_str(),
     }
 }
 
 /// Wall-clock start to end, when both are known.
 #[must_use]
 pub fn run_duration(run: &Run) -> Option<SignedDuration> {
-    Some(run.end_time?.duration_since(run.start_time?))
+    span(run.start_time, run.end_time)
+}
+
+#[must_use]
+pub fn span(start: Option<Timestamp>, end: Option<Timestamp>) -> Option<SignedDuration> {
+    Some(end?.duration_since(start?))
 }
 
 /// `MM/DD HH:MM` in `tz`. Absolute times belong in tables; ages belong in side lists.

@@ -124,6 +124,13 @@ impl Client {
         Ok(page.runs)
     }
 
+    /// One run in full: state message, page URL and its tasks.
+    pub async fn get_run(&self, run_id: i64) -> Result<Run, AppError> {
+        let run_id = run_id.to_string();
+        self.get("/api/2.2/jobs/runs/get", &[("run_id", run_id.as_str())])
+            .await
+    }
+
     /// The signed-in user's name (an email). Resolved once at startup for the "mine" filter.
     pub async fn me(&self) -> Result<String, AppError> {
         let me: ScimMe = self.get("/api/2.0/preview/scim/v2/Me", &[]).await?;

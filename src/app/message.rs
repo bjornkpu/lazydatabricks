@@ -59,6 +59,12 @@ pub enum Message {
         job_id: i64,
         error: AppError,
     },
+    /// `runs/get` for the run being viewed.
+    RunDetailLoaded(Run),
+    RunDetailFailed {
+        run_id: i64,
+        error: AppError,
+    },
     ApiCalled(ApiCall),
     /// Who the token belongs to, as an email.
     MeLoaded(String),
@@ -90,6 +96,9 @@ pub enum Command {
     },
     FetchRuns {
         job_id: i64,
+    },
+    FetchRunDetail {
+        run_id: i64,
     },
     RunNow {
         job_id: i64,

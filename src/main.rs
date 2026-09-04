@@ -97,6 +97,9 @@ async fn run(
                 Command::FetchRuns { job_id } => {
                     tokio::spawn(fetch_runs(Arc::clone(&client), tx.clone(), job_id));
                 }
+                Command::FetchRunDetail { run_id } => {
+                    tokio::spawn(fetch_run_detail(Arc::clone(&client), tx.clone(), run_id));
+                }
                 Command::RunNow { job_id } => {
                     tokio::spawn(run_now(Arc::clone(&client), tx.clone(), job_id));
                 }
@@ -153,6 +156,14 @@ async fn fetch_runs(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id:
     let message = match client.list_runs(job_id).await {
         Ok(runs) => Message::RunsLoaded { job_id, runs },
         Err(error) => Message::RunsFailed { job_id, error },
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn fetch_run_detail(client: Arc<api::Client>, tx: mpsc::Sender<Message>, run_id: i64) {
+    let message = match client.get_run(run_id).await {
+        Ok(run) => Message::RunDetailLoaded(run),
+        Err(error) => Message::RunDetailFailed { run_id, error },
     };
     let _ = tx.send(message).await;
 }

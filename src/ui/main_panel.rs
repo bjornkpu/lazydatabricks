@@ -2,17 +2,20 @@
 
 use jiff::SignedDuration;
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Rect};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Cell, Paragraph, Row, Table};
+use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState};
 
 use super::{chrome, theme};
 use crate::app::{App, Load, Panel, Tab};
 
 pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
     let mut title = tabs_title(app);
-    if app.runs_busy() {
+    if let Some(run_id) = app.viewing_run {
+        title.push_span(Span::raw(format!(" › run {run_id}")));
+    }
+    if app.runs_busy() || app.run_detail == Load::Loading {
         title.push_span(Span::raw(format!(" {}", app.spinner_glyph())));
     }
     let palette = theme::palette(app);
@@ -47,17 +50,25 @@ fn tabs_title(app: &App) -> Line<'static> {
 }
 
 fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
+    if app.viewing_run.is_some() {
+        run_detail(app, block, area, frame);
+        return;
+    }
+    let palette = theme::palette(app);
     let runs = match &app.runs {
         Load::Failed(error) => {
-            frame.render_widget(chrome::error(error, block, &theme::palette(app)), area);
+            frame.render_widget(chrome::error(error, block, &palette), area);
             return;
         }
-        Load::Loaded(runs) => runs.as_slice(),
-        Load::Idle | Load::Loading => &[],
+        Load::Loaded(runs) => runs,
+        Load::Idle | Load::Loading => {
+            frame.render_widget(block, area);
+            return;
+        }
     };
     let header = Row::new(["Run ID", "Started", "Duration", "Result"])
         .style(Style::new().add_modifier(Modifier::BOLD));
-    let rows = runs.iter().map(|run| {
+    let rows = runs.items().iter().map(|run| {
         let (glyph, color) = theme::run_glyph(run);
         let started = run
             .start_time
@@ -80,7 +91,104 @@ fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
         Constraint::Length(9),
         Constraint::Fill(1),
     ];
-    frame.render_widget(Table::new(rows, widths).header(header).block(block), area);
+    let focused = app.focus == Panel::Main;
+    let table = Table::new(rows, widths)
+        .header(header)
+        .block(block)
+        .row_highlight_style(chrome::highlight(focused, &palette))
+        .highlight_symbol("› ");
+    // Local widget state built from `App`: the render stays a pure function of the app.
+    let mut state = TableState::default().with_selected(runs.selected_index());
+    frame.render_stateful_widget(table, area, &mut state);
+}
+
+/// One run in full: its fields, then its tasks.
+fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
+    let palette = theme::palette(app);
+    let run = match &app.run_detail {
+        Load::Failed(error) => {
+            frame.render_widget(chrome::error(error, block, &palette), area);
+            return;
+        }
+        Load::Loaded(run) => run,
+        Load::Idle | Load::Loading => {
+            let text = app
+                .viewing_run
+                .map_or_else(String::new, |id| format!("Loading run {id}…"));
+            frame.render_widget(Paragraph::new(text).block(block), area);
+            return;
+        }
+    };
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let [fields_area, tasks_area] =
+        Layout::vertical([Constraint::Length(7), Constraint::Fill(1)]).areas(inner);
+    let dash = || "-".to_owned();
+    let (glyph, color) = theme::run_glyph(run);
+    let result = Line::from(vec![
+        Span::styled(
+            format!("{:<15}", "Result"),
+            Style::new().add_modifier(Modifier::DIM),
+        ),
+        Span::styled(glyph.to_string(), Style::new().fg(color)),
+        Span::raw(format!(" {}", theme::run_result(run))),
+    ]);
+    let fields = vec![
+        field("Run ID", run.id.to_string()),
+        field(
+            "Started",
+            run.start_time
+                .map_or_else(dash, |ts| theme::clock(ts, &app.tz)),
+        ),
+        field(
+            "Duration",
+            theme::run_duration(run).map_or_else(dash, theme::duration),
+        ),
+        result,
+        field(
+            "Message",
+            if run.state.state_message.is_empty() {
+                dash()
+            } else {
+                run.state.state_message.clone()
+            },
+        ),
+        field(
+            "URL",
+            if run.page_url.is_empty() {
+                dash()
+            } else {
+                run.page_url.clone()
+            },
+        ),
+    ];
+    frame.render_widget(Paragraph::new(fields), fields_area);
+    let header = Row::new(["Task", "Started", "Duration", "Result"])
+        .style(Style::new().add_modifier(Modifier::BOLD));
+    let rows = run.tasks.iter().map(|task| {
+        let (glyph, color) = theme::state_glyph(&task.state);
+        let started = task
+            .start_time
+            .map_or_else(dash, |ts| theme::clock(ts, &app.tz));
+        let duration =
+            theme::span(task.start_time, task.end_time).map_or_else(dash, theme::duration);
+        Row::new([
+            Cell::from(task.task_key.clone()),
+            Cell::from(started),
+            Cell::from(duration),
+            Cell::from(Line::from(vec![
+                Span::styled(glyph.to_string(), Style::new().fg(color)),
+                Span::raw(format!(" {}", theme::state_result(&task.state))),
+            ])),
+        ])
+    });
+    let widths = [
+        Constraint::Fill(1),
+        Constraint::Length(12),
+        Constraint::Length(9),
+        Constraint::Length(12),
+    ];
+    frame.render_widget(Table::new(rows, widths).header(header), tasks_area);
 }
 
 /// The latest updates Databricks lists with the pipeline. No extra call; a handful of rows.

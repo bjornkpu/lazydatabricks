@@ -44,12 +44,12 @@ pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap) -> String {
             k(Action::Help)
         ),
         Panel::Main => format!(
-            " Tabs: {}/{} │ Back: {} │ Actions: {} │ Screen: {} │ Quit: {} │ Keys: {}",
-            k(Action::PrevTab),
-            k(Action::NextTab),
+            " Select: {}/{} │ Open: {} │ Back: {} │ Actions: {} │ Quit: {} │ Keys: {}",
+            k(Action::Down),
+            k(Action::Up),
+            k(Action::Open),
             k(Action::Back),
             k(Action::Menu),
-            k(Action::ScreenMode),
             k(Action::Quit),
             k(Action::Help)
         ),

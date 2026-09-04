@@ -63,6 +63,25 @@ pub struct Run {
     pub start_time: Option<Timestamp>,
     #[serde(default, deserialize_with = "epoch_millis")]
     pub end_time: Option<Timestamp>,
+    /// Only on `runs/get`; empty in list responses.
+    #[serde(default, rename = "run_page_url")]
+    pub page_url: String,
+    /// Only on `runs/get`; empty in list responses.
+    #[serde(default)]
+    pub tasks: Vec<TaskRun>,
+}
+
+/// One task inside a run, from `runs/get`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct TaskRun {
+    #[serde(default)]
+    pub task_key: String,
+    #[serde(default)]
+    pub state: RunState,
+    #[serde(default, deserialize_with = "epoch_millis")]
+    pub start_time: Option<Timestamp>,
+    #[serde(default, deserialize_with = "epoch_millis")]
+    pub end_time: Option<Timestamp>,
 }
 
 impl Run {
@@ -79,6 +98,8 @@ impl Run {
             },
             start_time: None,
             end_time: None,
+            page_url: String::new(),
+            tasks: Vec::new(),
         }
     }
 }
@@ -328,6 +349,7 @@ mod tests {
     const RUNS_LIST: &str = include_str!("../../tests/fixtures/runs_list.json");
     const SCIM_ME: &str = include_str!("../../tests/fixtures/scim_me.json");
     const PIPELINES_LIST: &str = include_str!("../../tests/fixtures/pipelines_list.json");
+    const RUN_GET: &str = include_str!("../../tests/fixtures/run_get.json");
 
     #[test]
     fn parses_jobs_list_fixture() {
@@ -376,6 +398,18 @@ mod tests {
         assert_eq!(running.state.life_cycle_state, LifeCycleState::Running);
         assert_eq!(running.state.result_state, None);
         assert_eq!(running.end_time, None, "end_time 0 means not finished");
+    }
+
+    #[test]
+    fn parses_run_get_fixture_with_tasks() {
+        let run: Run = serde_json::from_str(RUN_GET).unwrap();
+        assert_eq!(run.id, 50_851_892_761_073);
+        assert_eq!(run.tasks.len(), 2);
+        assert_eq!(run.tasks[1].task_key, "endring_sluttdato_fakta");
+        assert_eq!(run.tasks[1].state.result_state, Some(ResultState::Success));
+        assert!(run.page_url.starts_with("https://adb-1"));
+        let listed: Run = serde_json::from_str(r#"{"run_id":1}"#).unwrap();
+        assert!(listed.tasks.is_empty(), "list responses carry no tasks");
     }
 
     #[test]

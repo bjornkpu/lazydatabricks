@@ -376,6 +376,24 @@ mod tests {
     }
 
     #[test]
+    fn runs_cursor_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "0j");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn run_detail_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "0j");
+        app.update(Message::Key(Key::Enter));
+        let detail: crate::api::models::Run =
+            serde_json::from_str(include_str!("../../tests/fixtures/run_get.json")).unwrap();
+        app.update(Message::RunDetailLoaded(detail));
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn error_80x24() {
         let mut app = app();
         app.update(Message::JobsFailed(AppError::Unauthorized {

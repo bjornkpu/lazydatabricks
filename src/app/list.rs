@@ -26,6 +26,27 @@ impl<T> Default for Selectable<T> {
 }
 
 impl<T> Selectable<T> {
+    /// A list with the cursor on its first item.
+    #[must_use]
+    pub fn new(items: Vec<T>) -> Self {
+        let mut list = Self::default();
+        list.set_items(items);
+        list
+    }
+
+    /// Puts `item` first. The cursor keeps its index, so a cursor on the first row now sits on
+    /// the newcomer, which is what an optimistic insert wants.
+    pub fn push_front(&mut self, item: T) {
+        self.items.insert(0, item);
+        if self.selected.is_none() {
+            self.selected = Some(0);
+        }
+    }
+
+    pub const fn items_mut(&mut self) -> &mut [T] {
+        self.items.as_mut_slice()
+    }
+
     /// Replaces the items, keeping the cursor where it was if that is still a valid position.
     pub fn set_items(&mut self, items: Vec<T>) {
         self.items = items;
@@ -93,6 +114,19 @@ mod tests {
         assert_eq!(list.selected_index(), None);
         assert_eq!(list.selected(), None);
         assert_eq!(list.counter(), "0 of 0");
+    }
+
+    #[test]
+    fn new_and_push_front() {
+        let mut list = Selectable::new(vec!["b", "c"]);
+        assert_eq!(list.selected(), Some(&"b"));
+        list.apply(Move::Down);
+        list.push_front("a");
+        assert_eq!(list.items(), ["a", "b", "c"]);
+        assert_eq!(list.selected(), Some(&"b"), "cursor index kept");
+        let mut empty: Selectable<&str> = Selectable::default();
+        empty.push_front("x");
+        assert_eq!(empty.selected(), Some(&"x"));
     }
 
     #[test]

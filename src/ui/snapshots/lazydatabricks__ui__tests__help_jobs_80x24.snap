@@ -3,10 +3,10 @@ source: src/ui/mod.rs
 expression: render(&app)
 ---
 "┌─[1]─Status──────────────┐┌─[0]─Runs - Detail ⠋───────────────────────────────┐"
-"│◐ dev → adb-1.azuredatabr││Run ID           Started      Duration  Result     │"
-"│3 of 3 jobs · 0s ago   ┌ Keybindings ─ Jobs ──────────┐  -         ◐ RUNNING  │"
-"└───────────────────────│  j/↓  next job               │  1m12s     ✓ SUCCESS  │"
-"┌─[2]─Jobs──────────────│  k/↑  previous job           │  57s       ✗ FAILED   │"
+"│◐ dev → adb-1.azuredatabr││  Run ID           Started      Duration  Result   │"
+"│3 of 3 jobs · 0s ago   ┌ Keybindings ─ Jobs ──────────┐08  -         ◐ RUNNING│"
+"└───────────────────────│  j/↓  next job               │08  1m12s     ✓ SUCCESS│"
+"┌─[2]─Jobs──────────────│  k/↑  previous job           │08  57s       ✗ FAILED │"
 "│ 2h ◐ [someone] okonomi│    g  first job              │                       │"
 "│ 1d ✗ nightly_bronze_in│    G  last job               │                       │"
 "│    · weekly_report    │    /  filter by name         │                       │"

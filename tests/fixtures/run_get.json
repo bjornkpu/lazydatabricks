@@ -1,0 +1,54 @@
+{
+  "job_id": 1025322370191789,
+  "run_id": 50851892761073,
+  "creator_user_name": "someone@example.com",
+  "number_in_job": 50851892761073,
+  "original_attempt_run_id": 50851892761073,
+  "state": {
+    "life_cycle_state": "TERMINATED",
+    "result_state": "SUCCESS",
+    "state_message": "",
+    "user_cancelled_or_timedout": false
+  },
+  "start_time": 1788170893271,
+  "setup_duration": 0,
+  "execution_duration": 0,
+  "cleanup_duration": 0,
+  "end_time": 1788170965431,
+  "run_duration": 72160,
+  "trigger": "PERIODIC",
+  "run_name": "[someone] okonomi_gold",
+  "run_page_url": "https://adb-1.azuredatabricks.net/?o=1#job/1025322370191789/run/50851892761073",
+  "run_type": "JOB_RUN",
+  "tasks": [
+    {
+      "run_id": 402581794374560,
+      "task_key": "v1compat",
+      "state": {
+        "life_cycle_state": "TERMINATED",
+        "result_state": "SUCCESS",
+        "state_message": "",
+        "user_cancelled_or_timedout": false
+      },
+      "start_time": 1788170893271,
+      "end_time": 1788170938000,
+      "attempt_number": 0,
+      "spark_python_task": { "python_file": "src/v1compat.py" }
+    },
+    {
+      "run_id": 11831981220627,
+      "task_key": "endring_sluttdato_fakta",
+      "depends_on": [{ "task_key": "v1compat" }],
+      "state": {
+        "life_cycle_state": "TERMINATED",
+        "result_state": "SUCCESS",
+        "state_message": "",
+        "user_cancelled_or_timedout": false
+      },
+      "start_time": 1788170938500,
+      "end_time": 1788170965431,
+      "attempt_number": 0,
+      "spark_python_task": { "python_file": "src/endring.py" }
+    }
+  ]
+}

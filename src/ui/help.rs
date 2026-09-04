@@ -75,9 +75,12 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             (k(Action::Copy), "copy job URL"),
         ],
         Panel::Main => vec![
+            (k(Action::Down), "next run"),
+            (k(Action::Up), "previous run"),
+            (k(Action::Open), "open the run: tasks and message"),
             (k(Action::NextTab), "next tab"),
             (k(Action::PrevTab), "previous tab"),
-            (k(Action::Back), "back to the side panel"),
+            (k(Action::Back), "back: close the run, then the panel"),
             (k(Action::Menu), "actions menu"),
             (k(Action::Refresh), "refresh runs"),
             (k(Action::Browse), "open job in browser"),

@@ -116,8 +116,11 @@ pub struct App {
     /// Index into `context.tabs()`.
     pub tab: usize,
     pub mode: ScreenMode,
-    /// Runs of the selected job.
-    pub runs: Load<Vec<Run>>,
+    /// Runs of the selected job, with the main panel's cursor.
+    pub runs: Load<Selectable<Run>>,
+    /// The run opened with Enter from the runs table, if any. Esc backs out.
+    pub viewing_run: Option<i64>,
+    pub run_detail: Load<Run>,
     /// The job `runs` belongs to, or is being fetched for.
     pub runs_job: Option<i64>,
     /// Runs fetch waiting for the cursor to rest: (job, ticks left).
@@ -180,6 +183,8 @@ impl App {
             tab: 0,
             mode: ScreenMode::Normal,
             runs: Load::Idle,
+            viewing_run: None,
+            run_detail: Load::Idle,
             runs_job: None,
             pending_runs: None,
             runs_inflight: None,
@@ -239,31 +244,23 @@ impl App {
                     self.latest_runs.entry(run.job_id).or_insert(run);
                 }
             }
-            Message::RunsLoaded { job_id, runs } => {
-                if self.runs_inflight == Some(job_id) {
-                    self.runs_inflight = None;
-                }
-                if let Some(latest) = runs.first() {
-                    self.latest_runs.insert(job_id, latest.clone());
-                }
-                if self.runs_job == Some(job_id) {
-                    // Shown now and cached for the next visit: two owners, hence the clone.
-                    self.runs = Load::Loaded(runs.clone());
-                }
-                self.runs_cache.insert(
-                    job_id,
-                    Cached {
-                        at: self.ticks,
-                        value: runs,
-                    },
-                );
-            }
+            Message::RunsLoaded { job_id, runs } => self.on_runs_loaded(job_id, runs),
             Message::RunsFailed { job_id, error } => {
                 if self.runs_inflight == Some(job_id) {
                     self.runs_inflight = None;
                 }
                 if self.runs_job == Some(job_id) {
-                    self.runs = Load::Failed(error);
+                    self.show_runs(Load::Failed(error));
+                }
+            }
+            Message::RunDetailLoaded(run) => {
+                if self.viewing_run == Some(run.id) {
+                    self.run_detail = Load::Loaded(run);
+                }
+            }
+            Message::RunDetailFailed { run_id, error } => {
+                if self.viewing_run == Some(run_id) {
+                    self.run_detail = Load::Failed(error);
                 }
             }
             Message::ApiCalled(call) => {
@@ -343,12 +340,33 @@ impl App {
         }
     }
 
+    /// A job's runs arrived: cache them, show them if that job is selected, note its newest run.
+    fn on_runs_loaded(&mut self, job_id: i64, runs: Vec<Run>) {
+        if self.runs_inflight == Some(job_id) {
+            self.runs_inflight = None;
+        }
+        if let Some(latest) = runs.first() {
+            self.latest_runs.insert(job_id, latest.clone());
+        }
+        if self.runs_job == Some(job_id) {
+            // Shown now and cached for the next visit: two owners, hence the clone.
+            self.show_runs(Load::Loaded(Selectable::new(runs.clone())));
+        }
+        self.runs_cache.insert(
+            job_id,
+            Cached {
+                at: self.ticks,
+                value: runs,
+            },
+        );
+    }
+
     /// `run-now` accepted. Optimistic: show the new run at once, then reconcile with a refetch.
     fn on_run_started(&mut self, job_id: i64, run_id: i64, commands: &mut Vec<Command>) {
         self.notice = Some(format!("Started run {run_id}"));
         if self.runs_job == Some(job_id) {
             if let Load::Loaded(runs) = &mut self.runs {
-                runs.insert(0, Run::placeholder(job_id, run_id));
+                runs.push_front(Run::placeholder(job_id, run_id));
             }
             self.refresh_runs(commands);
         }
@@ -359,7 +377,7 @@ impl App {
         self.notice = Some(format!("Cancel requested for run {run_id}"));
         if self.runs_job == Some(job_id) {
             if let Load::Loaded(runs) = &mut self.runs
-                && let Some(run) = runs.iter_mut().find(|run| run.id == run_id)
+                && let Some(run) = runs.items_mut().iter_mut().find(|run| run.id == run_id)
             {
                 run.state.life_cycle_state = LifeCycleState::Terminating;
             }
@@ -420,7 +438,8 @@ impl App {
         self.pipelines_inflight.is_some()
     }
 
-    /// Refetches the shown job's runs now, skipping the debounce and the cache.
+    /// Refetches the shown job's runs now, skipping the debounce and the cache. The run being
+    /// viewed, if any, is refetched too.
     fn refresh_runs(&mut self, commands: &mut Vec<Command>) {
         if let Some(job_id) = self.runs_job
             && self.runs_inflight.is_none()
@@ -429,6 +448,40 @@ impl App {
             self.runs_inflight = Some(job_id);
             commands.push(Command::FetchRuns { job_id });
         }
+        if let Some(run_id) = self.viewing_run {
+            self.run_detail = Load::Loading;
+            commands.push(Command::FetchRunDetail { run_id });
+        }
+    }
+
+    /// Replaces the runs on screen. A cursor already on the table keeps its row.
+    fn show_runs(&mut self, runs: Load<Selectable<Run>>) {
+        let keep = match &self.runs {
+            Load::Loaded(current) => current.selected_index(),
+            Load::Idle | Load::Loading | Load::Failed(_) => None,
+        };
+        self.runs = runs;
+        if let (Load::Loaded(list), Some(index)) = (&mut self.runs, keep) {
+            for _ in 0..index {
+                list.apply(Move::Down);
+            }
+        }
+    }
+
+    /// The run under the cursor in the runs table, when the main panel shows it.
+    fn selected_run(&self) -> Option<&Run> {
+        if self.context != Panel::Jobs || self.active_tab() != Some(Tab::Runs) {
+            return None;
+        }
+        match &self.runs {
+            Load::Loaded(runs) => runs.selected(),
+            Load::Idle | Load::Loading | Load::Failed(_) => None,
+        }
+    }
+
+    fn leave_run_detail(&mut self) {
+        self.viewing_run = None;
+        self.run_detail = Load::Idle;
     }
 
     /// What the status panel says about the list: `mine only · /gold · 22 of 85`. Never a
@@ -517,9 +570,22 @@ impl App {
                 self.refresh_runs(commands);
             }
             Action::NextPanel => self.set_focus(self.focus.next_side()),
-            Action::Open => self.set_focus(Panel::Main),
+            Action::Open => {
+                if self.focus == Panel::Main
+                    && self.viewing_run.is_none()
+                    && let Some(run_id) = self.selected_run().map(|run| run.id)
+                {
+                    self.viewing_run = Some(run_id);
+                    self.run_detail = Load::Loading;
+                    commands.push(Command::FetchRunDetail { run_id });
+                } else {
+                    self.set_focus(Panel::Main);
+                }
+            }
             Action::Back => {
-                if self.focus == Panel::Main {
+                if self.viewing_run.is_some() {
+                    self.leave_run_detail();
+                } else if self.focus == Panel::Main {
                     self.set_focus(self.context);
                 }
             }
@@ -561,7 +627,15 @@ impl App {
         match self.context {
             Panel::Jobs => {
                 let job = self.jobs.selected()?;
-                Some(format!("{}/jobs/{}", self.host, job.id))
+                let run_id = self.viewing_run.or_else(|| {
+                    (self.focus == Panel::Main)
+                        .then(|| self.selected_run().map(|run| run.id))
+                        .flatten()
+                });
+                Some(run_id.map_or_else(
+                    || format!("{}/jobs/{}", self.host, job.id),
+                    |run_id| format!("{}/jobs/{}/runs/{run_id}", self.host, job.id),
+                ))
             }
             Panel::Pipelines => {
                 let pipeline = self.pipelines.selected()?;
@@ -593,14 +667,23 @@ impl App {
             job_id: job.id,
             name: job.settings.name.clone(),
         }];
-        if let Load::Loaded(runs) = &self.runs {
+        let cancel = |run: &Run| MenuItem::CancelRun {
+            job_id: job.id,
+            run_id: run.id,
+        };
+        if self.focus == Panel::Main {
+            // The table has a cursor: offer cancel for that row only.
+            if let Some(run) = self.selected_run()
+                && run.state.life_cycle_state.is_active()
+            {
+                items.push(cancel(run));
+            }
+        } else if let Load::Loaded(runs) = &self.runs {
             items.extend(
-                runs.iter()
+                runs.items()
+                    .iter()
                     .filter(|run| run.state.life_cycle_state.is_active())
-                    .map(|run| MenuItem::CancelRun {
-                        job_id: job.id,
-                        run_id: run.id,
-                    }),
+                    .map(cancel),
             );
         }
         items
@@ -701,7 +784,16 @@ impl App {
                 self.select_runs();
             }
             Panel::Pipelines => self.pipelines.apply(movement),
-            Panel::Status | Panel::Main => {}
+            Panel::Main => {
+                if self.viewing_run.is_none()
+                    && self.context == Panel::Jobs
+                    && self.active_tab() == Some(Tab::Runs)
+                    && let Load::Loaded(runs) = &mut self.runs
+                {
+                    runs.apply(movement);
+                }
+            }
+            Panel::Status => {}
         }
     }
 
@@ -712,6 +804,7 @@ impl App {
             return;
         }
         self.runs_job = selected;
+        self.leave_run_detail();
         let Some(job_id) = selected else {
             self.runs = Load::Idle;
             self.pending_runs = None;
@@ -723,7 +816,7 @@ impl App {
             return;
         };
         // Show what we have at once; refetch behind it only if it has gone stale.
-        self.runs = Load::Loaded(cached.value.clone());
+        self.runs = Load::Loaded(Selectable::new(cached.value.clone()));
         let stale = self.age_ticks(cached.at) >= self.runs_ttl_ticks;
         self.pending_runs = stale.then_some((job_id, RUNS_DEBOUNCE_TICKS));
     }
@@ -804,6 +897,8 @@ pub mod tests {
             },
             start_time: ts(start_ms),
             end_time: ts(end_ms),
+            page_url: String::new(),
+            tasks: Vec::new(),
         }
     }
 
@@ -1023,7 +1118,12 @@ pub mod tests {
         app.update(key(Key::Char('k')));
         assert_eq!(
             app.runs,
-            Load::Loaded(vec![run(10, 1000, 2000, Some(ResultState::Success))])
+            Load::Loaded(Selectable::new(vec![run(
+                10,
+                1000,
+                2000,
+                Some(ResultState::Success)
+            )]))
         );
     }
 
@@ -1042,7 +1142,12 @@ pub mod tests {
         });
         assert_eq!(
             app.runs,
-            Load::Loaded(vec![run(11, 1000, 2000, Some(ResultState::Failed))])
+            Load::Loaded(Selectable::new(vec![run(
+                11,
+                1000,
+                2000,
+                Some(ResultState::Failed)
+            )]))
         );
     }
 
@@ -1190,7 +1295,7 @@ pub mod tests {
             runs: vec![],
         });
         press(&mut app, "k");
-        assert_eq!(app.runs, Load::Loaded(runs));
+        assert_eq!(app.runs, Load::Loaded(Selectable::new(runs)));
         assert!(!app.runs_busy());
         assert_eq!(ticks(&mut app, 600), vec![], "a minute of ticks, no calls");
     }
@@ -1208,7 +1313,11 @@ pub mod tests {
         let ttl = app.runs_ttl_ticks;
         ticks(&mut app, ttl);
         press(&mut app, "k");
-        assert_eq!(app.runs, Load::Loaded(runs), "stale data shown at once");
+        assert_eq!(
+            app.runs,
+            Load::Loaded(Selectable::new(runs)),
+            "stale data shown at once"
+        );
         assert!(app.runs_busy());
         assert_eq!(ticks(&mut app, 3), vec![Command::FetchRuns { job_id: 1 }]);
     }
@@ -1302,7 +1411,7 @@ pub mod tests {
         });
         assert_eq!(app.runs, Load::Loading);
         press(&mut app, "G");
-        assert_eq!(app.runs, Load::Loaded(runs));
+        assert_eq!(app.runs, Load::Loaded(Selectable::new(runs)));
         assert_eq!(ticks(&mut app, 3), vec![], "no fetch for a cached job");
     }
 
@@ -1464,9 +1573,12 @@ pub mod tests {
         let Load::Loaded(runs) = &app.runs else {
             panic!("runs should stay loaded");
         };
-        assert_eq!(runs[0].id, 11);
-        assert_eq!(runs[0].state.life_cycle_state, LifeCycleState::Pending);
-        assert_eq!(runs.len(), 3);
+        assert_eq!(runs.items()[0].id, 11);
+        assert_eq!(
+            runs.items()[0].state.life_cycle_state,
+            LifeCycleState::Pending
+        );
+        assert_eq!(runs.items().len(), 3);
     }
 
     #[test]
@@ -1480,7 +1592,10 @@ pub mod tests {
         let Load::Loaded(runs) = &app.runs else {
             panic!("runs should stay loaded");
         };
-        assert_eq!(runs[0].state.life_cycle_state, LifeCycleState::Terminating);
+        assert_eq!(
+            runs.items()[0].state.life_cycle_state,
+            LifeCycleState::Terminating
+        );
     }
 
     #[test]
@@ -1639,6 +1754,115 @@ pub mod tests {
             jiff::Timestamp::from_millisecond(9000).unwrap(),
         ));
         assert_eq!(app.now.unwrap().as_millisecond(), 9000);
+    }
+
+    fn run_index(app: &App) -> Option<usize> {
+        match &app.runs {
+            Load::Loaded(runs) => runs.selected_index(),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn runs_cursor_moves_only_on_the_runs_tab_in_main() {
+        let mut app = with_active_run();
+        assert_eq!(run_index(&app), Some(0));
+        press(&mut app, "j");
+        assert_eq!(
+            run_index(&app),
+            None,
+            "jobs focus moves jobs; job 2's runs are loading"
+        );
+        press(&mut app, "k0j");
+        assert_eq!(run_index(&app), Some(1));
+        press(&mut app, "j");
+        assert_eq!(run_index(&app), Some(1), "clamped");
+        press(&mut app, "lj");
+        assert_eq!(run_index(&app), Some(1), "detail tab has no cursor");
+        press(&mut app, "hk");
+        assert_eq!(run_index(&app), Some(0));
+    }
+
+    #[test]
+    fn enter_opens_run_detail_and_esc_backs_out_one_level_at_a_time() {
+        let mut app = with_active_run();
+        press(&mut app, "0");
+        assert_eq!(
+            app.update(key(Key::Enter)),
+            vec![Command::FetchRunDetail { run_id: 10 }]
+        );
+        assert_eq!(app.viewing_run, Some(10));
+        assert_eq!(app.run_detail, Load::Loading);
+        let mut stale = run(9, 1000, 2000, Some(ResultState::Success));
+        stale.tasks.clear();
+        app.update(Message::RunDetailLoaded(stale));
+        assert_eq!(
+            app.run_detail,
+            Load::Loading,
+            "another run's detail is ignored"
+        );
+        let detail = run(10, 1000, 0, None);
+        app.update(Message::RunDetailLoaded(detail.clone()));
+        assert_eq!(app.run_detail, Load::Loaded(detail));
+        press(&mut app, "j");
+        assert_eq!(
+            run_index(&app),
+            Some(0),
+            "no cursor moves while viewing a run"
+        );
+        assert_eq!(
+            app.update(key(Key::Char('r'))),
+            vec![
+                Command::FetchRuns { job_id: 1 },
+                Command::FetchRunDetail { run_id: 10 }
+            ]
+        );
+        app.update(key(Key::Esc));
+        assert_eq!(app.viewing_run, None);
+        assert_eq!(app.focus, Panel::Main);
+        app.update(key(Key::Esc));
+        assert_eq!(app.focus, Panel::Jobs);
+    }
+
+    #[test]
+    fn leaving_the_job_leaves_its_run_detail() {
+        let mut app = with_active_run();
+        press(&mut app, "0");
+        app.update(key(Key::Enter));
+        press(&mut app, "2j");
+        assert_eq!(app.viewing_run, None);
+    }
+
+    #[test]
+    fn menu_in_main_cancels_the_selected_run_only() {
+        let mut app = with_active_run();
+        press(&mut app, "0jx");
+        assert!(
+            matches!(&app.input, InputMode::Menu { items, .. } if items.len() == 1),
+            "run 9 is finished, so only run-now"
+        );
+        app.update(key(Key::Esc));
+        press(&mut app, "kx");
+        assert!(matches!(&app.input, InputMode::Menu { items, .. }
+            if items[1] == MenuItem::CancelRun { job_id: 1, run_id: 10 }));
+    }
+
+    #[test]
+    fn run_urls_follow_the_cursor() {
+        let mut app = with_active_run();
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![Command::Copy(
+                "https://adb-1.azuredatabricks.net/jobs/1".to_owned()
+            )]
+        );
+        press(&mut app, "0j");
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![Command::Copy(
+                "https://adb-1.azuredatabricks.net/jobs/1/runs/9".to_owned()
+            )]
+        );
     }
 
     #[test]
