@@ -4,7 +4,7 @@ expression: render(&app)
 ---
 "┌─[1]─Status──────────────┐┌─[0]─Runs - Detail ⠋───────────────────────────────┐"
 "│◐ dev → adb-1.azuredatabr││HTTP 429 for                                       │"
-"│3 of 3 · 0s ago          ││/api/2.2/jobs/runs/list?job_id=1&limit=25:         │"
+"│3 of 3 jobs · 0s ago     ││/api/2.2/jobs/runs/list?job_id=1&limit=25:         │"
 "└─────────────────────────┘│REQUEST_LIMIT_EXCEEDED: Too many requests          │"
 "┌─[2]─Jobs────────────────┐│                                                   │"
 "│[someone] okonomi_gold   ││                                                   │"
@@ -16,7 +16,7 @@ expression: render(&app)
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "└───────────────────1 of 3┘│                                                   │"
-"┌─[3]─Pipelines───────────┐│                                                   │"
+"┌─[3]─Pipelines ⠋─────────┐│                                                   │"
 "│                         │└───────────────────────────────────────────────────┘"
 "│                         │┌─API log───────────────────────────────────────────┐"
 "│                         ││GET  /api/2.2/jobs/list?limit=25        200    84ms│"

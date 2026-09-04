@@ -83,7 +83,17 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             (k(Action::Browse), "open job in browser"),
             (k(Action::Copy), "copy job URL"),
         ],
-        Panel::Status | Panel::Pipelines => vec![(k(Action::Refresh), "refresh jobs")],
+        Panel::Pipelines => vec![
+            (k(Action::Down), "next pipeline"),
+            (k(Action::Up), "previous pipeline"),
+            (k(Action::Filter), "filter by name"),
+            (k(Action::MineOnly), "toggle mine only"),
+            (k(Action::Open), "focus the main panel"),
+            (k(Action::Refresh), "refresh pipelines"),
+            (k(Action::Browse), "open pipeline in browser"),
+            (k(Action::Copy), "copy pipeline URL"),
+        ],
+        Panel::Status => vec![(k(Action::Refresh), "refresh jobs and pipelines")],
     };
     rows.extend([
         ("0-3".to_owned(), "focus panel by number"),

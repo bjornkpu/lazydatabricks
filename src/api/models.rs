@@ -186,6 +186,122 @@ impl ResultState {
     }
 }
 
+/// `GET /api/2.0/pipelines` response.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PipelinesList {
+    #[serde(default)]
+    pub statuses: Vec<Pipeline>,
+    #[serde(default)]
+    pub next_page_token: Option<String>,
+}
+
+/// One Lakeflow / Delta Live Tables pipeline. Ids are UUID strings here, not integers.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Pipeline {
+    #[serde(rename = "pipeline_id")]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub state: PipelineState,
+    #[serde(default)]
+    pub creator_user_name: String,
+    /// The most recent updates, newest first. Omitted entirely for pipelines never run.
+    #[serde(default)]
+    pub latest_updates: Vec<PipelineUpdate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PipelineUpdate {
+    #[serde(rename = "update_id")]
+    pub id: String,
+    #[serde(default)]
+    pub state: UpdateState,
+    /// RFC 3339 here, unlike the epoch millis on runs. jiff's serde handles it.
+    #[serde(default)]
+    pub creation_time: Option<Timestamp>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PipelineState {
+    Deploying,
+    Starting,
+    Running,
+    Stopping,
+    Deleted,
+    Recovering,
+    Failed,
+    Resetting,
+    Idle,
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+impl PipelineState {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Deploying => "DEPLOYING",
+            Self::Starting => "STARTING",
+            Self::Running => "RUNNING",
+            Self::Stopping => "STOPPING",
+            Self::Deleted => "DELETED",
+            Self::Recovering => "RECOVERING",
+            Self::Failed => "FAILED",
+            Self::Resetting => "RESETTING",
+            Self::Idle => "IDLE",
+            Self::Unknown => "UNKNOWN",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum UpdateState {
+    Queued,
+    Created,
+    WaitingForResources,
+    Initializing,
+    Resetting,
+    SettingUpTables,
+    Running,
+    Stopping,
+    Completed,
+    Failed,
+    Canceled,
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+impl UpdateState {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "QUEUED",
+            Self::Created => "CREATED",
+            Self::WaitingForResources => "WAITING_FOR_RESOURCES",
+            Self::Initializing => "INITIALIZING",
+            Self::Resetting => "RESETTING",
+            Self::SettingUpTables => "SETTING_UP_TABLES",
+            Self::Running => "RUNNING",
+            Self::Stopping => "STOPPING",
+            Self::Completed => "COMPLETED",
+            Self::Failed => "FAILED",
+            Self::Canceled => "CANCELED",
+            Self::Unknown => "UNKNOWN",
+        }
+    }
+
+    /// Finished, one way or another.
+    #[must_use]
+    pub const fn is_done(self) -> bool {
+        matches!(self, Self::Completed | Self::Failed | Self::Canceled)
+    }
+}
+
 /// `GET /api/2.0/preview/scim/v2/Me`: who the token belongs to.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ScimMe {
@@ -211,6 +327,7 @@ mod tests {
     const JOBS_LIST: &str = include_str!("../../tests/fixtures/jobs_list.json");
     const RUNS_LIST: &str = include_str!("../../tests/fixtures/runs_list.json");
     const SCIM_ME: &str = include_str!("../../tests/fixtures/scim_me.json");
+    const PIPELINES_LIST: &str = include_str!("../../tests/fixtures/pipelines_list.json");
 
     #[test]
     fn parses_jobs_list_fixture() {
@@ -259,6 +376,26 @@ mod tests {
         assert_eq!(running.state.life_cycle_state, LifeCycleState::Running);
         assert_eq!(running.state.result_state, None);
         assert_eq!(running.end_time, None, "end_time 0 means not finished");
+    }
+
+    #[test]
+    fn parses_pipelines_list_fixture() {
+        let page: PipelinesList = serde_json::from_str(PIPELINES_LIST).unwrap();
+        assert_eq!(page.statuses.len(), 3);
+        let never_run = &page.statuses[0];
+        assert_eq!(never_run.id, "0120d44b-406a-42a6-b072-5796077af583");
+        assert_eq!(never_run.state, PipelineState::Idle);
+        assert!(never_run.latest_updates.is_empty());
+        let felles = &page.statuses[1];
+        assert_eq!(felles.name, "[someone] felles_gold");
+        assert_eq!(felles.latest_updates[0].state, UpdateState::Completed);
+        assert_eq!(
+            felles.latest_updates[0].creation_time.unwrap().to_string(),
+            "2026-08-24T14:50:43.651Z"
+        );
+        assert_eq!(felles.latest_updates[1].state, UpdateState::Failed);
+        assert_eq!(page.statuses[2].state, PipelineState::Running);
+        assert_eq!(page.next_page_token.as_deref(), Some("CAEQ"));
     }
 
     #[test]

@@ -85,7 +85,7 @@ mod tests {
 
     use super::*;
     use crate::api::models::ResultState;
-    use crate::app::tests::{api_call, app, job, run, theirs};
+    use crate::app::tests::{api_call, app, job, pipeline, run, theirs};
     use crate::app::{Key, Message};
     use crate::config::Theme;
     use crate::error::AppError;
@@ -330,6 +330,37 @@ mod tests {
         };
         assert_eq!(accent(Theme::Dark), ratatui::style::Color::Green);
         assert_eq!(accent(Theme::Light), ratatui::style::Color::Blue);
+    }
+
+    #[test]
+    fn pipelines_focused_updates_tab_80x24() {
+        let mut app = with_runs();
+        app.update(Message::PipelinesLoaded(vec![
+            pipeline(
+                "2b8e9c4d-3f2a-4e1b-9c7d-6a5b4c3d2e1f",
+                "[someone] felles_gold",
+                "someone@example.com",
+            ),
+            pipeline(
+                "0120d44b-406a-42a6-b072-5796077af583",
+                "[other] hubspot",
+                "other@example.com",
+            ),
+        ]));
+        press(&mut app, "3");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn pipelines_detail_tab_80x24() {
+        let mut app = with_runs();
+        app.update(Message::PipelinesLoaded(vec![pipeline(
+            "2b8e9c4d-3f2a-4e1b-9c7d-6a5b4c3d2e1f",
+            "[someone] felles_gold",
+            "someone@example.com",
+        )]));
+        press(&mut app, "3l");
+        insta::assert_snapshot!(render(&app));
     }
 
     #[test]

@@ -1,0 +1,45 @@
+{
+  "statuses": [
+    {
+      "creator_user_name": "other@example.com",
+      "name": "[other] hubspot",
+      "pipeline_id": "0120d44b-406a-42a6-b072-5796077af583",
+      "run_as_user_name": "other@example.com",
+      "state": "IDLE"
+    },
+    {
+      "creator_user_name": "someone@example.com",
+      "latest_updates": [
+        {
+          "creation_time": "2026-08-24T14:50:43.651Z",
+          "state": "COMPLETED",
+          "update_id": "ac18068b-9637-4dcd-a149-03f08eb24e12"
+        },
+        {
+          "creation_time": "2026-08-23T14:50:12.000Z",
+          "state": "FAILED",
+          "update_id": "7f1c2e10-1111-4dcd-a149-03f08eb24e13"
+        }
+      ],
+      "name": "[someone] felles_gold",
+      "pipeline_id": "2b8e9c4d-3f2a-4e1b-9c7d-6a5b4c3d2e1f",
+      "run_as_user_name": "someone@example.com",
+      "state": "IDLE"
+    },
+    {
+      "creator_user_name": "someone@example.com",
+      "latest_updates": [
+        {
+          "creation_time": "2026-09-01T08:00:00.000Z",
+          "state": "RUNNING",
+          "update_id": "9d8c7b6a-5f4e-4d3c-2b1a-0f9e8d7c6b5a"
+        }
+      ],
+      "name": "[someone] aktorer_ingest",
+      "pipeline_id": "3c9f0d5e-4a3b-4f2c-8d6e-7b6c5d4e3f2a",
+      "run_as_user_name": "someone@example.com",
+      "state": "RUNNING"
+    }
+  ],
+  "next_page_token": "CAEQ"
+}

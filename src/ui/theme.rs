@@ -4,7 +4,7 @@ use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp};
 use ratatui::style::{Color, Modifier, Style};
 
-use crate::api::models::{LifeCycleState, ResultState, Run};
+use crate::api::models::{LifeCycleState, Pipeline, PipelineState, ResultState, Run, UpdateState};
 use crate::app::App;
 use crate::config::Theme;
 
@@ -66,6 +66,23 @@ pub const fn run_glyph(run: &Run) -> (char, Color) {
             None,
         ) => ('?', Color::DarkGray),
         (_, None) => ('◐', Color::Yellow),
+    }
+}
+
+/// A pipeline's health at a glance: its latest update when it has one, else its own state.
+#[must_use]
+pub fn pipeline_glyph(pipeline: &Pipeline) -> (char, Color) {
+    match pipeline.latest_updates.first().map(|update| update.state) {
+        Some(UpdateState::Completed) => ('✓', Color::Green),
+        Some(UpdateState::Failed | UpdateState::Canceled) => ('✗', Color::Red),
+        Some(_) => ('◐', Color::Yellow),
+        None => match pipeline.state {
+            PipelineState::Failed => ('✗', Color::Red),
+            PipelineState::Idle | PipelineState::Deleted | PipelineState::Unknown => {
+                ('·', Color::DarkGray)
+            }
+            _ => ('◐', Color::Yellow),
+        },
     }
 }
 
@@ -149,6 +166,18 @@ mod tests {
             run_result(&run(1, 1, 2, Some(ResultState::Failed))),
             "FAILED"
         );
+    }
+
+    #[test]
+    fn pipeline_glyph_prefers_the_latest_update() {
+        let mut pipeline = crate::app::tests::pipeline("p", "x", "me@example.com");
+        assert_eq!(pipeline_glyph(&pipeline).0, '✓');
+        pipeline.latest_updates[0].state = UpdateState::Running;
+        assert_eq!(pipeline_glyph(&pipeline).0, '◐');
+        pipeline.latest_updates.clear();
+        assert_eq!(pipeline_glyph(&pipeline).0, '·');
+        pipeline.state = PipelineState::Failed;
+        assert_eq!(pipeline_glyph(&pipeline).0, '✗');
     }
 
     #[test]

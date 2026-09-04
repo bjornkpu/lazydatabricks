@@ -1,6 +1,6 @@
 //! Who "me" is, and which jobs are visible.
 
-use crate::api::models::Job;
+use crate::api::models::{Job, Pipeline};
 
 /// The signed-in user, resolved once at startup from the SCIM `Me` endpoint.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +49,19 @@ impl Filter {
             });
         name_ok && mine_ok
     }
+
+    /// Pipelines carry no tags in the list response, so "mine" is the creator alone.
+    #[must_use]
+    pub fn matches_pipeline(&self, pipeline: &Pipeline, me: Option<&Me>) -> bool {
+        let name_ok = self.text.is_empty()
+            || pipeline
+                .name
+                .to_lowercase()
+                .contains(&self.text.to_lowercase());
+        let mine_ok =
+            !self.mine_only || me.is_some_and(|me| pipeline.creator_user_name == me.email);
+        name_ok && mine_ok
+    }
 }
 
 #[cfg(test)]
@@ -64,6 +77,19 @@ mod tests {
     fn tag_is_local_part_with_underscores() {
         assert_eq!(me().tag, "bjorn_punsvik");
         assert_eq!(Me::from_email("nobody").tag, "nobody");
+    }
+
+    #[test]
+    fn pipelines_match_by_name_and_creator() {
+        let filter = Filter {
+            text: "gold".to_owned(),
+            mine_only: true,
+        };
+        let mine = crate::app::tests::pipeline("p1", "felles_gold", "bjorn.punsvik@example.com");
+        let theirs = crate::app::tests::pipeline("p2", "felles_gold", "other@example.com");
+        assert!(filter.matches_pipeline(&mine, Some(&me())));
+        assert!(!filter.matches_pipeline(&theirs, Some(&me())));
+        assert!(!filter.matches_pipeline(&mine, None));
     }
 
     #[test]

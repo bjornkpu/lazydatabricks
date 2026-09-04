@@ -18,7 +18,7 @@ pub use list::{Move, Selectable};
 pub use menu::{InputMode, MenuItem};
 pub use message::{ApiCall, Command, Key, Message};
 
-use crate::api::models::{Job, LifeCycleState, Run};
+use crate::api::models::{Job, LifeCycleState, Pipeline, Run};
 use crate::config::{Loaded, Theme};
 use crate::error::AppError;
 
@@ -81,6 +81,13 @@ pub struct App {
     pub me_error: Option<AppError>,
     /// Every job fetched. `jobs` is the filtered view of this.
     pub all_jobs: Vec<Job>,
+    /// Every pipeline fetched. `pipelines` is the filtered view of this.
+    pub all_pipelines: Vec<Pipeline>,
+    pub pipelines: Selectable<Pipeline>,
+    /// Tick the pipelines fetch started on, while one is in flight.
+    pipelines_inflight: Option<u64>,
+    pipelines_fetched_at: Option<u64>,
+    pub pipelines_error: Option<AppError>,
     /// The visible jobs, with the cursor.
     pub jobs: Selectable<Job>,
     pub filter: Filter,
@@ -144,6 +151,11 @@ impl App {
             me: None,
             me_error: None,
             all_jobs: Vec::new(),
+            all_pipelines: Vec::new(),
+            pipelines: Selectable::default(),
+            pipelines_inflight: Some(0),
+            pipelines_fetched_at: None,
+            pipelines_error: None,
             jobs: Selectable::default(),
             filter: Filter {
                 text: config.filter.clone().unwrap_or_default(),
@@ -203,6 +215,17 @@ impl App {
                 self.loading = false;
                 self.error = Some(error);
             }
+            Message::PipelinesLoaded(pipelines) => {
+                self.all_pipelines = pipelines;
+                self.pipelines_fetched_at = Some(self.ticks);
+                self.pipelines_inflight = None;
+                self.pipelines_error = None;
+                self.apply_filter();
+            }
+            Message::PipelinesFailed(error) => {
+                self.pipelines_inflight = None;
+                self.pipelines_error = Some(error);
+            }
             Message::RunsLoaded { job_id, runs } => {
                 if self.runs_inflight == Some(job_id) {
                     self.runs_inflight = None;
@@ -259,7 +282,7 @@ impl App {
     /// One heartbeat: the clock, the spinner, the debounced runs fetch and TTL-driven refreshes.
     fn tick(&mut self, commands: &mut Vec<Command>) {
         self.ticks = self.ticks.saturating_add(1);
-        if self.loading || self.runs_busy() {
+        if self.loading || self.pipelines_loading() || self.runs_busy() {
             self.spinner = self
                 .spinner
                 .wrapping_add(1)
@@ -284,6 +307,12 @@ impl App {
             .is_some_and(|at| self.age_ticks(at) >= self.jobs_ttl_ticks)
         {
             self.refresh_jobs(commands);
+        }
+        if self
+            .pipelines_fetched_at
+            .is_some_and(|at| self.age_ticks(at) >= self.jobs_ttl_ticks)
+        {
+            self.refresh_pipelines(commands);
         }
         if let Some(job_id) = self.runs_job
             && self.pending_runs.is_none()
@@ -356,6 +385,20 @@ impl App {
         }
     }
 
+    /// One pipelines fetch at a time, same TTL as jobs.
+    fn refresh_pipelines(&mut self, commands: &mut Vec<Command>) {
+        if self.pipelines_inflight.is_none() {
+            self.pipelines_inflight = Some(self.ticks);
+            commands.push(Command::FetchPipelines { max: self.max_jobs });
+        }
+    }
+
+    /// A pipelines fetch is in flight.
+    #[must_use]
+    pub const fn pipelines_loading(&self) -> bool {
+        self.pipelines_inflight.is_some()
+    }
+
     /// Refetches the shown job's runs now, skipping the debounce and the cache.
     fn refresh_runs(&mut self, commands: &mut Vec<Command>) {
         if let Some(job_id) = self.runs_job
@@ -378,11 +421,17 @@ impl App {
         if !self.filter.text.is_empty() {
             parts.push(format!("/{}", self.filter.text));
         }
-        parts.push(format!(
-            "{} of {}",
-            self.jobs.items().len(),
-            self.all_jobs.len()
-        ));
+        // Counts follow the panel in context, so the status line explains the list you look at.
+        let (visible, total, what) = if self.context == Panel::Pipelines {
+            (
+                self.pipelines.items().len(),
+                self.all_pipelines.len(),
+                "pipelines",
+            )
+        } else {
+            (self.jobs.items().len(), self.all_jobs.len(), "jobs")
+        };
+        parts.push(format!("{visible} of {total} {what}"));
         parts.join(" · ")
     }
 
@@ -401,7 +450,13 @@ impl App {
             Action::ScreenMode => self.mode = self.mode.next(),
             Action::ToggleLog => self.show_api_log = !self.show_api_log,
             Action::Filter => {
-                self.set_focus(Panel::Jobs);
+                // The filter edits from whichever list is in context; jobs when neither is.
+                let target = if self.context == Panel::Pipelines {
+                    Panel::Pipelines
+                } else {
+                    Panel::Jobs
+                };
+                self.set_focus(target);
                 self.input = InputMode::Filter;
             }
             Action::Menu => self.open_menu(),
@@ -428,10 +483,16 @@ impl App {
             }
             Action::Refresh => match self.focus {
                 Panel::Main => self.refresh_runs(commands),
-                Panel::Status | Panel::Jobs | Panel::Pipelines => self.refresh_jobs(commands),
+                Panel::Jobs => self.refresh_jobs(commands),
+                Panel::Pipelines => self.refresh_pipelines(commands),
+                Panel::Status => {
+                    self.refresh_jobs(commands);
+                    self.refresh_pipelines(commands);
+                }
             },
             Action::RefreshAll => {
                 self.refresh_jobs(commands);
+                self.refresh_pipelines(commands);
                 self.refresh_runs(commands);
             }
             Action::NextPanel => self.set_focus(self.focus.next_side()),
@@ -474,13 +535,19 @@ impl App {
         }
     }
 
-    /// The workspace URL of the selected job, when the jobs panel is in context.
+    /// The workspace URL of the selected job or pipeline, by the panel in context.
     fn selected_url(&self) -> Option<String> {
-        if self.context != Panel::Jobs {
-            return None;
+        match self.context {
+            Panel::Jobs => {
+                let job = self.jobs.selected()?;
+                Some(format!("{}/jobs/{}", self.host, job.id))
+            }
+            Panel::Pipelines => {
+                let pipeline = self.pipelines.selected()?;
+                Some(format!("{}/pipelines/{}", self.host, pipeline.id))
+            }
+            Panel::Status | Panel::Main => None,
         }
-        let job = self.jobs.selected()?;
-        Some(format!("{}/jobs/{}", self.host, job.id))
     }
 
     /// Opens the `x` menu over the selected item, or says why there is nothing to do.
@@ -563,9 +630,24 @@ impl App {
         }
     }
 
-    /// Rebuilds the visible list from `all_jobs`, keeping the cursor on the same job when it
-    /// survives the filter.
+    /// Rebuilds the visible lists from `all_jobs` and `all_pipelines`, keeping each cursor on the
+    /// same item when it survives the filter.
     fn apply_filter(&mut self) {
+        let keep_pipeline = self
+            .pipelines
+            .selected()
+            .map(|pipeline| pipeline.id.clone());
+        let visible: Vec<Pipeline> = self
+            .all_pipelines
+            .iter()
+            .filter(|pipeline| self.filter.matches_pipeline(pipeline, self.me.as_ref()))
+            .cloned()
+            .collect();
+        self.pipelines.set_items(visible);
+        if let Some(id) = keep_pipeline {
+            self.pipelines.select_where(|pipeline| pipeline.id == id);
+        }
+
         let keep = self.jobs.selected().map(|job| job.id);
         // The visible list is a copy of the matching jobs: a few hundred small structs per
         // keystroke, and `Selectable` stays a plain list with a cursor.
@@ -590,14 +672,15 @@ impl App {
         }
     }
 
-    /// Cursor keys act on the focused panel's list. Only jobs has one so far.
+    /// Cursor keys act on the focused panel's list.
     fn move_cursor(&mut self, movement: Move) {
         match self.focus {
             Panel::Jobs => {
                 self.jobs.apply(movement);
                 self.select_runs();
             }
-            Panel::Status | Panel::Pipelines | Panel::Main => {}
+            Panel::Pipelines => self.pipelines.apply(movement),
+            Panel::Status | Panel::Main => {}
         }
     }
 
@@ -649,7 +732,10 @@ pub mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::api::models::{JobSettings, LifeCycleState, ResultState, RunState};
+    use crate::api::models::{
+        JobSettings, LifeCycleState, PipelineState, PipelineUpdate, ResultState, RunState,
+        UpdateState,
+    };
     use crate::config::Config;
 
     pub fn job(id: i64, name: &str) -> Job {
@@ -697,6 +783,20 @@ pub mod tests {
             },
             start_time: ts(start_ms),
             end_time: ts(end_ms),
+        }
+    }
+
+    pub fn pipeline(id: &str, name: &str, creator: &str) -> Pipeline {
+        Pipeline {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            state: PipelineState::Idle,
+            creator_user_name: creator.to_owned(),
+            latest_updates: vec![PipelineUpdate {
+                id: "ac18068b-9637-4dcd-a149-03f08eb24e12".to_owned(),
+                state: UpdateState::Completed,
+                creation_time: jiff::Timestamp::from_millisecond(1_787_784_000_000).ok(),
+            }],
         }
     }
 
@@ -792,7 +892,10 @@ pub mod tests {
         assert_eq!(app.spinner, 1);
         app.update(Message::JobsLoaded(vec![]));
         app.update(Message::Tick);
-        assert_eq!(app.spinner, 1);
+        assert_eq!(app.spinner, 2, "pipelines still loading");
+        app.update(Message::PipelinesLoaded(vec![]));
+        app.update(Message::Tick);
+        assert_eq!(app.spinner, 2);
     }
 
     #[test]
@@ -958,9 +1061,9 @@ pub mod tests {
         assert_eq!(app.context, Panel::Status);
         assert_eq!(app.active_tab(), Some(Tab::Profile));
         app.update(key(Key::Char('3')));
-        assert_eq!(app.active_tab(), None);
+        assert_eq!(app.active_tab(), Some(Tab::Updates));
         app.update(key(Key::Char('l')));
-        assert_eq!(app.tab, 0);
+        assert_eq!(app.active_tab(), Some(Tab::Detail));
     }
 
     #[test]
@@ -985,14 +1088,14 @@ pub mod tests {
             job(3, "aktorer_ingest"),
         ]));
         press(&mut app, "3/");
-        assert_eq!(app.focus, Panel::Jobs, "/ focuses jobs");
+        assert_eq!(app.focus, Panel::Pipelines, "/ filters the list in context");
         assert_eq!(app.input, InputMode::Filter);
         press(&mut app, "q");
         assert_eq!(app.filter.text, "q", "q is a letter now, not quit");
         app.update(key(Key::Backspace));
         press(&mut app, "GOLD");
         assert_eq!(names(&app), ["okonomi_gold", "ems_gold"]);
-        assert_eq!(app.filter_summary(), "/GOLD · 2 of 3");
+        assert_eq!(app.filter_summary(), "/GOLD · 0 of 0 pipelines");
         app.update(key(Key::Enter));
         assert_eq!(app.input, InputMode::Normal);
         assert_eq!(
@@ -1012,7 +1115,7 @@ pub mod tests {
         app.update(key(Key::Esc));
         assert_eq!(app.input, InputMode::Normal);
         assert_eq!(names(&app), ["a", "b", "c"]);
-        assert_eq!(app.filter_summary(), "3 of 3");
+        assert_eq!(app.filter_summary(), "3 of 3 jobs");
     }
 
     #[test]
@@ -1039,7 +1142,7 @@ pub mod tests {
         press(&mut app, "m");
         assert!(app.filter.mine_only);
         assert!(names(&app).is_empty(), "who am I? nothing matches yet");
-        assert_eq!(app.filter_summary(), "mine only · 0 of 2");
+        assert_eq!(app.filter_summary(), "mine only · 0 of 2 jobs");
         app.update(Message::MeLoaded("someone@example.com".to_owned()));
         assert_eq!(names(&app), ["mine"]);
         press(&mut app, "m");
@@ -1403,6 +1506,79 @@ pub mod tests {
         press(&mut app, "3");
         assert_eq!(app.update(key(Key::Char('y'))), vec![]);
         assert_eq!(app.notice.as_deref(), Some("Nothing selected to copy"));
+    }
+
+    fn with_pipelines() -> App {
+        let mut app = loaded();
+        app.update(Message::PipelinesLoaded(vec![
+            pipeline("p1", "felles_gold", "someone@example.com"),
+            pipeline("p2", "aktorer_ingest", "other@example.com"),
+            pipeline("p3", "ems_gold", "someone@example.com"),
+        ]));
+        app
+    }
+
+    #[test]
+    fn pipelines_load_filter_and_move_like_jobs() {
+        let mut app = with_pipelines();
+        assert!(!app.pipelines_loading());
+        assert_eq!(app.pipelines.counter(), "1 of 3");
+        press(&mut app, "3jj");
+        assert_eq!(app.pipelines.selected().map(|p| p.id.as_str()), Some("p3"));
+        assert_eq!(app.active_tab(), Some(Tab::Updates));
+        assert_eq!(app.filter_summary(), "3 of 3 pipelines");
+        press(&mut app, "/gold");
+        assert_eq!(
+            app.focus,
+            Panel::Pipelines,
+            "filter stays on the pipelines panel"
+        );
+        assert_eq!(app.pipelines.counter(), "2 of 2");
+        assert_eq!(
+            app.pipelines.selected().map(|p| p.id.as_str()),
+            Some("p3"),
+            "cursor kept"
+        );
+        assert_eq!(
+            app.jobs.counter(),
+            "0 of 0",
+            "the same filter applies to jobs"
+        );
+        app.update(key(Key::Esc));
+        app.update(Message::MeLoaded("someone@example.com".to_owned()));
+        press(&mut app, "m");
+        assert_eq!(app.pipelines.counter(), "2 of 2");
+        assert_eq!(app.filter_summary(), "mine only · 2 of 3 pipelines");
+    }
+
+    #[test]
+    fn pipelines_refresh_and_url() {
+        let mut app = with_pipelines();
+        press(&mut app, "3");
+        assert_eq!(
+            app.update(key(Key::Char('r'))),
+            vec![Command::FetchPipelines { max: 200 }]
+        );
+        assert!(app.pipelines_loading());
+        assert_eq!(app.update(key(Key::Char('r'))), vec![], "one at a time");
+        app.update(Message::PipelinesFailed(boom()));
+        assert_eq!(app.pipelines_error, Some(boom()));
+        assert!(!app.pipelines_loading());
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![Command::Copy(
+                "https://adb-1.azuredatabricks.net/pipelines/p1".to_owned()
+            )]
+        );
+        press(&mut app, "1");
+        assert_eq!(
+            app.update(key(Key::Char('r'))),
+            vec![
+                Command::FetchJobs { max: 200 },
+                Command::FetchPipelines { max: 200 }
+            ],
+            "status refreshes both lists"
+        );
     }
 
     #[test]

@@ -48,6 +48,11 @@ async fn main() -> Result<()> {
     let client = Arc::new(api::Client::from_profile(&profile, tx.clone())?);
     let app = App::new(&profile, client.host(), TimeZone::system(), &loaded);
     tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone(), app.max_jobs));
+    tokio::spawn(fetch_pipelines(
+        Arc::clone(&client),
+        tx.clone(),
+        app.max_jobs,
+    ));
     tokio::spawn(fetch_me(Arc::clone(&client), tx.clone()));
     spawn_input(tx.clone());
     // `ratatui::init` enters the alternate screen and raw mode and installs a panic hook that
@@ -77,6 +82,9 @@ async fn run(
                 Command::FetchJobs { max } => {
                     tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone(), max));
                 }
+                Command::FetchPipelines { max } => {
+                    tokio::spawn(fetch_pipelines(Arc::clone(&client), tx.clone(), max));
+                }
                 Command::FetchRuns { job_id } => {
                     tokio::spawn(fetch_runs(Arc::clone(&client), tx.clone(), job_id));
                 }
@@ -104,6 +112,14 @@ async fn fetch_jobs(client: Arc<api::Client>, tx: mpsc::Sender<Message>, max: us
         Err(error) => Message::JobsFailed(error),
     };
     // A closed channel means the app already quit; nobody is left to tell.
+    let _ = tx.send(message).await;
+}
+
+async fn fetch_pipelines(client: Arc<api::Client>, tx: mpsc::Sender<Message>, max: usize) {
+    let message = match client.list_pipelines(max).await {
+        Ok(pipelines) => Message::PipelinesLoaded(pipelines),
+        Err(error) => Message::PipelinesFailed(error),
+    };
     let _ = tx.send(message).await;
 }
 

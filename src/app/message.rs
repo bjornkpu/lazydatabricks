@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::api::models::{Job, Run};
+use crate::api::models::{Job, Pipeline, Run};
 use crate::error::AppError;
 
 /// A key press, decoupled from the terminal library. Parsed from config via `FromStr` in
@@ -44,6 +44,8 @@ pub enum Message {
     Tick,
     JobsLoaded(Vec<Job>),
     JobsFailed(AppError),
+    PipelinesLoaded(Vec<Pipeline>),
+    PipelinesFailed(AppError),
     RunsLoaded {
         job_id: i64,
         runs: Vec<Run>,
@@ -73,6 +75,9 @@ pub enum Message {
 pub enum Command {
     Quit,
     FetchJobs {
+        max: usize,
+    },
+    FetchPipelines {
         max: usize,
     },
     FetchRuns {

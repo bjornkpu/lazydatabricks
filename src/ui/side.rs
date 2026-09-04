@@ -78,12 +78,29 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
 }
 
 pub fn pipelines(app: &App, area: Rect, frame: &mut Frame) {
-    let block = chrome::panel(
-        Panel::Pipelines,
-        app.focus == Panel::Pipelines,
-        Line::default(),
-        Some("0 of 0"),
-        &theme::palette(app),
-    );
-    frame.render_widget(block, area);
+    let focused = app.focus == Panel::Pipelines;
+    let spinner = if app.pipelines_loading() {
+        Line::from(format!(" {}", app.spinner_glyph()))
+    } else {
+        Line::default()
+    };
+    let counter = app.pipelines.counter();
+    let palette = theme::palette(app);
+    let block = chrome::panel(Panel::Pipelines, focused, spinner, Some(&counter), &palette);
+    if let Some(error) = &app.pipelines_error {
+        frame.render_widget(chrome::error(error, block, &palette), area);
+        return;
+    }
+    let rows = app.pipelines.items().iter().map(|pipeline| {
+        let (glyph, color) = theme::pipeline_glyph(pipeline);
+        Line::from(vec![
+            Span::styled(glyph.to_string(), Style::new().fg(color)),
+            Span::raw(format!(" {}", pipeline.name)),
+        ])
+    });
+    let list = List::new(rows)
+        .block(block)
+        .highlight_style(chrome::highlight(focused, &palette));
+    let mut state = ListState::default().with_selected(app.pipelines.selected_index());
+    frame.render_stateful_widget(list, area, &mut state);
 }

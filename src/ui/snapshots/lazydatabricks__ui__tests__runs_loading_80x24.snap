@@ -4,7 +4,7 @@ expression: render(&app)
 ---
 "┌─[1]─Status──────────────┐┌─[0]─Runs - Detail ⠙───────────────────────────────┐"
 "│◐ dev → adb-1.azuredatabr││Run ID           Started      Duration  Result     │"
-"│3 of 3 · 0s ago          ││                                                   │"
+"│3 of 3 jobs · 0s ago     ││                                                   │"
 "└─────────────────────────┘│                                                   │"
 "┌─[2]─Jobs────────────────┐│                                                   │"
 "│[someone] okonomi_gold   ││                                                   │"
@@ -16,7 +16,7 @@ expression: render(&app)
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "└───────────────────2 of 3┘│                                                   │"
-"┌─[3]─Pipelines───────────┐│                                                   │"
+"┌─[3]─Pipelines ⠙─────────┐│                                                   │"
 "│                         │└───────────────────────────────────────────────────┘"
 "│                         │┌─API log───────────────────────────────────────────┐"
 "│                         ││GET  /api/2.2/jobs/list?limit=25        200    84ms│"

@@ -19,6 +19,10 @@ pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
     let block = chrome::panel(Panel::Main, app.focus == Panel::Main, title, None, &palette);
     match app.active_tab() {
         Some(Tab::Runs) => runs(app, block, area, frame),
+        Some(Tab::Updates) => updates(app, block, area, frame),
+        Some(Tab::Detail) if app.context == Panel::Pipelines => {
+            pipeline_detail(app, block, area, frame);
+        }
         Some(Tab::Detail) => detail(app, block, area, frame),
         Some(Tab::Profile) => profile(app, block, area, frame),
         None => frame.render_widget(block, area),
@@ -77,6 +81,59 @@ fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
         Constraint::Fill(1),
     ];
     frame.render_widget(Table::new(rows, widths).header(header).block(block), area);
+}
+
+/// The latest updates Databricks lists with the pipeline. No extra call; a handful of rows.
+fn updates(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
+    let Some(pipeline) = app.pipelines.selected() else {
+        frame.render_widget(block, area);
+        return;
+    };
+    let header =
+        Row::new(["Update", "Created", "State"]).style(Style::new().add_modifier(Modifier::BOLD));
+    let rows = pipeline.latest_updates.iter().map(|update| {
+        let (glyph, color) = match update.state {
+            s if s.is_done() && s == crate::api::models::UpdateState::Completed => {
+                ('✓', ratatui::style::Color::Green)
+            }
+            s if s.is_done() => ('✗', ratatui::style::Color::Red),
+            _ => ('◐', ratatui::style::Color::Yellow),
+        };
+        let created = update
+            .creation_time
+            .map_or_else(|| "-".to_owned(), |ts| theme::clock(ts, &app.tz));
+        // The first block of the UUID is enough to tell updates apart on screen.
+        let short_id: String = update.id.chars().take(8).collect();
+        Row::new([
+            Cell::from(short_id),
+            Cell::from(created),
+            Cell::from(Line::from(vec![
+                Span::styled(glyph.to_string(), Style::new().fg(color)),
+                Span::raw(format!(" {}", update.state.as_str())),
+            ])),
+        ])
+    });
+    let widths = [
+        Constraint::Length(10),
+        Constraint::Length(12),
+        Constraint::Fill(1),
+    ];
+    frame.render_widget(Table::new(rows, widths).header(header).block(block), area);
+}
+
+fn pipeline_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
+    let Some(pipeline) = app.pipelines.selected() else {
+        frame.render_widget(block, area);
+        return;
+    };
+    let lines = vec![
+        field("Name", pipeline.name.clone()),
+        field("Pipeline ID", pipeline.id.clone()),
+        field("State", pipeline.state.as_str().to_owned()),
+        field("Creator", pipeline.creator_user_name.clone()),
+        field("Updates", pipeline.latest_updates.len().to_string()),
+    ];
+    frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 fn detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {

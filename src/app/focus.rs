@@ -67,7 +67,8 @@ impl Panel {
         match self {
             Self::Status => &[Tab::Profile],
             Self::Jobs => &[Tab::Runs, Tab::Detail],
-            Self::Pipelines | Self::Main => &[],
+            Self::Pipelines => &[Tab::Updates, Tab::Detail],
+            Self::Main => &[],
         }
     }
 }
@@ -77,6 +78,7 @@ impl Panel {
 pub enum Tab {
     Profile,
     Runs,
+    Updates,
     Detail,
 }
 
@@ -86,6 +88,7 @@ impl Tab {
         match self {
             Self::Profile => "Profile",
             Self::Runs => "Runs",
+            Self::Updates => "Updates",
             Self::Detail => "Detail",
         }
     }
@@ -137,7 +140,8 @@ mod tests {
     #[test]
     fn jobs_offer_runs_first() {
         assert_eq!(Panel::Jobs.tabs().first(), Some(&Tab::Runs));
-        assert!(Panel::Pipelines.tabs().is_empty());
+        assert_eq!(Panel::Pipelines.tabs().first(), Some(&Tab::Updates));
+        assert!(Panel::Main.tabs().is_empty());
     }
 
     #[test]

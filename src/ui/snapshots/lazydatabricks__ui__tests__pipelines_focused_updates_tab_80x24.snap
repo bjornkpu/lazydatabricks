@@ -1,12 +1,12 @@
 ---
 source: src/ui/mod.rs
-expression: render(&with_runs())
+expression: render(&app)
 ---
-"┌─[1]─Status──────────────┐┌─[0]─Runs - Detail ⠋───────────────────────────────┐"
-"│◐ dev → adb-1.azuredatabr││Run ID           Started      Duration  Result     │"
-"│3 of 3 jobs · 0s ago     ││50851892761075   09/01 10:08  -         ◐ RUNNING  │"
-"└─────────────────────────┘│50851892761073   08/31 10:08  1m12s     ✓ SUCCESS  │"
-"┌─[2]─Jobs────────────────┐│50851892761074   08/30 10:08  57s       ✗ FAILED   │"
+"┌─[1]─Status──────────────┐┌─[0]─Updates - Detail ⠋────────────────────────────┐"
+"│◐ dev → adb-1.azuredatabr││Update     Created      State                      │"
+"│2 of 2 pipelines · 0s ago││ac18068b   08/26 22:40  ✓ COMPLETED                │"
+"└─────────────────────────┘│                                                   │"
+"┌─[2]─Jobs────────────────┐│                                                   │"
 "│[someone] okonomi_gold   ││                                                   │"
 "│nightly_bronze_ingest    ││                                                   │"
 "│weekly_report            ││                                                   │"
@@ -16,13 +16,13 @@ expression: render(&with_runs())
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "└───────────────────1 of 3┘│                                                   │"
-"┌─[3]─Pipelines ⠋─────────┐│                                                   │"
-"│                         │└───────────────────────────────────────────────────┘"
-"│                         │┌─API log───────────────────────────────────────────┐"
+"┌─[3]─Pipelines───────────┐│                                                   │"
+"│✓ [someone] felles_gold  │└───────────────────────────────────────────────────┘"
+"│✓ [other] hubspot        │┌─API log───────────────────────────────────────────┐"
 "│                         ││GET  /api/2.2/jobs/list?limit=25        200    84ms│"
 "│                         ││GET  /api/2.2/jobs/runs/list?job_id=1&… 200   131ms│"
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "│                         ││                                                   │"
-"└───────────────────0 of 0┘└───────────────────────────────────────────────────┘"
+"└───────────────────1 of 2┘└───────────────────────────────────────────────────┘"
 " Select: j/k │ Filter: / │ Mine: m │ Actions: x │ Quit: q │ Keys: ?       v0.1.0"

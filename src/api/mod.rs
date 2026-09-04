@@ -13,7 +13,7 @@ use tokio::sync::{Mutex, mpsc};
 use crate::app::{ApiCall, Message};
 use crate::error::AppError;
 use auth::Token;
-use models::{Job, JobsList, Run, RunNowResponse, RunsList, ScimMe};
+use models::{Job, JobsList, Pipeline, PipelinesList, Run, RunNowResponse, RunsList, ScimMe};
 
 /// Page size sent to Databricks. A page size, not a cap: `list_jobs` follows `next_page_token`.
 const PAGE_SIZE: &str = "25";
@@ -73,6 +73,26 @@ impl Client {
         }
         jobs.truncate(max);
         Ok(jobs)
+    }
+
+    /// Lists pipelines, following `next_page_token` until `max` pipelines or the last page.
+    pub async fn list_pipelines(&self, max: usize) -> Result<Vec<Pipeline>, AppError> {
+        let mut pipelines = Vec::new();
+        let mut page_token: Option<String> = None;
+        loop {
+            let mut query = vec![("max_results", PAGE_SIZE)];
+            if let Some(token) = &page_token {
+                query.push(("page_token", token.as_str()));
+            }
+            let page: PipelinesList = self.get("/api/2.0/pipelines", &query).await?;
+            pipelines.extend(page.statuses);
+            page_token = page.next_page_token.filter(|token| !token.is_empty());
+            if pipelines.len() >= max || page_token.is_none() {
+                break;
+            }
+        }
+        pipelines.truncate(max);
+        Ok(pipelines)
     }
 
     /// The most recent runs of one job, newest first as Databricks returns them. One page.

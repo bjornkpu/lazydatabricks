@@ -4,7 +4,7 @@ expression: render(&app)
 ---
 "┌─[1]─Status──────────────┐┌─[0]─Profile ⠋─────────────────────────────────────┐"
 "│◐ dev → adb-1.azuredatabr││Profile        dev                                 │"
-"│3 of 3 · 0s ago          ││Host           https://adb-1.azuredatabricks.net   │"
+"│3 of 3 jobs · 0s ago     ││Host           https://adb-1.azuredatabricks.net   │"
 "└─────────────────────────┘│Jobs           3                                   │"
 "┌─[2]─Jobs────────────────┐│Config         config.toml (not found, defaults)   │"
 "│[someone] okonomi_gold   ││                                                   │"
@@ -16,7 +16,7 @@ expression: render(&app)
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "└───────────────────1 of 3┘│                                                   │"
-"┌─[3]─Pipelines───────────┐│                                                   │"
+"┌─[3]─Pipelines ⠋─────────┐│                                                   │"
 "│                         │└───────────────────────────────────────────────────┘"
 "│                         │┌─API log───────────────────────────────────────────┐"
 "│                         ││GET  /api/2.2/jobs/list?limit=25        200    84ms│"
