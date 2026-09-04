@@ -47,7 +47,7 @@ pub fn draw(app: &App, frame: &mut Frame) {
             draw_panel(app, Panel::Main, main, frame);
         }
     }
-    hints::draw(app.focus, app.filtering, hint_bar, frame);
+    hints::draw(app.focus, app.filtering, &app.keys, hint_bar, frame);
 }
 
 /// Height of one side panel. Status is two lines of text; the lists share the rest.

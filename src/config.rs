@@ -1,0 +1,131 @@
+//! `config.toml` in the platform config directory. Every field is optional with a sane default,
+//! so a missing file changes nothing about startup.
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+
+use anyhow::{Context, Result};
+use directories::ProjectDirs;
+use serde::Deserialize;
+
+use crate::app::{Action, Key};
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Config {
+    /// Databricks CLI profile. `DATABRICKS_CONFIG_PROFILE` wins over this; `DEFAULT` otherwise.
+    pub profile: Option<String>,
+    /// Upper bound on jobs fetched across pages.
+    pub max_jobs: usize,
+    /// Start with the "mine only" filter on.
+    pub mine_only: bool,
+    /// Value of the `dev` tag that marks a job as mine. Derived from the email when unset.
+    pub dev_tag: Option<String>,
+    /// Background refresh interval for the jobs list.
+    pub jobs_ttl_secs: u64,
+    /// How long cached runs are shown before being refetched.
+    pub runs_ttl_secs: u64,
+    /// Key overrides by action; each list replaces that action's default bindings entirely.
+    pub keys: BTreeMap<Action, Vec<Key>>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            profile: None,
+            max_jobs: 200,
+            mine_only: false,
+            dev_tag: None,
+            jobs_ttl_secs: 300,
+            runs_ttl_secs: 120,
+            keys: BTreeMap::new(),
+        }
+    }
+}
+
+/// The config that was loaded and where it came from, for the Profile tab.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Loaded {
+    pub config: Config,
+    pub path: PathBuf,
+    /// False when the file did not exist and defaults are in use.
+    pub found: bool,
+}
+
+/// Reads the config file if present. A missing file is defaults; an unreadable or invalid one
+/// is an error, since silently ignoring a typo would be worse.
+pub fn load() -> Result<Loaded> {
+    let path = ProjectDirs::from("", "", "lazydatabricks")
+        .context("could not determine the config directory")?
+        .config_dir()
+        .join("config.toml");
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Loaded {
+                config: Config::default(),
+                path,
+                found: false,
+            });
+        }
+        Err(error) => {
+            return Err(error).with_context(|| format!("could not read {}", path.display()));
+        }
+    };
+    let config = parse(&text).with_context(|| format!("invalid config {}", path.display()))?;
+    Ok(Loaded {
+        config,
+        path,
+        found: true,
+    })
+}
+
+fn parse(text: &str) -> Result<Config> {
+    Ok(toml::from_str(text)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_file_is_defaults() {
+        assert_eq!(parse("").unwrap(), Config::default());
+    }
+
+    #[test]
+    fn partial_file_keeps_other_defaults() {
+        let config = parse(
+            r#"
+            profile = "dev"
+            mine_only = true
+            dev_tag = "bk"
+
+            [keys]
+            next_tab = ["ø", "right"]
+            quit = ["q"]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(config.profile.as_deref(), Some("dev"));
+        assert!(config.mine_only);
+        assert_eq!(config.dev_tag.as_deref(), Some("bk"));
+        assert_eq!(config.max_jobs, 200);
+        assert_eq!(
+            config.keys[&Action::NextTab],
+            vec![Key::Char('ø'), Key::Right]
+        );
+        assert_eq!(config.keys[&Action::Quit], vec![Key::Char('q')]);
+    }
+
+    #[test]
+    fn typos_are_errors() {
+        let error = parse("max_job = 5").unwrap_err().to_string();
+        assert!(error.contains("max_job"), "{error}");
+        let error = parse("[keys]\nnext_tab = [\"ctrl+x\"]")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("ctrl+x"), "{error}");
+        assert!(parse("[keys]\nfly = [\"f\"]").is_err());
+    }
+}

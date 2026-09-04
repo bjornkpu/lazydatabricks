@@ -127,6 +127,7 @@ fn profile(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
         field("Profile", app.profile.clone()),
         field("Host", app.host.clone()),
         field("Jobs", app.jobs.items().len().to_string()),
+        field("Config", app.config_note.clone()),
     ];
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }

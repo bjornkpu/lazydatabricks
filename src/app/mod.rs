@@ -2,6 +2,7 @@
 
 mod filter;
 mod focus;
+mod keys;
 mod list;
 mod message;
 
@@ -11,10 +12,12 @@ use std::time::Duration;
 pub use filter::{Filter, Me};
 pub use focus::{Panel, ScreenMode, Tab};
 use jiff::tz::TimeZone;
+pub use keys::{Action, Keymap};
 pub use list::{Move, Selectable};
 pub use message::{ApiCall, Command, Key, Message};
 
 use crate::api::models::{Job, Run};
+use crate::config::Loaded;
 
 /// Spinner frames, one per `Tick` while loading.
 pub const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -26,10 +29,8 @@ const API_LOG_CAPACITY: usize = 200;
 /// Heartbeat period. The input thread sends `Message::Tick` this often; ages and TTLs count
 /// ticks, so tests drive time by sending ticks.
 pub const TICK: Duration = Duration::from_millis(100);
-/// Jobs older than this are refetched in the background: 5 minutes in ticks.
-const JOBS_TTL_TICKS: u64 = 3000;
-/// Cached runs older than this are refetched when shown: 2 minutes in ticks.
-const RUNS_TTL_TICKS: u64 = 1200;
+/// Ticks per second at `TICK` = 100ms. Turns config seconds into tick counts.
+const TICKS_PER_SECOND: u64 = 10;
 
 /// A fetched value and the tick it arrived on.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +58,17 @@ pub struct App {
     pub host: String,
     /// Zone for rendering timestamps. An input, so tests can pin UTC.
     pub tz: TimeZone,
+    pub keys: Keymap,
+    /// Where config came from, for the Profile tab.
+    pub config_note: String,
+    /// Config override for the `dev` tag that marks a job as mine.
+    dev_tag: Option<String>,
+    /// Upper bound on jobs fetched across pages.
+    pub max_jobs: usize,
+    /// Jobs older than this many ticks are refetched in the background.
+    jobs_ttl_ticks: u64,
+    /// Cached runs older than this many ticks are refetched when shown.
+    runs_ttl_ticks: u64,
     /// Ticks since launch; the app's clock.
     pub ticks: u64,
     /// Who the token belongs to, once the SCIM call has answered.
@@ -101,17 +113,32 @@ pub struct App {
 impl App {
     /// A freshly launched app: `main` has already kicked off the jobs and `Me` fetches.
     #[must_use]
-    pub fn new(profile: &str, host: &str, tz: TimeZone) -> Self {
+    pub fn new(profile: &str, host: &str, tz: TimeZone, loaded: &Loaded) -> Self {
+        let config = &loaded.config;
+        let config_note = if loaded.found {
+            loaded.path.display().to_string()
+        } else {
+            format!("{} (not found, defaults)", loaded.path.display())
+        };
         Self {
             profile: profile.to_owned(),
             host: host.to_owned(),
             tz,
+            keys: Keymap::with_overrides(&config.keys),
+            config_note,
+            dev_tag: config.dev_tag.clone(),
+            max_jobs: config.max_jobs,
+            jobs_ttl_ticks: config.jobs_ttl_secs.saturating_mul(TICKS_PER_SECOND),
+            runs_ttl_ticks: config.runs_ttl_secs.saturating_mul(TICKS_PER_SECOND),
             ticks: 0,
             me: None,
             me_error: None,
             all_jobs: Vec::new(),
             jobs: Selectable::default(),
-            filter: Filter::default(),
+            filter: Filter {
+                text: String::new(),
+                mine_only: config.mine_only,
+            },
             filtering: false,
             loading: true,
             jobs_fetched_at: None,
@@ -162,7 +189,7 @@ impl App {
                 // Background refresh of what is on screen, once it is older than its TTL.
                 if self
                     .jobs_fetched_at
-                    .is_some_and(|at| self.age_ticks(at) >= JOBS_TTL_TICKS)
+                    .is_some_and(|at| self.age_ticks(at) >= self.jobs_ttl_ticks)
                 {
                     self.refresh_jobs(&mut commands);
                 }
@@ -171,7 +198,7 @@ impl App {
                     && self
                         .runs_cache
                         .get(&job_id)
-                        .is_some_and(|cached| self.age_ticks(cached.at) >= RUNS_TTL_TICKS)
+                        .is_some_and(|cached| self.age_ticks(cached.at) >= self.runs_ttl_ticks)
                 {
                     self.refresh_runs(&mut commands);
                 }
@@ -218,7 +245,11 @@ impl App {
                 self.api_log.push_back(call);
             }
             Message::MeLoaded(email) => {
-                self.me = Some(Me::from_email(&email));
+                let mut me = Me::from_email(&email);
+                if let Some(tag) = &self.dev_tag {
+                    tag.clone_into(&mut me.tag);
+                }
+                self.me = Some(me);
                 self.me_error = None;
                 if self.filter.mine_only {
                     self.apply_filter();
@@ -261,7 +292,7 @@ impl App {
     fn refresh_jobs(&mut self, commands: &mut Vec<Command>) {
         if !self.loading {
             self.loading = true;
-            commands.push(Command::FetchJobs);
+            commands.push(Command::FetchJobs { max: self.max_jobs });
         }
     }
 
@@ -295,47 +326,49 @@ impl App {
         parts.join(" · ")
     }
 
-    /// Keys outside filter editing.
+    /// Keys outside filter editing: bound actions first, then the fixed digit keys.
     fn key(&mut self, key: Key, commands: &mut Vec<Command>) {
-        match key {
-            Key::Char('q') | Key::CtrlC => commands.push(Command::Quit),
-            Key::Char('+') => self.mode = self.mode.next(),
-            Key::Char('@') => self.show_api_log = !self.show_api_log,
-            Key::Char('/') => {
+        let Some(action) = self.keys.action(key) else {
+            if let Key::Char(digit) = key
+                && let Some(panel) = Panel::from_digit(digit)
+            {
+                self.set_focus(panel);
+            }
+            return;
+        };
+        match action {
+            Action::Quit => commands.push(Command::Quit),
+            Action::ScreenMode => self.mode = self.mode.next(),
+            Action::ToggleLog => self.show_api_log = !self.show_api_log,
+            Action::Filter => {
                 self.set_focus(Panel::Jobs);
                 self.filtering = true;
             }
-            Key::Char('m') => {
+            Action::MineOnly => {
                 self.filter.mine_only = !self.filter.mine_only;
                 self.apply_filter();
             }
-            Key::Char('r') => match self.focus {
+            Action::Refresh => match self.focus {
                 Panel::Main => self.refresh_runs(commands),
                 Panel::Status | Panel::Jobs | Panel::Pipelines => self.refresh_jobs(commands),
             },
-            Key::Char('R') => {
+            Action::RefreshAll => {
                 self.refresh_jobs(commands);
                 self.refresh_runs(commands);
             }
-            Key::Tab => self.set_focus(self.focus.next_side()),
-            Key::Enter => self.set_focus(Panel::Main),
-            Key::Esc => {
+            Action::NextPanel => self.set_focus(self.focus.next_side()),
+            Action::Open => self.set_focus(Panel::Main),
+            Action::Back => {
                 if self.focus == Panel::Main {
                     self.set_focus(self.context);
                 }
             }
-            Key::Char('j') | Key::Down => self.move_cursor(Move::Down),
-            Key::Char('k') | Key::Up => self.move_cursor(Move::Up),
-            Key::Char('g') => self.move_cursor(Move::First),
-            Key::Char('G') => self.move_cursor(Move::Last),
-            Key::Char('l' | ']') | Key::Right => self.next_tab(),
-            Key::Char('h' | '[') | Key::Left => self.prev_tab(),
-            Key::Char(digit) => {
-                if let Some(panel) = Panel::from_digit(digit) {
-                    self.set_focus(panel);
-                }
-            }
-            Key::Backspace => {}
+            Action::Down => self.move_cursor(Move::Down),
+            Action::Up => self.move_cursor(Move::Up),
+            Action::First => self.move_cursor(Move::First),
+            Action::Last => self.move_cursor(Move::Last),
+            Action::NextTab => self.next_tab(),
+            Action::PrevTab => self.prev_tab(),
         }
     }
 
@@ -420,7 +453,7 @@ impl App {
         };
         // Show what we have at once; refetch behind it only if it has gone stale.
         self.runs = Load::Loaded(cached.value.clone());
-        let stale = self.age_ticks(cached.at) >= RUNS_TTL_TICKS;
+        let stale = self.age_ticks(cached.at) >= self.runs_ttl_ticks;
         self.pending_runs = stale.then_some((job_id, RUNS_DEBOUNCE_TICKS));
     }
 
@@ -450,6 +483,7 @@ pub mod tests {
 
     use super::*;
     use crate::api::models::{JobSettings, LifeCycleState, ResultState, RunState};
+    use crate::config::Config;
 
     pub fn job(id: i64, name: &str) -> Job {
         Job {
@@ -508,8 +542,21 @@ pub mod tests {
         }
     }
 
+    pub fn defaults() -> Loaded {
+        Loaded {
+            config: Config::default(),
+            path: "config.toml".into(),
+            found: false,
+        }
+    }
+
     pub fn app() -> App {
-        App::new("dev", "https://adb-1.azuredatabricks.net", TimeZone::UTC)
+        App::new(
+            "dev",
+            "https://adb-1.azuredatabricks.net",
+            TimeZone::UTC,
+            &defaults(),
+        )
     }
 
     fn key(key: Key) -> Message {
@@ -859,7 +906,8 @@ pub mod tests {
             runs: runs.clone(),
         });
         press(&mut app, "j");
-        ticks(&mut app, RUNS_TTL_TICKS);
+        let ttl = app.runs_ttl_ticks;
+        ticks(&mut app, ttl);
         press(&mut app, "k");
         assert_eq!(app.runs, Load::Loaded(runs), "stale data shown at once");
         assert!(app.runs_busy());
@@ -874,8 +922,9 @@ pub mod tests {
             job_id: 1,
             runs: vec![],
         });
+        let runs_ttl = app.runs_ttl_ticks;
         assert_eq!(
-            ticks(&mut app, RUNS_TTL_TICKS),
+            ticks(&mut app, runs_ttl),
             vec![Command::FetchRuns { job_id: 1 }]
         );
         assert_eq!(ticks(&mut app, 50), vec![], "one refresh while in flight");
@@ -883,11 +932,12 @@ pub mod tests {
             job_id: 1,
             runs: vec![],
         });
-        let commands = ticks(&mut app, JOBS_TTL_TICKS);
-        assert!(commands.contains(&Command::FetchJobs));
+        let jobs_ttl = app.jobs_ttl_ticks;
+        let commands = ticks(&mut app, jobs_ttl);
+        assert!(commands.contains(&Command::FetchJobs { max: 200 }));
         assert!(app.loading);
         assert_eq!(
-            ticks(&mut app, JOBS_TTL_TICKS),
+            ticks(&mut app, jobs_ttl),
             vec![],
             "no second jobs fetch while loading"
         );
@@ -901,7 +951,10 @@ pub mod tests {
             job_id: 1,
             runs: vec![],
         });
-        assert_eq!(app.update(key(Key::Char('r'))), vec![Command::FetchJobs]);
+        assert_eq!(
+            app.update(key(Key::Char('r'))),
+            vec![Command::FetchJobs { max: 200 }]
+        );
         assert!(app.loading);
         assert_eq!(
             app.update(key(Key::Char('r'))),
@@ -920,7 +973,10 @@ pub mod tests {
         });
         assert_eq!(
             app.update(key(Key::Char('R'))),
-            vec![Command::FetchJobs, Command::FetchRuns { job_id: 1 }]
+            vec![
+                Command::FetchJobs { max: 200 },
+                Command::FetchRuns { job_id: 1 }
+            ]
         );
     }
 
@@ -945,6 +1001,49 @@ pub mod tests {
         press(&mut app, "G");
         assert_eq!(app.runs, Load::Loaded(runs));
         assert_eq!(ticks(&mut app, 3), vec![], "no fetch for a cached job");
+    }
+
+    #[test]
+    fn config_sets_filter_tag_ttls_and_keys() {
+        let mut loaded = defaults();
+        loaded.found = true;
+        loaded.config.mine_only = true;
+        loaded.config.dev_tag = Some("bk".to_owned());
+        loaded.config.max_jobs = 50;
+        loaded.config.runs_ttl_secs = 1;
+        loaded
+            .config
+            .keys
+            .insert(Action::NextTab, vec![Key::Char('ø')]);
+        let mut app = App::new("dev", "https://h", TimeZone::UTC, &loaded);
+        assert_eq!(app.config_note, "config.toml");
+        assert!(app.filter.mine_only);
+        app.update(Message::MeLoaded("someone@example.com".to_owned()));
+        assert_eq!(app.me.as_ref().map(|me| me.tag.as_str()), Some("bk"));
+        app.update(Message::JobsLoaded(vec![job(1, "a")]));
+        press(&mut app, "ø");
+        assert_eq!(app.active_tab(), Some(Tab::Detail));
+        press(&mut app, "l");
+        assert_eq!(
+            app.active_tab(),
+            Some(Tab::Detail),
+            "default binding replaced"
+        );
+        assert_eq!(
+            app.update(key(Key::Char('r'))),
+            vec![Command::FetchJobs { max: 50 }]
+        );
+        app.update(Message::JobsLoaded(vec![job(1, "a")]));
+        ticks(&mut app, 3);
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: vec![],
+        });
+        assert_eq!(
+            ticks(&mut app, 10),
+            vec![Command::FetchRuns { job_id: 1 }],
+            "runs ttl of one second"
+        );
     }
 
     #[test]

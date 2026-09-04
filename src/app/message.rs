@@ -3,10 +3,14 @@
 
 use std::time::Duration;
 
+use serde::Deserialize;
+
 use crate::api::models::{Job, Run};
 
-/// A key press, decoupled from the terminal library.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A key press, decoupled from the terminal library. Parsed from config via `FromStr` in
+/// `keys.rs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "String")]
 pub enum Key {
     Char(char),
     Tab,
@@ -58,6 +62,6 @@ pub enum Message {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Quit,
-    FetchJobs,
+    FetchJobs { max: usize },
     FetchRuns { job_id: i64 },
 }

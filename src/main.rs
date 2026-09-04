@@ -6,6 +6,7 @@
 
 mod api;
 mod app;
+mod config;
 mod ui;
 
 use std::sync::Arc;
@@ -19,21 +20,23 @@ use tokio::sync::mpsc;
 
 use crate::app::{App, Command, Key, Message, TICK};
 
-/// Upper bound on jobs fetched across pages. Becomes config at M7.
-const MAX_JOBS: usize = 200;
 /// Messages buffered between producers and the update loop.
 const CHANNEL_CAPACITY: usize = 64;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let profile =
-        std::env::var("DATABRICKS_CONFIG_PROFILE").unwrap_or_else(|_| "DEFAULT".to_owned());
+    let loaded = config::load()?;
+    // Environment beats config beats the CLI's own default profile name.
+    let profile = std::env::var("DATABRICKS_CONFIG_PROFILE")
+        .ok()
+        .or_else(|| loaded.config.profile.clone())
+        .unwrap_or_else(|| "DEFAULT".to_owned());
     let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
     // Auth before the terminal is taken over: the CLI may print or open a browser, and its
     // errors should land in a normal shell.
     let client = Arc::new(api::Client::from_profile(&profile, tx.clone())?);
-    let app = App::new(&profile, client.host(), TimeZone::system());
-    tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone()));
+    let app = App::new(&profile, client.host(), TimeZone::system(), &loaded);
+    tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone(), app.max_jobs));
     tokio::spawn(fetch_me(Arc::clone(&client), tx.clone()));
     spawn_input(tx.clone());
     // `ratatui::init` enters the alternate screen and raw mode and installs a panic hook that
@@ -60,8 +63,8 @@ async fn run(
         for command in app.update(message) {
             match command {
                 Command::Quit => return Ok(()),
-                Command::FetchJobs => {
-                    tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone()));
+                Command::FetchJobs { max } => {
+                    tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone(), max));
                 }
                 Command::FetchRuns { job_id } => {
                     tokio::spawn(fetch_runs(Arc::clone(&client), tx.clone(), job_id));
@@ -72,8 +75,8 @@ async fn run(
 }
 
 /// One jobs fetch, reported back as a message. Never touches `App`.
-async fn fetch_jobs(client: Arc<api::Client>, tx: mpsc::Sender<Message>) {
-    let message = match client.list_jobs(MAX_JOBS).await {
+async fn fetch_jobs(client: Arc<api::Client>, tx: mpsc::Sender<Message>, max: usize) {
+    let message = match client.list_jobs(max).await {
         Ok(jobs) => Message::JobsLoaded(jobs),
         Err(error) => Message::JobsFailed(format!("{error:#}")),
     };
