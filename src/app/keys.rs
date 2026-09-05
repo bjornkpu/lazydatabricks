@@ -63,6 +63,8 @@ pub enum Action {
     PrevMatch,
     /// Mark the viewed run to compare the next one against, lazygit's `W`.
     Compare,
+    /// Ask GitHub whether a newer release exists.
+    CheckUpdate,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -112,6 +114,7 @@ impl Default for Keymap {
             (Action::NextMatch, vec![Key::Char('n')]),
             (Action::PrevMatch, vec![Key::Char('N')]),
             (Action::Compare, vec![Key::Char('W')]),
+            (Action::CheckUpdate, vec![Key::Char('u')]),
         ]))
     }
 }

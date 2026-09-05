@@ -182,6 +182,8 @@ pub struct App {
     pub run_detail: Load<Run>,
     /// A run marked with `W`: the Detail of any other run shows how it differs, task by task.
     pub compare: Option<Run>,
+    /// A newer release than this binary, once a check has found one.
+    pub update: Option<String>,
     /// Error output of the viewed run's failed tasks, by task run id. Cleared with the run.
     pub run_outputs: HashMap<i64, Load<RunOutput>>,
     /// The job `runs` belongs to, or is being fetched for.
@@ -282,6 +284,7 @@ impl App {
             viewing_run: None,
             run_detail: Load::Idle,
             compare: None,
+            update: None,
             run_outputs: HashMap::new(),
             runs_job: None,
             pending_runs: None,
@@ -349,6 +352,7 @@ impl App {
             Message::RunDetailLoaded(run) => self.on_run_detail_loaded(run, &mut commands),
             Message::ScrollLimit(limit) => self.main_scroll = self.main_scroll.min(limit),
             Message::Matches(matches) => self.matches = matches,
+            Message::UpdateChecked(result) => self.on_update_checked(result),
             Message::ShellFinished { name, output } => self.on_shell_finished(name, output),
             Message::ShellExited { name, detail } => {
                 self.notice = Some(format!("{name}: {detail}"));
@@ -1141,6 +1145,10 @@ impl App {
             Action::RangeSelect => self.toggle_range(),
             Action::NextMatch => self.jump_match(true),
             Action::Compare => self.toggle_compare(),
+            Action::CheckUpdate => {
+                self.notice = Some("Checking for a newer release…".to_owned());
+                commands.push(Command::CheckUpdate);
+            }
             Action::PrevMatch => self.jump_match(false),
             Action::Sort => {
                 self.sort = self.sort.next();
@@ -1313,6 +1321,22 @@ impl App {
         match text {
             Some(text) => commands.push(Command::Page(text)),
             None => self.notice = Some("Nothing to page yet".to_owned()),
+        }
+    }
+
+    /// The release check came back. A newer version stays on the Status panel; anything else
+    /// is a notice and gone with the next key.
+    fn on_update_checked(&mut self, result: Result<String, AppError>) {
+        let current = env!("CARGO_PKG_VERSION");
+        match result {
+            Ok(latest) if crate::api::newer(&latest, current) => {
+                self.notice = Some(format!(
+                    "v{latest} is out (this is v{current}): github.com/bjornkpu/lazydatabricks/releases"
+                ));
+                self.update = Some(latest);
+            }
+            Ok(_) => self.notice = Some(format!("Up to date: v{current}")),
+            Err(error) => self.notice = Some(format!("Update check failed: {error}")),
         }
     }
 
@@ -3344,6 +3368,30 @@ pub mod tests {
             app.compare.as_ref().map(|run| run.id),
             Some(9),
             "leaving the run keeps the mark"
+        );
+    }
+
+    #[test]
+    fn u_checks_for_a_release_and_a_newer_one_sticks() {
+        let mut app = loaded();
+        assert_eq!(app.update(key(Key::Char('u'))), vec![Command::CheckUpdate]);
+        app.update(Message::UpdateChecked(Ok(
+            env!("CARGO_PKG_VERSION").to_owned()
+        )));
+        assert!(app.notice.as_deref().unwrap().starts_with("Up to date"));
+        assert_eq!(app.update, None);
+        app.update(Message::UpdateChecked(Ok("99.0.0".to_owned())));
+        assert_eq!(app.update.as_deref(), Some("99.0.0"));
+        assert!(app.notice.as_deref().unwrap().starts_with("v99.0.0 is out"));
+        app.update(Message::UpdateChecked(Err(boom())));
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("Update check failed: internal error: boom")
+        );
+        assert_eq!(
+            app.update.as_deref(),
+            Some("99.0.0"),
+            "a failed recheck keeps it"
         );
     }
 

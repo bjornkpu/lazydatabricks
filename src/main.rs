@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
         return print_json(&first.client, command, loaded.config.max_jobs).await;
     }
     for workspace in &workspaces {
-        workspace.start();
+        workspace.start(loaded.config.check_updates);
     }
     let (input_tx, input_rx) = mpsc::channel(CHANNEL_CAPACITY);
     let paused = Arc::new(AtomicBool::new(false));
@@ -126,8 +126,8 @@ impl Workspace {
         })
     }
 
-    /// The fetches every workspace starts with.
-    fn start(&self) {
+    /// The fetches every workspace starts with, plus the release check when config asks.
+    fn start(&self, check_updates: bool) {
         let max = self.app.max_jobs;
         tokio::spawn(fetch_jobs(Arc::clone(&self.client), self.tx.clone(), max));
         tokio::spawn(fetch_recent_runs(
@@ -148,6 +148,9 @@ impl Workspace {
             ));
         }
         tokio::spawn(fetch_me(Arc::clone(&self.client), self.tx.clone()));
+        if check_updates {
+            tokio::spawn(check_update(self.tx.clone()));
+        }
     }
 
     /// Runs one side effect. `Quit`, `SwitchProfile` and a terminal `Shell` need the loop or
@@ -202,6 +205,9 @@ impl Workspace {
             }
             Command::FetchPipeline { pipeline_id } => {
                 tokio::spawn(fetch_pipeline(client(), tx(), pipeline_id));
+            }
+            Command::CheckUpdate => {
+                tokio::spawn(check_update(tx()));
             }
             Command::FetchRunOutput { run_id } => {
                 tokio::spawn(fetch_run_output(client(), tx(), run_id));
@@ -302,7 +308,8 @@ async fn run(
                     // move it to spawn_blocking if switching ever feels slow.
                     match Workspace::open(&name, loaded, known) {
                         Ok(workspace) => {
-                            workspace.start();
+                            // Checked at launch already; a second workspace need not ask again.
+                            workspace.start(false);
                             workspaces.push(workspace);
                             active = workspaces.len().saturating_sub(1);
                         }
@@ -502,6 +509,12 @@ async fn fetch_job(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id: 
         Err(error) => Message::JobFailed { job_id, error },
     };
     let _ = tx.send(message).await;
+}
+
+async fn check_update(tx: mpsc::Sender<Message>) {
+    let _ = tx
+        .send(Message::UpdateChecked(api::latest_release().await))
+        .await;
 }
 
 async fn fetch_pipeline(client: Arc<api::Client>, tx: mpsc::Sender<Message>, pipeline_id: String) {

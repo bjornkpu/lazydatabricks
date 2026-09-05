@@ -473,6 +473,14 @@ mod tests {
     }
 
     #[test]
+    fn update_available_80x24() {
+        let mut app = with_runs();
+        app.update(Message::UpdateChecked(Ok("9.9.9".to_owned())));
+        press(&mut app, "1");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn compare_runs_80x24() {
         let mut app = with_runs();
         press(&mut app, "0j");

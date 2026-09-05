@@ -80,6 +80,7 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
         Panel::Compute => compute_rows(keys),
         Panel::Status => vec![
             (k(Action::Refresh), "refresh jobs, pipelines and compute"),
+            (k(Action::CheckUpdate), "check GitHub for a newer release"),
             (
                 k(Action::Copy),
                 "copy the last request as databricks api or curl",

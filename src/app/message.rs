@@ -118,6 +118,8 @@ pub enum Message {
     ScrollLimit(usize),
     /// The lines of the main panel's text that match the search, from the draw, for `n`/`N`.
     Matches(Vec<usize>),
+    /// The newest released version from GitHub, or why it could not be read.
+    UpdateChecked(Result<String, AppError>),
     /// Who the token belongs to, as an email.
     MeLoaded(String),
     MeFailed(AppError),
@@ -236,6 +238,8 @@ pub enum Command {
     Page(String),
     /// Open the config file in `$EDITOR`; `main` knows the path and steps out of the TUI.
     EditConfig,
+    /// Ask GitHub for the newest release.
+    CheckUpdate,
     /// Run a custom command, placeholders already expanded. `Terminal` output means `main`
     /// hands over the screen; `Popup` captures and replies with `ShellFinished`.
     Shell {

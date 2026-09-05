@@ -33,6 +33,9 @@ pub struct Config {
     /// The side panel in context takes twice the height of the others (lazygit's
     /// `expandFocusedSidePanel`). `false` shares the column evenly.
     pub expand_focused: bool,
+    /// Ask GitHub for the newest release at start and say so in `[1]` when it is newer. Off by
+    /// default: one request to a third party is a choice. `u` asks on demand either way.
+    pub check_updates: bool,
     /// Enable run-now and cancel in the `x` menu. Read-only without it (or `--allow-actions`).
     pub allow_actions: bool,
     /// Value of the `dev` tag that marks a job as mine. Derived from the email when unset.
@@ -71,6 +74,7 @@ impl Default for Config {
             status: Status::All,
             compute: true,
             expand_focused: true,
+            check_updates: false,
             allow_actions: false,
             dev_tag: None,
             me_aliases: Vec::new(),

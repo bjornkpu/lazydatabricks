@@ -34,10 +34,16 @@ pub fn status(app: &App, area: Rect, frame: &mut Frame) {
         (None, None) => ('◐', Color::Yellow),
     };
     let host = app.host.trim_start_matches("https://");
-    let identity = Line::from(vec![
+    let mut identity = Line::from(vec![
         Span::styled(glyph.to_string(), theme::tint(app, color)),
         Span::raw(format!(" {} → {host}", app.profile)),
     ]);
+    if let Some(latest) = &app.update {
+        identity.push_span(Span::styled(
+            format!(" · v{latest} out"),
+            theme::tint(app, Color::Yellow),
+        ));
+    }
     let mut summary = app.filter_summary();
     if let Some(age) = app.jobs_age() {
         summary.push_str(" · ");

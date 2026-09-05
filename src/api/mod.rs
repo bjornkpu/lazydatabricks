@@ -26,6 +26,51 @@ const TOKEN_REFRESH_MARGIN: Duration = Duration::from_secs(300);
 /// Per-request timeout; surfaces as `AppError::Timeout`.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Where releases are published; the update check reads the newest tag from here.
+const RELEASES_API: &str = "https://api.github.com/repos/bjornkpu/lazydatabricks/releases/latest";
+
+/// The newest released version, `0.2.0` style, from GitHub. Not a Databricks call, so it stays
+/// off the API log and out of `Client`.
+pub async fn latest_release() -> Result<String, AppError> {
+    #[derive(serde::Deserialize)]
+    struct Release {
+        tag_name: String,
+    }
+    let failed = |detail: String| AppError::Network {
+        path: RELEASES_API.to_owned(),
+        detail,
+    };
+    let release: Release = Http::builder()
+        .timeout(REQUEST_TIMEOUT)
+        // GitHub refuses requests without one.
+        .user_agent(concat!("lazydatabricks/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| failed(error.to_string()))?
+        .get(RELEASES_API)
+        .send()
+        .await
+        .map_err(|error| failed(error.to_string()))?
+        .error_for_status()
+        .map_err(|error| failed(error.to_string()))?
+        .json()
+        .await
+        .map_err(|error| failed(error.to_string()))?;
+    Ok(release.tag_name.trim_start_matches('v').to_owned())
+}
+
+/// Whether `latest` is a newer version than `current`, both `major.minor.patch`. Anything that
+/// does not parse compares as zero, so a strange tag never announces itself.
+#[must_use]
+pub fn newer(latest: &str, current: &str) -> bool {
+    let parts = |version: &str| -> Vec<u64> {
+        version
+            .split('.')
+            .map(|part| part.parse().unwrap_or(0))
+            .collect()
+    };
+    parts(latest) > parts(current)
+}
+
 /// Every profile name in `~/.databrickscfg`, for the profile menu. An unreadable file is an
 /// empty list here; `Client::from_profile` reports the real error for the profile in use.
 #[must_use]
@@ -418,5 +463,18 @@ impl Client {
             .json()
             .await
             .map_err(|error| AppError::from_reqwest(&error, &logged_path))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn newer_compares_semver_numerically() {
+        assert!(newer("0.10.0", "0.9.9"));
+        assert!(!newer("0.1.0", "0.1.0"));
+        assert!(!newer("garbage", "0.1.0"));
+        assert!(newer("1.0.0", "0.99.0"));
     }
 }

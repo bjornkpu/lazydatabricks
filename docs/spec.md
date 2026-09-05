@@ -1082,6 +1082,18 @@ no room.
 *Teaches:* a deferred feature whose cost dropped to zero is no longer deferred.
 *Done when:* a job whose runs went from 40 s to 4 min shows a slope under its table.
 
+### M55 — Update check
+Both tools check for a new version; M31 made releases, so there is something to check. `u` asks
+GitHub's releases API for the newest tag and compares it numerically with the built version;
+a newer one is a notice and then a yellow `· v0.2.0 out` on the Status line until exit, an equal
+one says "up to date", a failure says why. `check_updates = true` runs it at start. Off by
+default: a request to a third party on every launch is the person's call, not the program's. The
+call lives beside `Client` but outside it, since it is not a Databricks request and does not
+belong in the API log.
+
+*Teaches:* a third-party call is opt-in, off the API log, and one function.
+*Done when:* `u` on an old binary names the newer version and where to get it.
+
 ---
 
 ## 9. Testing
