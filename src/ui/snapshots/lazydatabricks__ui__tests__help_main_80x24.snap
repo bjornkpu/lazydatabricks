@@ -3,10 +3,10 @@ source: src/ui/mod.rs
 expression: render(&app)
 ---
 "┌─[1]─Status────┌ Keybindings ─ Main ───────────────────────────┐──────────────┐"
-"│◐ dev → adb-1.a│  j/↓  next run                                │ion  Result   │"
-"│3 of 3 jobs · 0│  k/↑  previous run                            │     ◐ RUNNING│"
-"└───────────────│   ^D  ten runs down                           │     ✓ SUCCESS│"
-"┌─[2]─Jobs by ac│   ^U  ten runs up                             │     ✗ FAILED │"
+"│◐ dev → adb-1.a│  j/↓  next run, or scroll a line              │ion  Result   │"
+"│3 of 3 jobs · 0│  k/↑  previous run, or scroll a line          │     ◐ RUNNING│"
+"└───────────────│   ^D  ten runs or lines down                  │     ✓ SUCCESS│"
+"┌─[2]─Jobs by ac│   ^U  ten runs or lines up                    │     ✗ FAILED │"
 "│ 2h ◐ [someone]│Enter  open the run: tasks and message         │              │"
 "│ 1d ✗ nightly_b│l/]/→  next tab                                │              │"
 "│    · weekly_re│h/[/←  previous tab                            │              │"

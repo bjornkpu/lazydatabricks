@@ -2,10 +2,10 @@
 
 use jiff::SignedDuration;
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState, Wrap};
+use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState};
 
 use super::theme::Palette;
 use super::{chrome, theme};
@@ -16,7 +16,8 @@ use crate::app::{App, Load, Panel, Tab};
 /// result word need about this much.
 const NARROW_RUNS_TABLE: u16 = 50;
 
-pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
+/// Returns how many lines the text view can still scroll; tables report zero.
+pub fn draw(app: &App, area: Rect, frame: &mut Frame) -> usize {
     let mut title = tabs_title(app);
     if let Some(run_id) = app.viewing_run {
         title.push_span(Span::raw(format!(" › run {run_id}")));
@@ -30,15 +31,49 @@ pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
         Some(Tab::Runs) => runs(app, block, area, frame),
         Some(Tab::Updates) => updates(app, block, area, frame),
         Some(Tab::Detail) if app.context == Panel::Pipelines => {
-            pipeline_detail(app, block, area, frame);
+            pipeline_detail(app, block, area, frame)
         }
         Some(Tab::Detail) if app.context == Panel::Compute => {
-            cluster_detail(app, block, area, frame);
+            cluster_detail(app, block, area, frame)
         }
         Some(Tab::Detail) => detail(app, block, area, frame),
         Some(Tab::Profile) => profile(app, block, area, frame),
-        None => frame.render_widget(block, area),
+        None => {
+            frame.render_widget(block, area);
+            0
+        }
     }
+}
+
+/// Renders lines with the main panel's scroll applied and returns how far it can scroll: the
+/// lines that do not fit. `App` learns that limit through `Message::ScrollLimit`.
+fn text_view(
+    app: &App,
+    lines: Vec<Line<'static>>,
+    block: Block<'static>,
+    area: Rect,
+    frame: &mut Frame,
+) -> usize {
+    let height = usize::from(block.inner(area).height);
+    let limit = lines.len().saturating_sub(height);
+    let scroll = u16::try_from(app.main_scroll.min(limit)).unwrap_or(u16::MAX);
+    frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
+    limit
+}
+
+/// Splits text into rows of at most `width` characters, so the line count the scroll clamps
+/// to is exact. Tracebacks are ASCII; grapheme width is not a concern here.
+fn wrap(text: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    let mut rows = Vec::new();
+    for line in text.lines() {
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() {
+            rows.push(String::new());
+        }
+        rows.extend(chars.chunks(width).map(|chunk| chunk.iter().collect()));
+    }
+    rows
 }
 
 /// `Runs - Detail`, the active one bold and underlined, the rest dim.
@@ -58,21 +93,20 @@ fn tabs_title(app: &App) -> Line<'static> {
     Line::from(spans)
 }
 
-fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
+fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
     if app.viewing_run.is_some() {
-        run_detail(app, block, area, frame);
-        return;
+        return run_detail(app, block, area, frame);
     }
     let palette = theme::palette(app);
     let runs = match &app.runs {
         Load::Failed(error) => {
             frame.render_widget(chrome::error(error, block, &palette), area);
-            return;
+            return 0;
         }
         Load::Loaded(runs) => runs,
         Load::Idle | Load::Loading => {
             frame.render_widget(block, area);
-            return;
+            return 0;
         }
     };
     // Too narrow for every column: the run id goes, never truncated, and Result stays.
@@ -123,15 +157,16 @@ fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
     // Local widget state built from `App`: the render stays a pure function of the app.
     let mut state = TableState::default().with_selected(runs.selected_index());
     frame.render_stateful_widget(table, area, &mut state);
+    0
 }
 
-/// One run in full: its fields, then its tasks.
-fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
+/// One run in full: its fields, its tasks, then why the failed ones failed. One scrolling text.
+fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
     let palette = theme::palette(app);
     let run = match &app.run_detail {
         Load::Failed(error) => {
             frame.render_widget(chrome::error(error, block, &palette), area);
-            return;
+            return 0;
         }
         Load::Loaded(run) => run,
         Load::Idle | Load::Loading => {
@@ -139,25 +174,10 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
                 .viewing_run
                 .map_or_else(String::new, |id| format!("Loading run {id}…"));
             frame.render_widget(Paragraph::new(text).block(block), area);
-            return;
+            return 0;
         }
     };
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-    let errors = task_errors(app, run, &palette);
-    // With failures to show, the task table gives up the lower half to them.
-    let tasks_height = if errors.is_empty() {
-        Constraint::Fill(1)
-    } else {
-        let rows = u16::try_from(run.tasks.len().saturating_add(1)).unwrap_or(u16::MAX);
-        Constraint::Length(rows.min(inner.height / 2))
-    };
-    let [fields_area, tasks_area, errors_area] =
-        Layout::vertical([Constraint::Length(7), tasks_height, Constraint::Fill(1)]).areas(inner);
-    frame.render_widget(
-        Paragraph::new(errors).wrap(Wrap { trim: false }),
-        errors_area,
-    );
+    let width = usize::from(block.inner(area).width);
     let dash = || "-".to_owned();
     let (glyph, color) = theme::run_glyph(run);
     let result = Line::from(vec![
@@ -165,7 +185,7 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
         Span::styled(glyph.to_string(), theme::tint(app, color)),
         Span::raw(format!(" {}", theme::run_result(run))),
     ]);
-    let fields = vec![
+    let mut lines = vec![
         field(app, "Run ID", run.id.to_string()),
         field(
             app,
@@ -197,57 +217,68 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
                 run.page_url.clone()
             },
         ),
+        Line::default(),
+        Line::styled(
+            format!("{:<16}{:<13}{:<10}Result", "Task", "Started", "Duration"),
+            Style::new().add_modifier(Modifier::BOLD),
+        ),
     ];
-    frame.render_widget(Paragraph::new(fields), fields_area);
-    let header = Row::new(["Task", "Started", "Duration", "Result"])
-        .style(Style::new().add_modifier(Modifier::BOLD));
-    let rows = run.tasks.iter().map(|task| {
+    lines.extend(run.tasks.iter().map(|task| {
         let (glyph, color) = theme::state_glyph(&task.state);
         let started = task
             .start_time
             .map_or_else(dash, |ts| theme::clock(ts, &app.tz, &app.date_format));
         let duration = theme::elapsed(task.start_time, task.end_time, app.now)
             .map_or_else(dash, theme::duration);
-        Row::new([
-            Cell::from(task.task_key.clone()),
-            Cell::from(started),
-            Cell::from(duration),
-            Cell::from(Line::from(vec![
-                Span::styled(glyph.to_string(), theme::tint(app, color)),
-                Span::raw(format!(" {}", theme::state_result(&task.state))),
-            ])),
+        Line::from(vec![
+            Span::raw(format!(
+                "{:<16}{started:<13}{duration:<10}",
+                chrome::fit(&task.task_key, 15)
+            )),
+            Span::styled(glyph.to_string(), theme::tint(app, color)),
+            Span::raw(format!(" {}", theme::state_result(&task.state))),
         ])
-    });
-    let widths = [
-        Constraint::Fill(1),
-        Constraint::Length(12),
-        Constraint::Length(9),
-        Constraint::Length(12),
-    ];
-    frame.render_widget(Table::new(rows, widths).header(header), tasks_area);
+    }));
+    let errors = task_errors(app, run, &palette, width);
+    if !errors.is_empty() {
+        lines.push(Line::default());
+        lines.extend(errors);
+        // Each task ends in a separator; `G` should land on text, not on it.
+        lines.pop();
+    }
+    text_view(app, lines, block, area, frame)
 }
 
 /// Why each failed task failed: its state message, then the error and traceback from
-/// `runs/get-output` as they arrive. Empty when every task succeeded.
-// ponytail: no scrolling; the error line comes first and a long traceback is what `o` is for.
-fn task_errors(app: &App, run: &Run, palette: &Palette) -> Vec<Line<'static>> {
+/// `runs/get-output` as they arrive, wrapped to `width`. Empty when every task succeeded.
+fn task_errors(app: &App, run: &Run, palette: &Palette, width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     for task in run.tasks.iter().filter(|task| task.state.is_failure()) {
+        // Bold key, then the dim message flowing on from it and wrapping under it.
+        let head = format!("{}  ", task.task_key);
+        let mut message = wrap(
+            &task.state.state_message,
+            width.saturating_sub(head.chars().count()),
+        )
+        .into_iter();
         lines.push(Line::from(vec![
-            Span::styled(
-                task.task_key.clone(),
-                Style::new().add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(format!("  {}", task.state.state_message), theme::dim(app)),
+            Span::styled(head, Style::new().add_modifier(Modifier::BOLD)),
+            Span::styled(message.next().unwrap_or_default(), theme::dim(app)),
         ]));
+        lines.extend(
+            wrap(&message.collect::<Vec<_>>().join(" "), width)
+                .into_iter()
+                .filter(|row| !row.is_empty())
+                .map(|row| Line::styled(row, theme::dim(app))),
+        );
         match app.run_outputs.get(&task.run_id) {
             Some(Load::Loaded(output)) => {
                 let error = Style::new().fg(palette.error);
                 let dim = theme::dim(app);
                 let text = |s: &Option<String>, style| {
                     s.iter()
-                        .flat_map(|s| s.lines())
-                        .map(|line| Line::styled(line.to_owned(), style))
+                        .flat_map(|s| wrap(s, width))
+                        .map(|row| Line::styled(row, style))
                         .collect::<Vec<_>>()
                 };
                 let mut body = text(&output.error, error);
@@ -276,10 +307,10 @@ fn task_errors(app: &App, run: &Run, palette: &Palette) -> Vec<Line<'static>> {
 }
 
 /// The latest updates Databricks lists with the pipeline. No extra call; a handful of rows.
-fn updates(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
+fn updates(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
     let Some(pipeline) = app.pipelines.selected() else {
         frame.render_widget(block, area);
-        return;
+        return 0;
     };
     let header =
         Row::new(["Update", "Created", "State"]).style(Style::new().add_modifier(Modifier::BOLD));
@@ -312,12 +343,13 @@ fn updates(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
         Constraint::Fill(1),
     ];
     frame.render_widget(Table::new(rows, widths).header(header).block(block), area);
+    0
 }
 
-fn pipeline_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
+fn pipeline_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
     let Some(pipeline) = app.pipelines.selected() else {
         frame.render_widget(block, area);
-        return;
+        return 0;
     };
     let lines = vec![
         field(app, "Name", pipeline.name.clone()),
@@ -326,13 +358,13 @@ fn pipeline_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Fra
         field(app, "Creator", pipeline.creator_user_name.clone()),
         field(app, "Updates", pipeline.latest_updates.len().to_string()),
     ];
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    text_view(app, lines, block, area, frame)
 }
 
-fn cluster_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
+fn cluster_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
     let Some(cluster) = app.compute.selected() else {
         frame.render_widget(block, area);
-        return;
+        return 0;
     };
     let dash = || "-".to_owned();
     let (glyph, color) = theme::cluster_glyph(cluster);
@@ -382,13 +414,13 @@ fn cluster_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Fram
                 .map_or_else(dash, |ts| theme::clock(ts, &app.tz, &app.date_format)),
         ),
     ];
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    text_view(app, lines, block, area, frame)
 }
 
-fn detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
+fn detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
     let Some(job) = app.jobs.selected() else {
         frame.render_widget(block, area);
-        return;
+        return 0;
     };
     let settings = &job.settings;
     let dash = || "-".to_owned();
@@ -477,17 +509,17 @@ fn detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
             theme::dim(app),
         ));
     }
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    text_view(app, lines, block, area, frame)
 }
 
-fn profile(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
+fn profile(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
     let lines = vec![
         field(app, "Profile", app.profile.clone()),
         field(app, "Host", app.host.clone()),
         field(app, "Jobs", app.jobs.items().len().to_string()),
         field(app, "Config", app.config_note.clone()),
     ];
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    text_view(app, lines, block, area, frame)
 }
 
 /// One `Label   value` line. Values are owned because the frame outlives no borrow of `App`.

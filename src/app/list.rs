@@ -3,7 +3,7 @@
 
 /// Rows one page movement covers.
 // ponytail: a fixed page, not the panel height; `update` does not know the terminal size.
-const PAGE: usize = 10;
+pub const PAGE: usize = 10;
 
 /// A cursor movement, independent of which list it lands on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -85,12 +85,13 @@ pub fn visible_text(app: &App) -> String {
     lines.join("\n")
 }
 
-/// Draws the whole screen for the current state.
-pub fn draw(app: &App, frame: &mut Frame) {
+/// Draws the whole screen for the current state. Returns how far the main panel's text can
+/// scroll, for `Message::ScrollLimit`.
+pub fn draw(app: &App, frame: &mut Frame) -> usize {
     let [body, hint_bar] =
         Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(frame.area());
-    if app.mode == ScreenMode::Full {
-        draw_panel(app, app.focus, body, frame);
+    let limit = if app.mode == ScreenMode::Full {
+        draw_panel(app, app.focus, body, frame)
     } else {
         let side_width = if app.mode == ScreenMode::Half {
             Constraint::Ratio(1, 2)
@@ -116,15 +117,16 @@ pub fn draw(app: &App, frame: &mut Frame) {
             let [main, log] =
                 Layout::vertical([Constraint::Fill(1), Constraint::Length(API_LOG_HEIGHT)])
                     .areas(main);
-            draw_panel(app, Panel::Main, main, frame);
             apilog::draw(app, log, frame);
+            draw_panel(app, Panel::Main, main, frame)
         } else {
-            draw_panel(app, Panel::Main, main, frame);
+            draw_panel(app, Panel::Main, main, frame)
         }
-    }
+    };
     hints::draw(app, hint_bar, frame);
     menu::draw(app, frame);
     help::draw(app, frame);
+    limit
 }
 
 /// Height of one side panel. Status is two lines of text; the lists share the rest.
@@ -142,14 +144,16 @@ fn side_constraint(panel: Panel, focus: Panel, collapse_unfocused: bool) -> Cons
     }
 }
 
-fn draw_panel(app: &App, panel: Panel, area: Rect, frame: &mut Frame) {
+/// Side panels never scroll as text, so only the main panel reports a limit.
+fn draw_panel(app: &App, panel: Panel, area: Rect, frame: &mut Frame) -> usize {
     match panel {
         Panel::Status => side::status(app, area, frame),
         Panel::Jobs => side::jobs(app, area, frame),
         Panel::Pipelines => side::pipelines(app, area, frame),
         Panel::Compute => side::compute(app, area, frame),
-        Panel::Main => main_panel::draw(app, area, frame),
+        Panel::Main => return main_panel::draw(app, area, frame),
     }
+    0
 }
 
 #[cfg(test)]
@@ -166,7 +170,11 @@ mod tests {
 
     fn render(app: &App) -> String {
         let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
-        terminal.draw(|frame| draw(app, frame)).unwrap();
+        terminal
+            .draw(|frame| {
+                draw(app, frame);
+            })
+            .unwrap();
         terminal.backend().to_string()
     }
 
@@ -505,7 +513,11 @@ mod tests {
             let mut app = with_runs();
             app.theme = theme;
             let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
-            terminal.draw(|frame| draw(&app, frame)).unwrap();
+            terminal
+                .draw(|frame| {
+                    draw(&app, frame);
+                })
+                .unwrap();
             // Top-left corner of the focused Jobs panel, just under the 4-row Status panel.
             terminal.backend().buffer().cell((0, 4)).unwrap().fg
         };
@@ -585,6 +597,37 @@ mod tests {
             run_id: task_run_id,
             output,
         });
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn run_detail_scrolled_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "0j");
+        app.update(Message::Key(Key::Enter));
+        let mut detail: crate::api::models::Run =
+            serde_json::from_str(include_str!("../../tests/fixtures/run_get.json")).unwrap();
+        detail.state.result_state = Some(ResultState::Failed);
+        detail.tasks[1] = task(
+            detail.tasks[1].run_id,
+            "endring_sluttdato_fakta",
+            Some(ResultState::Failed),
+        );
+        let task_run_id = detail.tasks[1].run_id;
+        app.update(Message::RunDetailLoaded(detail));
+        let output =
+            serde_json::from_str(include_str!("../../tests/fixtures/run_output.json")).unwrap();
+        app.update(Message::RunOutputLoaded {
+            run_id: task_run_id,
+            output,
+        });
+        press(&mut app, "G");
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        let mut limit = 0;
+        terminal.draw(|frame| limit = draw(&app, frame)).unwrap();
+        assert!(limit > 0, "the trace does not fit");
+        app.update(Message::ScrollLimit(limit));
+        assert_eq!(app.main_scroll, limit);
         insta::assert_snapshot!(render(&app));
     }
 

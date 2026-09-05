@@ -140,6 +140,9 @@ pub struct App {
     pub context: Panel,
     /// Index into `context.tabs()`.
     pub tab: usize,
+    /// Lines scrolled off the top of a text view in the main panel. Unbounded here; the draw
+    /// clamps it and reports the limit back as `Message::ScrollLimit`.
+    pub main_scroll: usize,
     pub mode: ScreenMode,
     /// Runs of the selected job, with the main panel's cursor.
     pub runs: Load<Selectable<Run>>,
@@ -222,6 +225,7 @@ impl App {
             focus: Panel::Jobs,
             context: Panel::Jobs,
             tab: 0,
+            main_scroll: 0,
             mode: ScreenMode::Normal,
             runs: Load::Idle,
             viewing_run: None,
@@ -285,6 +289,7 @@ impl App {
             }
             Message::RunsFailed { job_id, error } => self.on_runs_failed(job_id, error),
             Message::RunDetailLoaded(run) => self.on_run_detail_loaded(run, &mut commands),
+            Message::ScrollLimit(limit) => self.main_scroll = self.main_scroll.min(limit),
             Message::RunOutputLoaded { run_id, output } => {
                 self.set_run_output(run_id, Load::Loaded(output));
             }
@@ -835,6 +840,7 @@ impl App {
 
     fn leave_run_detail(&mut self) {
         self.viewing_run = None;
+        self.main_scroll = 0;
         self.run_detail = Load::Idle;
         self.run_outputs.clear();
     }
@@ -955,6 +961,7 @@ impl App {
                 {
                     self.viewing_run = Some(run_id);
                     self.run_detail = Load::Loading;
+                    self.main_scroll = 0;
                     commands.push(Command::FetchRunDetail { run_id });
                 } else {
                     self.set_focus(Panel::Main);
@@ -1371,18 +1378,26 @@ impl App {
         if panel.is_side() && self.context != panel {
             self.context = panel;
             self.tab = 0;
+            self.main_scroll = 0;
         }
     }
 
-    /// Cursor keys act on the focused panel's list.
+    /// Cursor keys act on the focused panel's list, or scroll the main panel's text views.
     fn move_cursor(&mut self, movement: Move) {
         match self.focus {
             Panel::Jobs => {
                 self.jobs.apply(movement);
+                self.main_scroll = 0;
                 self.select_runs();
             }
-            Panel::Pipelines => self.pipelines.apply(movement),
-            Panel::Compute => self.compute.apply(movement),
+            Panel::Pipelines => {
+                self.pipelines.apply(movement);
+                self.main_scroll = 0;
+            }
+            Panel::Compute => {
+                self.compute.apply(movement);
+                self.main_scroll = 0;
+            }
             Panel::Main => {
                 if self.viewing_run.is_none()
                     && self.context == Panel::Jobs
@@ -1390,6 +1405,8 @@ impl App {
                     && let Load::Loaded(runs) = &mut self.runs
                 {
                     runs.apply(movement);
+                } else {
+                    self.main_scroll = scrolled(self.main_scroll, movement);
                 }
             }
             Panel::Status => {}
@@ -1426,6 +1443,7 @@ impl App {
             return;
         }
         self.tab = self.tab.saturating_add(1).checked_rem(len).unwrap_or(0);
+        self.main_scroll = 0;
     }
 
     fn prev_tab(&mut self) {
@@ -1437,6 +1455,20 @@ impl App {
             .tab
             .checked_sub(1)
             .unwrap_or_else(|| len.saturating_sub(1));
+        self.main_scroll = 0;
+    }
+}
+
+/// A text view's scroll after one cursor movement. `Last` overshoots on purpose: the draw
+/// clamps it to the real end and reports back.
+const fn scrolled(scroll: usize, movement: Move) -> usize {
+    match movement {
+        Move::Down => scroll.saturating_add(1),
+        Move::Up => scroll.saturating_sub(1),
+        Move::PageDown => scroll.saturating_add(list::PAGE),
+        Move::PageUp => scroll.saturating_sub(list::PAGE),
+        Move::First => 0,
+        Move::Last => usize::MAX,
     }
 }
 
@@ -1648,6 +1680,44 @@ pub mod tests {
         assert_eq!(app.update(key(Key::Char('q'))), vec![Command::Quit]);
         assert_eq!(app.update(key(Key::Ctrl('c'))), vec![Command::Quit]);
         assert_eq!(app.update(key(Key::Ctrl('d'))), vec![], "^D is not quit");
+    }
+
+    #[test]
+    fn main_panel_text_views_scroll_and_reset() {
+        let mut app = loaded();
+        press(&mut app, "0]jj");
+        assert_eq!(app.active_tab(), Some(Tab::Detail));
+        assert_eq!(app.main_scroll, 2);
+        app.update(key(Key::Ctrl('d')));
+        assert_eq!(app.main_scroll, 12);
+        press(&mut app, "k");
+        assert_eq!(app.main_scroll, 11);
+        press(&mut app, "g");
+        assert_eq!(app.main_scroll, 0);
+        press(&mut app, "G");
+        app.update(Message::ScrollLimit(5));
+        assert_eq!(app.main_scroll, 5, "the draw clamps G to the last line");
+        press(&mut app, "k");
+        assert_eq!(app.main_scroll, 4);
+        press(&mut app, "[");
+        assert_eq!(app.main_scroll, 0, "a tab change starts at the top");
+        press(&mut app, "]jj2j");
+        assert_eq!(
+            app.main_scroll, 0,
+            "moving the side cursor starts at the top"
+        );
+    }
+
+    #[test]
+    fn runs_table_keeps_its_cursor_instead_of_scrolling() {
+        let mut app = loaded();
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: vec![run(1, 1, 2, None), run(2, 3, 4, None)],
+        });
+        press(&mut app, "0j");
+        assert_eq!(app.main_scroll, 0);
+        assert_eq!(run_index(&app), Some(1));
     }
 
     #[test]

@@ -224,7 +224,12 @@ async fn run(
         let Some(workspace) = workspaces.get_mut(active) else {
             bail!("no workspace {active}");
         };
-        terminal.draw(|frame| ui::draw(&workspace.app, frame))?;
+        let mut limit = 0;
+        terminal.draw(|frame| limit = ui::draw(&workspace.app, frame))?;
+        if workspace.app.main_scroll > limit {
+            // A pure clamp: it yields no commands, and the next draw is the same picture.
+            workspace.app.update(Message::ScrollLimit(limit));
+        }
         let message = tokio::select! {
             message = input.recv() => message,
             message = workspace.rx.recv() => message,

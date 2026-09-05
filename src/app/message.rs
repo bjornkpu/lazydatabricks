@@ -93,6 +93,9 @@ pub enum Message {
         error: AppError,
     },
     ApiCalled(ApiCall),
+    /// The draw found the main panel's text this many lines taller than its viewport. The
+    /// scroll clamps to it; `update` cannot know the terminal size on its own.
+    ScrollLimit(usize),
     /// Who the token belongs to, as an email.
     MeLoaded(String),
     MeFailed(AppError),

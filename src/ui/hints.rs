@@ -50,10 +50,11 @@ pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap, viewing_run: bool) 
             k(Action::Help)
         ),
         Panel::Main if viewing_run => format!(
-            " Back: {} │ Browser: {} │ Copy URL: {} │ Actions: {} │ Quit: {} │ Keys: {}",
+            " Scroll: {}/{} │ Back: {} │ Browser: {} │ Actions: {} │ Quit: {} │ Keys: {}",
+            k(Action::Down),
+            k(Action::Up),
             k(Action::Back),
             k(Action::Browse),
-            k(Action::Copy),
             k(Action::Menu),
             k(Action::Quit),
             k(Action::Help)

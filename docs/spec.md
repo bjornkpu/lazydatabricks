@@ -832,6 +832,20 @@ config turns the panel off outright, for people who never start compute from a t
 *Done when:* a serverless workspace shows its warehouses with their state and nothing else in
 `[4]`, and a workspace with neither shows three side panels.
 
+### M33 — Main panel scrolling
+lazygit's main view scrolls; ours cut a traceback at the panel edge and pointed at the browser.
+Every text view in `[0]` (run detail, job, pipeline and compute detail, profile) becomes one
+paragraph that `j`/`k`, `ctrl+d`/`ctrl+u`, `g`/`G` scroll when `[0]` is focused; the runs table
+keeps its cursor. Run detail folds its fields, task table and wrapped error output into that one
+text, so a long trace scrolls instead of vanishing. `update` cannot know the terminal size, so
+the scroll is unbounded in `App` and the draw returns how far the text really can go; `main`
+feeds that back as `Message::ScrollLimit` and the clamp stays a state transition. Any change of
+what the panel shows (side cursor, tab, entering or leaving a run) starts at the top.
+
+*Teaches:* when the pure core needs a fact only the renderer has, the renderer reports it as a
+message rather than the core guessing at layout.
+*Done when:* `G` on a failed run lands on the last line of the trace and `k` moves up one line.
+
 ---
 
 ## 9. Testing
