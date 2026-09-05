@@ -5,12 +5,12 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use directories::ProjectDirs;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::app::{Action, CustomCommand, Key, Keymap, Status};
 use crate::error::AppError;
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 // Mirrors the TOML file: each bool is a user switch, and `App` turns them into enums.
 #[allow(clippy::struct_excessive_bools)]
@@ -83,7 +83,7 @@ impl Default for Config {
 }
 
 /// List order. Ties always break on name, so the order is stable.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Sort {
     /// Newest run or update first; never-run items last.
@@ -115,7 +115,7 @@ impl Sort {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Theme {
     #[default]
@@ -178,6 +178,13 @@ pub fn load(explicit: Option<PathBuf>) -> Result<Loaded, AppError> {
 fn explicit_given(path: &std::path::Path) -> bool {
     ProjectDirs::from("", "", "lazydatabricks")
         .is_none_or(|dirs| !path.starts_with(dirs.config_dir()))
+}
+
+/// The effective configuration as TOML, for the Config tab: what this run is actually using,
+/// defaults included, in the syntax the file takes.
+#[must_use]
+pub fn render(config: &Config) -> String {
+    toml::to_string_pretty(config).unwrap_or_else(|error| error.to_string())
 }
 
 /// Parses the file and checks the values `toml` cannot: a `date_format` that would fail on
@@ -249,6 +256,36 @@ mod tests {
         .unwrap_err();
         assert!(twice.contains("used twice"), "{twice}");
         assert!(parse("[[commands]]\nname = \"a\"\ncommand = \" \"").is_err());
+    }
+
+    #[test]
+    fn rendered_config_reads_back_as_itself() {
+        let config = parse(
+            r#"
+            profiles = ["dev", "prod"]
+            mine_only = true
+            status = "failed"
+            theme = "mono"
+            [keys]
+            next_tab = ["l", "ctrl+n", "right"]
+            [[commands]]
+            name = "Job JSON"
+            key = "J"
+            context = "jobs"
+            command = "databricks jobs get {{job_id}}"
+            "#,
+        )
+        .unwrap();
+        let text = render(&config);
+        assert_eq!(parse(&text).unwrap(), config, "{text}");
+        assert!(
+            text.contains("\"ctrl+n\""),
+            "keys use their config spelling: {text}"
+        );
+        assert_eq!(
+            parse(&render(&Config::default())).unwrap(),
+            Config::default()
+        );
     }
 
     #[test]

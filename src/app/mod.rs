@@ -90,6 +90,8 @@ pub struct App {
     pub keys: Keymap,
     /// Where config came from, for the Profile tab.
     pub config_note: String,
+    /// The effective configuration as TOML, defaults filled in, for the Config tab.
+    pub config_text: String,
     /// Config override for the `dev` tag that marks a job as mine.
     dev_tag: Option<String>,
     /// Config: other names that are me.
@@ -211,6 +213,7 @@ impl App {
             // Conflicts were rejected at config load; a stray one falls back to the defaults.
             keys: Keymap::with_overrides(&config.keys).unwrap_or_default(),
             config_note,
+            config_text: crate::config::render(config),
             dev_tag: config.dev_tag.clone(),
             me_aliases: config.me_aliases.clone(),
             max_jobs: config.max_jobs,
@@ -1137,23 +1140,7 @@ impl App {
             Action::Refresh => self.refresh_focused(commands),
             Action::RefreshAll => self.refresh_all(commands),
             Action::NextPanel => self.set_focus(self.next_visible_side(self.focus)),
-            Action::Open => {
-                if self.focus == Panel::Main
-                    && matches!(self.active_tab(), Some(Tab::Json | Tab::Output))
-                {
-                    self.page(commands);
-                } else if self.focus == Panel::Main
-                    && self.viewing_run.is_none()
-                    && let Some(run_id) = self.selected_run().map(|run| run.id)
-                {
-                    self.viewing_run = Some(run_id);
-                    self.run_detail = Load::Loading;
-                    self.main_scroll = 0;
-                    commands.push(Command::FetchRunDetail { run_id });
-                } else {
-                    self.set_focus(Panel::Main);
-                }
-            }
+            Action::Open => self.open(commands),
             Action::Back => {
                 if self.viewing_run.is_some() {
                     self.leave_run_detail();
@@ -1253,6 +1240,28 @@ impl App {
         self.input = InputMode::Menu { items, selected: 0 };
     }
 
+    /// Enter: into `[0]`; on the runs table, into the run; on a text tab, into the pager.
+    fn open(&mut self, commands: &mut Vec<Command>) {
+        if self.focus == Panel::Main
+            && matches!(
+                self.active_tab(),
+                Some(Tab::Json | Tab::Output | Tab::Config)
+            )
+        {
+            self.page(commands);
+        } else if self.focus == Panel::Main
+            && self.viewing_run.is_none()
+            && let Some(run_id) = self.selected_run().map(|run| run.id)
+        {
+            self.viewing_run = Some(run_id);
+            self.run_detail = Load::Loading;
+            self.main_scroll = 0;
+            commands.push(Command::FetchRunDetail { run_id });
+        } else {
+            self.set_focus(Panel::Main);
+        }
+    }
+
     /// Enter on a text tab: the same text the tab shows, in `$PAGER`.
     fn page(&mut self, commands: &mut Vec<Command>) {
         let text = match self.active_tab() {
@@ -1261,6 +1270,7 @@ impl App {
                 Load::Idle | Load::Loading | Load::Failed(_) => None,
             },
             Some(Tab::Output) if self.viewing_run.is_some() => Some(self.output_lines().join("\n")),
+            Some(Tab::Config) => Some(self.config_text.clone()),
             _ => None,
         };
         match text {
@@ -2784,6 +2794,26 @@ pub mod tests {
             "blank line: nothing runs"
         );
         assert_eq!(app.input, InputMode::Normal);
+    }
+
+    #[test]
+    fn config_tab_shows_the_effective_toml() {
+        let mut app = loaded();
+        press(&mut app, "1l");
+        assert_eq!(app.active_tab(), Some(Tab::Config));
+        assert!(
+            app.config_text.contains("expand_focused = true"),
+            "{}",
+            app.config_text
+        );
+        assert!(
+            app.config_text.contains("max_jobs = 200"),
+            "{}",
+            app.config_text
+        );
+        press(&mut app, "0");
+        let commands = app.update(key(Key::Enter));
+        assert_eq!(commands, vec![Command::Page(app.config_text.clone())]);
     }
 
     #[test]

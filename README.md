@@ -104,6 +104,9 @@ output = "popup"           # or "terminal": the TUI steps aside until you press 
 confirm = false
 ```
 
+`[1]` has a Config tab (`1`, then `l`) showing the effective configuration as TOML, defaults
+filled in; `Enter` there pages it.
+
 ## Custom commands
 
 Anything the Databricks CLI can do, one key away, lazygit style. For a one-off, `:` prompts for

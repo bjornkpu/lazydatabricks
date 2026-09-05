@@ -984,6 +984,17 @@ for no config, and the way to find out which lines are worth a `[[commands]]` en
 *Teaches:* a prompt is a custom command typed late; reuse the expansion, add one input mode.
 *Done when:* `:runs list --job-id {{job_id}}` shows the same runs the table does.
 
+### M46 — Config tab
+§3 promised Status a Config tab; with eighteen settings it is overdue. The tab shows the
+*effective* configuration as TOML, defaults filled in, headed by where the file was (or was not)
+found. `Config` gains `Serialize`, which forces `Key` to learn its config spelling (`ctrl+d`,
+`up`) as the inverse of parsing, and a test renders a config and reads it back as itself. Enter
+pages the text like the other tabs. No "edit here": the file is the interface, and M47 opens it.
+
+*Teaches:* a struct that can be read from a file should be able to write itself back; the
+round-trip test catches every asymmetry.
+*Done when:* someone who never wrote a config sees every key they could set, with its default.
+
 ---
 
 ## 9. Testing

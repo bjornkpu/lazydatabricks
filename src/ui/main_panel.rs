@@ -40,6 +40,7 @@ pub fn draw(app: &App, area: Rect, frame: &mut Frame) -> usize {
         Some(Tab::Json) => json(app, block, area, frame),
         Some(Tab::Output) => output(app, block, area, frame),
         Some(Tab::Profile) => profile(app, block, area, frame),
+        Some(Tab::Config) => config(app, block, area, frame),
         None => {
             frame.render_widget(block, area);
             0
@@ -570,6 +571,20 @@ fn profile(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> u
         field(app, "Jobs", app.jobs.items().len().to_string()),
         field(app, "Config", app.config_note.clone()),
     ];
+    text_view(app, lines, block, area, frame)
+}
+
+/// The effective configuration: where it came from, then the TOML this run is using.
+fn config(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
+    let mut lines = vec![
+        Line::styled(format!("# {}", app.config_note), theme::dim(app)),
+        Line::default(),
+    ];
+    lines.extend(
+        app.config_text
+            .lines()
+            .map(|line| Line::raw(line.to_owned())),
+    );
     text_view(app, lines, block, area, frame)
 }
 

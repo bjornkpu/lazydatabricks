@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::custom::Output;
 use crate::api::models::{Cluster, Job, Pipeline, Run, RunOutput};
@@ -12,8 +12,8 @@ use crate::error::AppError;
 
 /// A key press, decoupled from the terminal library. Parsed from config via `FromStr` in
 /// `keys.rs`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
-#[serde(try_from = "String")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[serde(try_from = "String", into = "String")]
 pub enum Key {
     Char(char),
     Tab,

@@ -5,13 +5,13 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::Key;
 
 /// Everything a key can do outside filter editing. Digit keys focus panels and are not
 /// remappable; filter editing has its own fixed keys.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     Quit,
@@ -215,9 +215,42 @@ impl TryFrom<String> for Key {
     }
 }
 
+/// The config spelling, the inverse of `FromStr`: `Display` is for the hint bar (`^D`, `↑`),
+/// this is what the file takes back (`ctrl+d`, `up`).
+impl From<Key> for String {
+    fn from(key: Key) -> Self {
+        match key {
+            Key::Char(c) => c.to_string(),
+            Key::Ctrl(c) => format!("ctrl+{c}"),
+            Key::Tab => "tab".to_owned(),
+            Key::Up => "up".to_owned(),
+            Key::Down => "down".to_owned(),
+            Key::Left => "left".to_owned(),
+            Key::Right => "right".to_owned(),
+            Key::Enter => "enter".to_owned(),
+            Key::Esc => "esc".to_owned(),
+            Key::Backspace => "backspace".to_owned(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn config_spelling_round_trips() {
+        for key in [
+            Key::Char('ø'),
+            Key::Ctrl('d'),
+            Key::Up,
+            Key::Backspace,
+            Key::Tab,
+        ] {
+            let spelled: String = key.into();
+            assert_eq!(spelled.parse::<Key>().unwrap(), key, "{spelled}");
+        }
+    }
 
     #[test]
     fn defaults_follow_lazygit() {

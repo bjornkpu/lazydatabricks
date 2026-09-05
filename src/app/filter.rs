@@ -1,6 +1,6 @@
 //! Who "me" is, and which jobs are visible.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::api::models::{
     Cluster, ClusterState, ComputeKind, Job, Pipeline, PipelineState, Run, UpdateState,
@@ -48,7 +48,7 @@ fn contains_any<'a>(needle: &str, haystacks: impl IntoIterator<Item = &'a str>) 
 
 /// Which rows a list shows by the state of their newest run or update. `f` cycles it; `status`
 /// in config starts it. The same rule the row glyph uses, so `failed` is exactly the `✗` rows.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     #[default]

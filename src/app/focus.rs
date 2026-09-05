@@ -70,7 +70,7 @@ impl Panel {
     #[must_use]
     pub const fn tabs(self) -> &'static [Tab] {
         match self {
-            Self::Status => &[Tab::Profile],
+            Self::Status => &[Tab::Profile, Tab::Config],
             Self::Jobs => &[Tab::Runs, Tab::Detail, Tab::Json, Tab::Output],
             Self::Pipelines => &[Tab::Updates, Tab::Detail, Tab::Json],
             Self::Compute => &[Tab::Detail],
@@ -129,6 +129,8 @@ pub enum Tab {
     Json,
     /// What every task of the viewed run printed or returned.
     Output,
+    /// The effective configuration as TOML.
+    Config,
 }
 
 impl Tab {
@@ -141,6 +143,7 @@ impl Tab {
             Self::Detail => "Detail",
             Self::Json => "JSON",
             Self::Output => "Output",
+            Self::Config => "Config",
         }
     }
 }
