@@ -8,6 +8,7 @@ mod help;
 mod hints;
 mod main_panel;
 mod menu;
+mod popup;
 mod side;
 mod theme;
 
@@ -125,6 +126,7 @@ pub fn draw(app: &App, frame: &mut Frame) -> usize {
     };
     hints::draw(app, hint_bar, frame);
     menu::draw(app, frame);
+    popup::draw(app, frame);
     help::draw(app, frame);
     limit
 }
@@ -376,6 +378,34 @@ mod tests {
         app.allow_actions = true;
         press(&mut app, "x");
         app.update(Message::Key(Key::Enter));
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn custom_command_menu_80x24() {
+        let mut app = with_runs();
+        app.custom = vec![crate::app::CustomCommand {
+            name: "Job JSON".to_owned(),
+            key: None,
+            context: crate::app::Context::Jobs,
+            command: "databricks jobs get {{job_id}}".to_owned(),
+            output: crate::app::CommandOutput::Popup,
+            confirm: false,
+        }];
+        press(&mut app, "xjj");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn command_output_80x24() {
+        let mut app = with_runs();
+        app.update(Message::ShellFinished {
+            name: "Job JSON".to_owned(),
+            output: Ok(
+                "{\n  \"job_id\": 1,\n  \"settings\": {\n    \"name\": \"okonomi_gold\"\n  }\n}\n"
+                    .to_owned(),
+            ),
+        });
         insta::assert_snapshot!(render(&app));
     }
 

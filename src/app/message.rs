@@ -6,12 +6,13 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+use super::custom::Output;
 use crate::api::models::{Cluster, Job, Pipeline, Run, RunOutput};
 use crate::error::AppError;
 
 /// A key press, decoupled from the terminal library. Parsed from config via `FromStr` in
 /// `keys.rs`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
 #[serde(try_from = "String")]
 pub enum Key {
     Char(char),
@@ -93,6 +94,16 @@ pub enum Message {
         error: AppError,
     },
     ApiCalled(ApiCall),
+    /// A popup custom command finished: what it printed, or why it could not run.
+    ShellFinished {
+        name: String,
+        output: Result<String, AppError>,
+    },
+    /// A terminal custom command finished and the TUI is back; `detail` is its exit status.
+    ShellExited {
+        name: String,
+        detail: String,
+    },
     /// The draw found the main panel's text this many lines taller than its viewport. The
     /// scroll clamps to it; `update` cannot know the terminal size on its own.
     ScrollLimit(usize),
@@ -195,4 +206,11 @@ pub enum Command {
     Bell,
     /// Show the next profile's workspace. `main` owns the list; `App` only asks.
     NextProfile,
+    /// Run a custom command, placeholders already expanded. `Terminal` output means `main`
+    /// hands over the screen; `Popup` captures and replies with `ShellFinished`.
+    Shell {
+        name: String,
+        command: String,
+        output: Output,
+    },
 }

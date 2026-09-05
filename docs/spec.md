@@ -846,6 +846,24 @@ what the panel shows (side cursor, tab, entering or leaving a run) starts at the
 message rather than the core guessing at layout.
 *Done when:* `G` on a failed run lands on the last line of the trace and `k` moves up one line.
 
+### M34 — Custom commands
+lazygit's `customCommands`, and the reason its users never ask for more menu items. A
+`[[commands]]` entry in config has a `name`, an optional `key`, a `context` (`jobs`, `runs`,
+`pipelines`, `compute`, `any`), a `command` with `{{job_id}}`-style placeholders, an `output`
+mode and a `confirm` flag. Matching entries end the `x` menu; a key fires one directly. Config
+load rejects a key that a binding already owns. Placeholders come from the selection; an entry
+that cannot be filled here stays out of the menu, and its key says why. `popup` captures the
+output into a scrolling overlay (`y` copies it). `terminal` is the new plumbing: `main` parks
+the input thread, leaves the alternate screen, runs the line with inherited stdio, waits for
+Enter and re-enters, then feeds `ShellExited` back through `update` like any message. The shell
+is `cmd /C` on Windows and `sh -c` elsewhere. Custom commands bypass `allow_actions`; writing one
+is the opt-in.
+
+*Teaches:* a program that can hand its terminal to another and take it back; the loop's own
+messages (`ScrollLimit`, `ShellExited`) queue ahead of the channels instead of bypassing `update`.
+*Done when:* `databricks jobs get {{job_id}}` on `J` shows the job's JSON in a popup, and a
+`terminal` command gets the keyboard and returns on Enter.
+
 ---
 
 ## 9. Testing

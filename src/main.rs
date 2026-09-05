@@ -12,10 +12,11 @@ mod error;
 mod shell;
 mod ui;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use anyhow::{Result, bail};
@@ -28,7 +29,7 @@ use tokio::sync::mpsc;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::EnvFilter;
 
-use crate::app::{App, Command, Key, Message, TICK};
+use crate::app::{App, Command, CommandOutput, Key, Message, TICK};
 use crate::error::AppError;
 
 /// Messages buffered between producers and the update loop.
@@ -90,12 +91,13 @@ async fn main() -> Result<()> {
         workspace.start();
     }
     let (input_tx, input_rx) = mpsc::channel(CHANNEL_CAPACITY);
-    spawn_input(input_tx);
+    let paused = Arc::new(AtomicBool::new(false));
+    spawn_input(input_tx, Arc::clone(&paused));
     // `ratatui::init` enters the alternate screen and raw mode and installs a panic hook that
     // restores both. `clippy::exit` is denied, so the loop returns instead of exiting; that is
     // what lets `restore` run on the error path too.
     let mut terminal = ratatui::init();
-    let result = run(&mut terminal, workspaces, input_rx).await;
+    let result = run(&mut terminal, workspaces, input_rx, &paused).await;
     ratatui::restore();
     result
 }
@@ -134,12 +136,21 @@ impl Workspace {
         tokio::spawn(fetch_me(Arc::clone(&self.client), self.tx.clone()));
     }
 
-    /// Runs one side effect. `Quit` and `NextProfile` belong to the shell, so they come back.
+    /// Runs one side effect. `Quit`, `NextProfile` and a terminal `Shell` need the loop or the
+    /// screen, so they come back.
     fn execute(&self, command: Command) -> Option<Command> {
         let client = || Arc::clone(&self.client);
         let tx = || self.tx.clone();
         match command {
-            Command::Quit | Command::NextProfile => return Some(command),
+            Command::Quit
+            | Command::NextProfile
+            | Command::Shell {
+                output: CommandOutput::Terminal,
+                ..
+            } => return Some(command),
+            Command::Shell { name, command, .. } => {
+                tokio::spawn(shell_popup(tx(), name, command));
+            }
             Command::FetchJobs { max } => {
                 tokio::spawn(fetch_jobs(client(), tx(), max));
             }
@@ -217,9 +228,13 @@ async fn run(
     terminal: &mut DefaultTerminal,
     mut workspaces: Vec<Workspace>,
     mut input: mpsc::Receiver<Message>,
+    paused: &AtomicBool,
 ) -> Result<()> {
     let count = workspaces.len();
     let mut active = 0;
+    // Messages the loop itself produces (a scroll clamp, a finished terminal command) go through
+    // `update` like any other, ahead of the channels.
+    let mut pending = VecDeque::new();
     loop {
         let Some(workspace) = workspaces.get_mut(active) else {
             bail!("no workspace {active}");
@@ -227,12 +242,15 @@ async fn run(
         let mut limit = 0;
         terminal.draw(|frame| limit = ui::draw(&workspace.app, frame))?;
         if workspace.app.main_scroll > limit {
-            // A pure clamp: it yields no commands, and the next draw is the same picture.
-            workspace.app.update(Message::ScrollLimit(limit));
+            pending.push_back(Message::ScrollLimit(limit));
         }
-        let message = tokio::select! {
-            message = input.recv() => message,
-            message = workspace.rx.recv() => message,
+        let message = if let Some(message) = pending.pop_front() {
+            Some(message)
+        } else {
+            tokio::select! {
+                message = input.recv() => message,
+                message = workspace.rx.recv() => message,
+            }
         };
         let Some(message) = message else {
             bail!("all message producers stopped");
@@ -244,10 +262,42 @@ async fn run(
                 Some(Command::NextProfile) => {
                     active = active.saturating_add(1).checked_rem(count).unwrap_or(0);
                 }
+                Some(Command::Shell { name, command, .. }) => {
+                    let detail = suspend(terminal, paused, &command);
+                    pending.push_back(Message::ShellExited { name, detail });
+                }
                 Some(_) | None => {}
             }
         }
     }
+}
+
+/// Gives the terminal to a command: leaves the alternate screen and raw mode, parks the input
+/// reader, runs the line with inherited stdio, waits for Enter, then takes the terminal back.
+fn suspend(terminal: &mut DefaultTerminal, paused: &AtomicBool, line: &str) -> String {
+    paused.store(true, Ordering::SeqCst);
+    // The reader is inside `event::poll` for at most one TICK; after that it sees the flag and
+    // stops competing with the child for the keyboard.
+    std::thread::sleep(TICK);
+    ratatui::restore();
+    let detail = shell::interactive(line).unwrap_or_else(|error| error.to_string());
+    let mut out = std::io::stdout();
+    let _ = writeln!(out, "\n[lazydatabricks] {detail}. Press Enter to return.")
+        .and_then(|()| out.flush());
+    let mut typed = String::new();
+    let _ = std::io::stdin().read_line(&mut typed);
+    *terminal = ratatui::init();
+    paused.store(false, Ordering::SeqCst);
+    detail
+}
+
+/// Runs a popup custom command off the async threads and reports what it printed.
+async fn shell_popup(tx: mpsc::Sender<Message>, name: String, command: String) {
+    let output = match tokio::task::spawn_blocking(move || shell::capture(&command)).await {
+        Ok(output) => output,
+        Err(error) => Err(AppError::Internal(error.to_string())),
+    };
+    let _ = tx.send(Message::ShellFinished { name, output }).await;
 }
 
 /// A subcommand: one listing as pretty JSON on stdout, then exit. The terminal is never taken
@@ -465,11 +515,16 @@ async fn desktop(
 
 /// Reads terminal events on a plain thread, since crossterm's reader blocks. Sends a `Tick`
 /// every `TICK` of wall-clock time, keys or no keys, so the app's tick count stays a usable
-/// clock. Exits when the channel closes or the terminal read fails.
-fn spawn_input(tx: mpsc::Sender<Message>) {
+/// clock. Sleeps while `paused`, so a terminal command gets the keyboard. Exits when the
+/// channel closes or the terminal read fails.
+fn spawn_input(tx: mpsc::Sender<Message>, paused: Arc<AtomicBool>) {
     std::thread::spawn(move || {
         let mut last_tick = Instant::now();
         loop {
+            if paused.load(Ordering::SeqCst) {
+                std::thread::sleep(TICK);
+                continue;
+            }
             let until_tick = TICK.saturating_sub(last_tick.elapsed());
             let Ok(key) = read_key(until_tick) else {
                 return;

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use directories::ProjectDirs;
 use serde::Deserialize;
 
-use crate::app::{Action, Key, Keymap, Status};
+use crate::app::{Action, CustomCommand, Key, Keymap, Status};
 use crate::error::AppError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -48,6 +48,8 @@ pub struct Config {
     pub runs_ttl_secs: u64,
     /// Key overrides by action; each list replaces that action's default bindings entirely.
     pub keys: BTreeMap<Action, Vec<Key>>,
+    /// Shell lines offered in the `x` menu, lazygit style. See `app::custom`.
+    pub commands: Vec<CustomCommand>,
 }
 
 impl Default for Config {
@@ -69,6 +71,7 @@ impl Default for Config {
             jobs_ttl_secs: 300,
             runs_ttl_secs: 120,
             keys: BTreeMap::new(),
+            commands: Vec::new(),
         }
     }
 }
@@ -175,7 +178,25 @@ fn explicit_given(path: &std::path::Path) -> bool {
 /// every render is rejected here, once, instead of there, sixty times a second.
 fn parse(text: &str) -> Result<Config, String> {
     let config: Config = toml::from_str(text).map_err(|error| error.to_string())?;
-    Keymap::with_overrides(&config.keys)?;
+    let keymap = Keymap::with_overrides(&config.keys)?;
+    let mut taken = std::collections::BTreeSet::new();
+    for custom in &config.commands {
+        if custom.command.trim().is_empty() {
+            return Err(format!("command {:?} has no command line", custom.name));
+        }
+        let Some(key) = custom.key else {
+            continue;
+        };
+        if let Some(action) = keymap.action(key) {
+            return Err(format!(
+                "command {:?}: key {key} is already {action:?}",
+                custom.name
+            ));
+        }
+        if !taken.insert(key) {
+            return Err(format!("command {:?}: key {key} used twice", custom.name));
+        }
+    }
     let sample = jiff::Zoned::new(jiff::Timestamp::UNIX_EPOCH, jiff::tz::TimeZone::UTC);
     jiff::fmt::strtime::format(&config.date_format, &sample)
         .map_err(|error| format!("date_format {:?}: {error}", config.date_format))?;
@@ -185,6 +206,44 @@ fn parse(text: &str) -> Result<Config, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_commands_parse_and_keep_their_keys_free() {
+        let config = parse(
+            r#"
+            [[commands]]
+            name = "Job JSON"
+            key = "J"
+            context = "jobs"
+            command = "databricks jobs get {{job_id}}"
+
+            [[commands]]
+            name = "Deploy"
+            command = "databricks bundle deploy"
+            output = "terminal"
+            confirm = true
+            "#,
+        )
+        .unwrap();
+        assert_eq!(config.commands.len(), 2);
+        assert_eq!(config.commands[0].key, Some(Key::Char('J')));
+        assert_eq!(config.commands[0].context, crate::app::Context::Jobs);
+        assert_eq!(config.commands[1].context, crate::app::Context::Any);
+        assert_eq!(
+            config.commands[1].output,
+            crate::app::CommandOutput::Terminal
+        );
+        assert!(config.commands[1].confirm);
+        let taken =
+            parse("[[commands]]\nname = \"x\"\nkey = \"m\"\ncommand = \"true\"").unwrap_err();
+        assert!(taken.contains("already MineOnly"), "{taken}");
+        let twice = parse(
+            "[[commands]]\nname = \"a\"\nkey = \"J\"\ncommand = \"true\"\n[[commands]]\nname = \"b\"\nkey = \"J\"\ncommand = \"true\"",
+        )
+        .unwrap_err();
+        assert!(twice.contains("used twice"), "{twice}");
+        assert!(parse("[[commands]]\nname = \"a\"\ncommand = \" \"").is_err());
+    }
 
     #[test]
     fn empty_file_is_defaults() {

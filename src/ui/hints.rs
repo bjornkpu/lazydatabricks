@@ -27,6 +27,7 @@ pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap, viewing_run: bool) 
                 .to_owned();
         }
         InputMode::Help { .. } => return " Scroll: j/k │ Close: Esc".to_owned(),
+        InputMode::Output { .. } => return " Scroll: j/k │ Copy: y │ Close: Esc".to_owned(),
         InputMode::Normal => {}
     }
     match focus {

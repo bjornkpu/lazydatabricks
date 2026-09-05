@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 
 use super::Command;
+use super::custom::Output;
 
 /// One entry in the menu. Carries everything needed to name the target and build the command,
 /// so neither the menu nor the confirmation has to look anything up.
@@ -50,6 +51,13 @@ pub enum MenuItem {
         warehouse_id: String,
         name: String,
     },
+    /// A custom command from config, its placeholders already filled in.
+    Shell {
+        name: String,
+        command: String,
+        output: Output,
+        confirm: bool,
+    },
 }
 
 impl MenuItem {
@@ -66,6 +74,7 @@ impl MenuItem {
             Self::TerminateCluster { name, .. } => format!("Terminate cluster: {name}"),
             Self::StartWarehouse { name, .. } => format!("Start warehouse: {name}"),
             Self::StopWarehouse { name, .. } => format!("Stop warehouse: {name}"),
+            Self::Shell { name, .. } => name.clone(),
         }
     }
 
@@ -83,6 +92,7 @@ impl MenuItem {
             Self::TerminateCluster { name, .. } => format!("Terminate cluster \"{name}\"?"),
             Self::StartWarehouse { name, .. } => format!("Start warehouse \"{name}\"?"),
             Self::StopWarehouse { name, .. } => format!("Stop warehouse \"{name}\"?"),
+            Self::Shell { command, .. } => format!("Run `{command}`?"),
         }
     }
 
@@ -120,6 +130,16 @@ impl MenuItem {
             },
             Self::StopWarehouse { warehouse_id, .. } => Command::StopWarehouse {
                 warehouse_id: warehouse_id.clone(),
+            },
+            Self::Shell {
+                name,
+                command,
+                output,
+                ..
+            } => Command::Shell {
+                name: name.clone(),
+                command: command.clone(),
+                output: *output,
             },
         }
     }
@@ -159,6 +179,12 @@ pub enum InputMode {
     },
     /// `?` pressed: the keybindings overlay is up, scrolled this many rows.
     Help { scroll: u16 },
+    /// A popup custom command finished: its output, scrolled this many rows.
+    Output {
+        title: String,
+        lines: Vec<String>,
+        scroll: usize,
+    },
 }
 
 #[cfg(test)]

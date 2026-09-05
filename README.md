@@ -90,7 +90,28 @@ runs_ttl_secs = 120
 [keys]                     # each list replaces that action's defaults
 next_tab = ["l", "ø", "right"]
 prev_tab = ["h", "æ", "left"]
+
+[[commands]]               # your own shell lines; see Custom commands below
+name = "Job JSON"
+key = "J"                  # optional; must not be bound to anything else
+context = "jobs"           # jobs, runs, pipelines, compute or any (default)
+command = "databricks jobs get {{job_id}} -p {{profile}}"
+output = "popup"           # or "terminal": the TUI steps aside until you press Enter
+confirm = false
 ```
+
+## Custom commands
+
+Anything the Databricks CLI can do, one key away, lazygit style. Each `[[commands]]` entry
+shows up at the end of the `x` menu when its `context` applies, and fires directly on its `key`.
+Placeholders are filled from the selection: `{{host}}` and `{{profile}}` always; `{{job_id}}`,
+`{{name}}` and `{{url}}` for a job, plus `{{run_id}}` when a run is under the cursor in `[0]`;
+`{{pipeline_id}}` and `{{cluster_id}}` for those panels. A command whose placeholders have
+nothing to fill them stays out of the menu. `output = "popup"` captures stdout and stderr into
+an overlay you can scroll and copy with `y`; `output = "terminal"` leaves the TUI so the command
+owns the screen, for anything interactive or long. Lines run through `cmd /C` on Windows and
+`sh -c` elsewhere. Custom commands do not need `allow_actions`: writing one into config is the
+opt-in.
 
 Actions: `quit`, `screen_mode`, `toggle_log`, `filter`, `mine_only`, `status_filter`,
 `refresh`, `refresh_all`, `next_panel`, `open`, `back`, `down`, `up`, `page_down`, `page_up`,

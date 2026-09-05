@@ -1,5 +1,6 @@
 //! Application state and the one place it changes.
 
+mod custom;
 mod filter;
 mod focus;
 mod keys;
@@ -8,9 +9,10 @@ mod menu;
 mod message;
 
 use std::cmp::Reverse;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::time::Duration;
 
+pub use custom::{Context, CustomCommand, Output as CommandOutput, expand};
 pub use filter::{Filter, Me, Status};
 pub use focus::{ComputePanel, Panel, ScreenMode, Tab};
 use jiff::tz::TimeZone;
@@ -121,6 +123,8 @@ pub struct App {
     pub notice: Option<String>,
     /// Run-now and cancel are allowed. Off by default: reading is safe, triggering is not.
     pub allow_actions: bool,
+    /// Shell lines from config, offered in the `x` menu and on their own keys.
+    pub custom: Vec<CustomCommand>,
     pub theme: Theme,
     /// `strftime` pattern for absolute times, validated at config load.
     pub date_format: String,
@@ -215,6 +219,7 @@ impl App {
             input: InputMode::Normal,
             notice: None,
             allow_actions: config.allow_actions,
+            custom: config.commands.clone(),
             theme: config.theme,
             date_format: config.date_format.clone(),
             sort: config.sort,
@@ -290,6 +295,10 @@ impl App {
             Message::RunsFailed { job_id, error } => self.on_runs_failed(job_id, error),
             Message::RunDetailLoaded(run) => self.on_run_detail_loaded(run, &mut commands),
             Message::ScrollLimit(limit) => self.main_scroll = self.main_scroll.min(limit),
+            Message::ShellFinished { name, output } => self.on_shell_finished(name, output),
+            Message::ShellExited { name, detail } => {
+                self.notice = Some(format!("{name}: {detail}"));
+            }
             Message::RunOutputLoaded { run_id, output } => {
                 self.set_run_output(run_id, Load::Loaded(output));
             }
@@ -343,7 +352,8 @@ impl App {
         match self.input {
             InputMode::Normal => self.key(key, commands),
             InputMode::Filter => self.filter_key(key, commands),
-            InputMode::Menu { .. } => self.menu_key(key),
+            InputMode::Menu { .. } => self.menu_key(key, commands),
+            InputMode::Output { .. } => self.output_key(key, commands),
             InputMode::Confirm(_) => self.confirm_key(key, commands),
             InputMode::Params { .. } => self.params_key(key, commands),
             InputMode::ConfirmActions => {
@@ -888,6 +898,8 @@ impl App {
                 && let Some(panel) = Panel::from_digit(digit)
             {
                 self.set_focus(panel);
+            } else {
+                self.custom_key(key, commands);
             }
             return;
         };
@@ -947,12 +959,7 @@ impl App {
                 });
             }
             Action::Refresh => self.refresh_focused(commands),
-            Action::RefreshAll => {
-                self.refresh_jobs(commands);
-                self.refresh_pipelines(commands);
-                self.refresh_compute(commands);
-                self.refresh_runs(commands);
-            }
+            Action::RefreshAll => self.refresh_all(commands),
             Action::NextPanel => self.set_focus(self.next_visible_side(self.focus)),
             Action::Open => {
                 if self.focus == Panel::Main
@@ -993,6 +1000,14 @@ impl App {
         } else {
             self.input = InputMode::ConfirmActions;
         }
+    }
+
+    /// `R`: every list, and the runs table.
+    fn refresh_all(&mut self, commands: &mut Vec<Command>) {
+        self.refresh_jobs(commands);
+        self.refresh_pipelines(commands);
+        self.refresh_compute(commands);
+        self.refresh_runs(commands);
     }
 
     /// `r`: refetch what the focused panel shows.
@@ -1074,8 +1089,121 @@ impl App {
         self.input = InputMode::Menu { items, selected: 0 };
     }
 
-    /// Actions valid for what is selected: run the job, cancel any of its active runs.
+    /// The built-in actions for the selection, then the custom commands that apply to it.
     fn menu_items(&self) -> Vec<MenuItem> {
+        let mut items = self.builtin_items();
+        let vars = self.template_vars();
+        items.extend(
+            self.custom
+                .iter()
+                .filter(|custom| self.in_context(custom.context))
+                .filter_map(|custom| Self::custom_item(custom, &vars).ok()),
+        );
+        items
+    }
+
+    /// A custom command on its own key. Silent when its context does not apply, like any
+    /// unbound key; a placeholder with nothing to fill it says so.
+    fn custom_key(&mut self, key: Key, commands: &mut Vec<Command>) {
+        let Some(custom) = self
+            .custom
+            .iter()
+            .find(|custom| custom.key == Some(key) && self.in_context(custom.context))
+        else {
+            return;
+        };
+        match Self::custom_item(custom, &self.template_vars()) {
+            Ok(item) if matches!(item, MenuItem::Shell { confirm: true, .. }) => {
+                self.input = InputMode::Confirm(item);
+            }
+            Ok(item) => self.fire(&item, commands),
+            Err(error) => self.notice = Some(format!("{}: {error}", custom.name)),
+        }
+    }
+
+    fn custom_item(
+        custom: &CustomCommand,
+        vars: &BTreeMap<&str, String>,
+    ) -> Result<MenuItem, String> {
+        Ok(MenuItem::Shell {
+            name: custom.name.clone(),
+            command: expand(&custom.command, vars)?,
+            output: custom.output,
+            confirm: custom.confirm,
+        })
+    }
+
+    fn in_context(&self, context: Context) -> bool {
+        match context {
+            Context::Any => true,
+            Context::Jobs => self.context == Panel::Jobs,
+            Context::Runs => self.selected_run().is_some(),
+            Context::Pipelines => self.context == Panel::Pipelines,
+            Context::Compute => self.context == Panel::Compute,
+        }
+    }
+
+    /// What `{{...}}` can name in a custom command: the workspace, then whatever is selected.
+    fn template_vars(&self) -> BTreeMap<&'static str, String> {
+        let mut vars = BTreeMap::from([
+            ("host", self.host.clone()),
+            ("profile", self.profile.clone()),
+        ]);
+        if let Some(url) = self.selected_url() {
+            vars.insert("url", url);
+        }
+        match self.context {
+            Panel::Jobs => {
+                if let Some(job) = self.jobs.selected() {
+                    vars.insert("job_id", job.id.to_string());
+                    vars.insert("name", job.settings.name.clone());
+                }
+                if let Some(run) = self.selected_run() {
+                    vars.insert("run_id", run.id.to_string());
+                }
+            }
+            Panel::Pipelines => {
+                if let Some(pipeline) = self.pipelines.selected() {
+                    vars.insert("pipeline_id", pipeline.id.clone());
+                    vars.insert("name", pipeline.name.clone());
+                }
+            }
+            Panel::Compute => {
+                if let Some(cluster) = self.compute.selected() {
+                    vars.insert("cluster_id", cluster.id.clone());
+                    vars.insert("name", cluster.name.clone());
+                }
+            }
+            Panel::Status | Panel::Main => {}
+        }
+        vars
+    }
+
+    /// Sends an action and says so; the reply, or its failure, comes back as a message.
+    fn fire(&mut self, item: &MenuItem, commands: &mut Vec<Command>) {
+        self.notice = Some(format!("{}…", item.label()));
+        commands.push(item.command());
+    }
+
+    /// A popup command's output goes into the overlay; nothing, or a failure, into the notice.
+    fn on_shell_finished(&mut self, name: String, output: Result<String, AppError>) {
+        match output {
+            Ok(text) if text.trim().is_empty() => {
+                self.notice = Some(format!("{name}: no output"));
+            }
+            Ok(text) => {
+                self.input = InputMode::Output {
+                    title: name,
+                    lines: text.lines().map(str::to_owned).collect(),
+                    scroll: 0,
+                };
+            }
+            Err(error) => self.notice = Some(format!("{name}: {error}")),
+        }
+    }
+
+    /// Actions valid for what is selected: run the job, cancel any of its active runs.
+    fn builtin_items(&self) -> Vec<MenuItem> {
         if self.context == Panel::Pipelines {
             return self.pipeline_menu_items();
         }
@@ -1177,8 +1305,9 @@ impl App {
         items
     }
 
-    /// Keys while the menu is open: move, choose, or close.
-    fn menu_key(&mut self, key: Key) {
+    /// Keys while the menu is open: move, choose, or close. Custom commands skip the actions
+    /// opt-in: the person who wrote them into config already opted in.
+    fn menu_key(&mut self, key: Key, commands: &mut Vec<Command>) {
         let InputMode::Menu { items, selected } = std::mem::take(&mut self.input) else {
             return;
         };
@@ -1189,16 +1318,18 @@ impl App {
                 let Some(item) = items.into_iter().nth(selected) else {
                     return;
                 };
-                if !self.allow_actions {
-                    self.notice = Some(READ_ONLY.to_owned());
-                } else if let MenuItem::RunWith { job_id, name } = item {
-                    self.input = InputMode::Params {
-                        job_id,
-                        name,
-                        text: String::new(),
-                    };
-                } else {
-                    self.input = InputMode::Confirm(item);
+                match item {
+                    MenuItem::Shell { confirm: false, .. } => self.fire(&item, commands),
+                    MenuItem::Shell { .. } => self.input = InputMode::Confirm(item),
+                    _ if !self.allow_actions => self.notice = Some(READ_ONLY.to_owned()),
+                    MenuItem::RunWith { job_id, name } => {
+                        self.input = InputMode::Params {
+                            job_id,
+                            name,
+                            text: String::new(),
+                        };
+                    }
+                    item => self.input = InputMode::Confirm(item),
                 }
             }
             Key::Char('j') | Key::Down => {
@@ -1223,9 +1354,41 @@ impl App {
             return;
         };
         if key == Key::Char('y') {
-            self.notice = Some(format!("{}…", item.label()));
-            commands.push(item.command());
+            self.fire(&item, commands);
         }
+    }
+
+    /// Keys in the output overlay: scroll, copy, close.
+    fn output_key(&mut self, key: Key, commands: &mut Vec<Command>) {
+        let InputMode::Output {
+            title,
+            lines,
+            scroll,
+        } = std::mem::take(&mut self.input)
+        else {
+            return;
+        };
+        let last = lines.len().saturating_sub(1);
+        let scroll = match key {
+            Key::Esc | Key::Char('q') => return,
+            Key::Char('j') | Key::Down => scroll.saturating_add(1).min(last),
+            Key::Char('k') | Key::Up => scroll.saturating_sub(1),
+            Key::Ctrl('d') => scroll.saturating_add(list::PAGE).min(last),
+            Key::Ctrl('u') => scroll.saturating_sub(list::PAGE),
+            Key::Char('g') => 0,
+            Key::Char('G') => last,
+            Key::Char('y') => {
+                self.notice = Some("Copied the output".to_owned());
+                commands.push(Command::Copy(lines.join("\n")));
+                scroll
+            }
+            _ => scroll,
+        };
+        self.input = InputMode::Output {
+            title,
+            lines,
+            scroll,
+        };
     }
 
     /// Keys in the parameter prompt. `Enter` parses and sends; a bad pair keeps the prompt open
@@ -1718,6 +1881,149 @@ pub mod tests {
         press(&mut app, "0j");
         assert_eq!(app.main_scroll, 0);
         assert_eq!(run_index(&app), Some(1));
+    }
+
+    fn echo(context: Context, command: &str, confirm: bool) -> CustomCommand {
+        CustomCommand {
+            name: "Echo".to_owned(),
+            key: Some(Key::Char('E')),
+            context,
+            command: command.to_owned(),
+            output: CommandOutput::Popup,
+            confirm,
+        }
+    }
+
+    fn shell(command: &str) -> Command {
+        Command::Shell {
+            name: "Echo".to_owned(),
+            command: command.to_owned(),
+            output: CommandOutput::Popup,
+        }
+    }
+
+    #[test]
+    fn custom_command_in_the_menu_and_on_its_key() {
+        let mut app = loaded();
+        app.custom = vec![echo(
+            Context::Jobs,
+            "echo {{job_id}} {{name}} -p {{profile}}",
+            false,
+        )];
+        press(&mut app, "jx");
+        let InputMode::Menu { items, .. } = &app.input else {
+            panic!("{:?}", app.input);
+        };
+        assert_eq!(
+            items.last(),
+            Some(&MenuItem::Shell {
+                name: "Echo".to_owned(),
+                command: "echo 2 b -p dev".to_owned(),
+                output: CommandOutput::Popup,
+                confirm: false,
+            })
+        );
+        press(&mut app, "jj");
+        let commands = app.update(key(Key::Enter));
+        assert_eq!(
+            commands,
+            vec![shell("echo 2 b -p dev")],
+            "no actions opt-in needed"
+        );
+        assert_eq!(app.input, InputMode::Normal);
+        assert_eq!(
+            app.update(key(Key::Char('E'))),
+            vec![shell("echo 2 b -p dev")]
+        );
+        press(&mut app, "3");
+        assert_eq!(
+            app.update(key(Key::Char('E'))),
+            vec![],
+            "wrong context: nothing"
+        );
+    }
+
+    #[test]
+    fn custom_command_needs_its_placeholders() {
+        let mut app = loaded();
+        app.custom = vec![echo(Context::Runs, "echo {{run_id}}", false)];
+        press(&mut app, "x");
+        let InputMode::Menu { items, .. } = &app.input else {
+            panic!("{:?}", app.input);
+        };
+        assert!(
+            !items
+                .iter()
+                .any(|item| matches!(item, MenuItem::Shell { .. })),
+            "no run selected, so no runs command"
+        );
+        app.update(key(Key::Esc));
+        let mut app = with_active_run();
+        app.custom = vec![echo(Context::Runs, "echo {{run_id}} {{nope}}", false)];
+        press(&mut app, "0");
+        assert_eq!(app.update(key(Key::Char('E'))), vec![]);
+        assert_eq!(app.notice.as_deref(), Some("Echo: no {{nope}} here"));
+        app.custom = vec![echo(Context::Runs, "echo {{run_id}}", false)];
+        assert_eq!(app.update(key(Key::Char('E'))), vec![shell("echo 10")]);
+    }
+
+    #[test]
+    fn custom_command_can_ask_first() {
+        let mut app = loaded();
+        app.custom = vec![echo(Context::Any, "databricks bundle deploy", true)];
+        assert_eq!(app.update(key(Key::Char('E'))), vec![]);
+        assert!(matches!(
+            app.input,
+            InputMode::Confirm(MenuItem::Shell { .. })
+        ));
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![shell("databricks bundle deploy")]
+        );
+        assert_eq!(app.notice.as_deref(), Some("Echo…"));
+    }
+
+    #[test]
+    fn shell_output_opens_a_scrolling_popup() {
+        let mut app = loaded();
+        app.update(Message::ShellFinished {
+            name: "Echo".to_owned(),
+            output: Ok("a\nb\nc\n".to_owned()),
+        });
+        let lines = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
+        assert_eq!(
+            app.input,
+            InputMode::Output {
+                title: "Echo".to_owned(),
+                lines,
+                scroll: 0
+            }
+        );
+        press(&mut app, "jjjj");
+        assert!(matches!(app.input, InputMode::Output { scroll: 2, .. }));
+        press(&mut app, "g");
+        assert!(matches!(app.input, InputMode::Output { scroll: 0, .. }));
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![Command::Copy("a\nb\nc".to_owned())]
+        );
+        app.update(key(Key::Esc));
+        assert_eq!(app.input, InputMode::Normal);
+        app.update(Message::ShellFinished {
+            name: "Echo".to_owned(),
+            output: Ok("  \n".to_owned()),
+        });
+        assert_eq!(app.notice.as_deref(), Some("Echo: no output"));
+        app.update(Message::ShellFinished {
+            name: "Echo".to_owned(),
+            output: Err(boom()),
+        });
+        assert_eq!(app.notice.as_deref(), Some("Echo: internal error: boom"));
+        app.update(Message::ShellExited {
+            name: "Deploy".to_owned(),
+            detail: "exit status: 0".to_owned(),
+        });
+        assert_eq!(app.notice.as_deref(), Some("Deploy: exit status: 0"));
     }
 
     #[test]

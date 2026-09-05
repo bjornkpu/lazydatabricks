@@ -1,10 +1,49 @@
-//! The two things handed to the desktop: a URL for the browser, text for the clipboard. Both go
-//! through the platform's own command so no extra crate is needed.
+//! Hand-offs to the outside: a URL for the browser, text for the clipboard, and the shell lines
+//! of custom commands. All go through the platform's own commands; no extra crate.
 
 use std::io::Write;
 use std::process::{Command, Stdio};
 
 use crate::error::AppError;
+
+/// The platform shell running one line: `cmd /C` on Windows, `sh -c` elsewhere.
+fn sh(line: &str) -> Command {
+    if cfg!(target_os = "windows") {
+        let mut command = Command::new("cmd");
+        command.args(["/C", line]);
+        command
+    } else {
+        let mut command = Command::new("sh");
+        command.args(["-c", line]);
+        command
+    }
+}
+
+/// Runs `line` to completion and returns stdout and stderr together. A non-zero exit ends the
+/// text rather than failing: the output is what the person asked to see.
+pub fn capture(line: &str) -> Result<String, AppError> {
+    let output = sh(line)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| shell_error("run the command", &error.to_string()))?;
+    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    if !output.status.success() {
+        text.push_str("\n[");
+        text.push_str(&output.status.to_string());
+        text.push(']');
+    }
+    Ok(text)
+}
+
+/// Runs `line` with the terminal: stdin, stdout and stderr inherited. The caller has already
+/// stepped out of the alternate screen. Returns the exit status as words.
+pub fn interactive(line: &str) -> Result<String, AppError> {
+    let status = sh(line)
+        .status()
+        .map_err(|error| shell_error("run the command", &error.to_string()))?;
+    Ok(status.to_string())
+}
 
 pub fn open_url(url: &str) -> Result<(), AppError> {
     let browser = std::env::var("BROWSER").unwrap_or_default();
