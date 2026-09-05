@@ -25,11 +25,11 @@ pub struct Cli {
 /// Non-interactive listings for scripts: the same models the TUI holds, as a JSON array.
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 pub enum Sub {
-    /// Jobs, up to max_jobs.
+    /// Jobs, up to the configured maximum.
     Jobs,
     /// The most recent runs of one job.
     Runs { job_id: i64 },
-    /// Pipelines, up to max_jobs.
+    /// Pipelines, up to the configured maximum.
     Pipelines,
 }
 
