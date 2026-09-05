@@ -169,6 +169,10 @@ fn main_rows(keys: &Keymap) -> Vec<(String, &'static str)> {
         ),
         (k(Action::NextMatch), "next match"),
         (k(Action::PrevMatch), "previous match"),
+        (
+            k(Action::Compare),
+            "mark this run; other runs' Detail then shows the difference",
+        ),
         (k(Action::NextTab), "next tab"),
         (k(Action::PrevTab), "previous tab"),
         (k(Action::Back), "back: close the run, then the panel"),

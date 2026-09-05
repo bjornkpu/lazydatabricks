@@ -180,6 +180,8 @@ pub struct App {
     /// The run opened with Enter from the runs table, if any. Esc backs out.
     pub viewing_run: Option<i64>,
     pub run_detail: Load<Run>,
+    /// A run marked with `W`: the Detail of any other run shows how it differs, task by task.
+    pub compare: Option<Run>,
     /// Error output of the viewed run's failed tasks, by task run id. Cleared with the run.
     pub run_outputs: HashMap<i64, Load<RunOutput>>,
     /// The job `runs` belongs to, or is being fetched for.
@@ -279,6 +281,7 @@ impl App {
             runs: Load::Idle,
             viewing_run: None,
             run_detail: Load::Idle,
+            compare: None,
             run_outputs: HashMap::new(),
             runs_job: None,
             pending_runs: None,
@@ -1137,6 +1140,7 @@ impl App {
             Action::FilterMenu => self.open_filter_menu(),
             Action::RangeSelect => self.toggle_range(),
             Action::NextMatch => self.jump_match(true),
+            Action::Compare => self.toggle_compare(),
             Action::PrevMatch => self.jump_match(false),
             Action::Sort => {
                 self.sort = self.sort.next();
@@ -1309,6 +1313,28 @@ impl App {
         match text {
             Some(text) => commands.push(Command::Page(text)),
             None => self.notice = Some("Nothing to page yet".to_owned()),
+        }
+    }
+
+    /// `W`: mark the viewed run as the one to compare against; `W` on the marked run clears it.
+    fn toggle_compare(&mut self) {
+        let Load::Loaded(run) = &self.run_detail else {
+            self.notice = Some("Open a run first: Enter on the runs table".to_owned());
+            return;
+        };
+        if self
+            .compare
+            .as_ref()
+            .is_some_and(|other| other.id == run.id)
+        {
+            self.compare = None;
+            self.notice = Some("Comparison cleared".to_owned());
+        } else {
+            self.notice = Some(format!(
+                "Comparing against run {}; open another run to see the difference",
+                run.id
+            ));
+            self.compare = Some(run.clone());
         }
     }
 
@@ -3283,6 +3309,42 @@ pub mod tests {
             "on a side list / still filters"
         );
         assert_eq!(app.filter.text, "a");
+    }
+
+    #[test]
+    fn capital_w_marks_a_run_to_compare_against() {
+        let mut app = with_active_run();
+        press(&mut app, "W");
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("Open a run first: Enter on the runs table")
+        );
+        press(&mut app, "0j");
+        app.update(key(Key::Enter));
+        app.update(Message::RunDetailLoaded(run(
+            9,
+            1000,
+            2000,
+            Some(ResultState::Success),
+        )));
+        press(&mut app, "W");
+        assert_eq!(app.compare.as_ref().map(|run| run.id), Some(9));
+        assert!(
+            app.notice
+                .as_deref()
+                .unwrap()
+                .starts_with("Comparing against run 9")
+        );
+        press(&mut app, "W");
+        assert_eq!(app.compare, None);
+        assert_eq!(app.notice.as_deref(), Some("Comparison cleared"));
+        press(&mut app, "W");
+        app.update(key(Key::Esc));
+        assert_eq!(
+            app.compare.as_ref().map(|run| run.id),
+            Some(9),
+            "leaving the run keeps the mark"
+        );
     }
 
     #[test]

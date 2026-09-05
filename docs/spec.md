@@ -1060,6 +1060,17 @@ and a run is found by scrolling three rows.
 *Teaches:* when the renderer must be the source of truth, widen the report it already sends.
 *Done when:* `/Traceback` in a failed run and `n` lands on each trace in turn.
 
+### M53 — Compare two runs
+lazygit's `W` marks a commit to diff against. `W` on an open run marks it; the Detail of any other
+run then carries a section: the marked run's result and duration against this one's with the
+delta, then every task both runs share, earlier figure first. "Why did tonight fail when last
+night passed" becomes one screen: the task that went red and the one that took four minutes
+longer. The mark survives leaving the run and the job; `W` on the marked run clears it. Nothing
+is fetched: both runs came through `runs/get` already.
+
+*Teaches:* a comparison is two values already held and one render; resist a "diff" data model.
+*Done when:* the on-call person marks yesterday's run, opens today's, and reads the delta.
+
 ---
 
 ## 9. Testing

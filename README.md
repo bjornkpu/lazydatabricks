@@ -52,6 +52,7 @@ the target. Opening a failed run shows the failing task's error and traceback.
 | `ctrl+d`/`ctrl+u` | ten rows or lines down / up |
 | `h`/`l`, `[`/`]` | switch main-panel tabs: Runs, Detail, JSON, Output |
 | `Enter` | focus `[0]`; open the run under the cursor; on JSON and Output, view the text in `$PAGER` |
+| `W` | mark the open run; any other run's Detail then shows result and duration against it, task by task; `W` again clears |
 | `/` | filter by name or owner; `Enter` keeps it, `Esc` clears it. In `[0]`, search the text instead: matches highlight, `n`/`N` jump |
 | `m` | toggle mine only (`dev` tag, `[tag]` name prefix, creator, or `me_aliases`) |
 | `f` | cycle status: all, failed only, active only |

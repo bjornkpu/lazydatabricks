@@ -61,6 +61,8 @@ pub enum Action {
     /// Next line matching the `[0]` search.
     NextMatch,
     PrevMatch,
+    /// Mark the viewed run to compare the next one against, lazygit's `W`.
+    Compare,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -109,6 +111,7 @@ impl Default for Keymap {
             (Action::RangeSelect, vec![Key::Char('v')]),
             (Action::NextMatch, vec![Key::Char('n')]),
             (Action::PrevMatch, vec![Key::Char('N')]),
+            (Action::Compare, vec![Key::Char('W')]),
         ]))
     }
 }

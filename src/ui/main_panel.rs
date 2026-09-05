@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState};
 
 use super::theme::Palette;
 use super::{Drawn, chrome, theme};
-use crate::api::models::{ComputeKind, Run};
+use crate::api::models::{ComputeKind, Run, TaskRun};
 use crate::app::{App, InputMode, Load, Panel, Tab};
 
 /// Inner width below which the runs table drops its Run ID column: ids plus dates plus a
@@ -22,6 +22,9 @@ pub fn draw(app: &App, area: Rect, frame: &mut Frame) -> Drawn {
     let mut title = tabs_title(app);
     if let Some(run_id) = app.viewing_run {
         title.push_span(Span::raw(format!(" › run {run_id}")));
+        if let Some(other) = app.compare.as_ref().filter(|other| other.id != run_id) {
+            title.push_span(Span::styled(format!(" vs {}", other.id), theme::dim(app)));
+        }
     }
     let searching = app.input == InputMode::Search;
     if searching || !app.search.is_empty() {
@@ -312,6 +315,10 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -
             Span::raw(format!(" {}", theme::state_result(&task.state))),
         ])
     }));
+    if let Some(other) = app.compare.as_ref().filter(|other| other.id != run.id) {
+        lines.push(Line::default());
+        lines.extend(comparison(app, run, other));
+    }
     let errors = task_errors(app, run, &palette, width);
     if !errors.is_empty() {
         lines.push(Line::default());
@@ -320,6 +327,56 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -
         lines.pop();
     }
     text_view(app, lines, block, area, frame)
+}
+
+/// lazygit's diffing mode, for runs: the marked run's result and duration against this one's,
+/// then every task both runs have, with the earlier figure first. Answers "what changed since
+/// yesterday" without two browser tabs.
+fn comparison(app: &App, run: &Run, other: &Run) -> Vec<Line<'static>> {
+    let dash = || "-".to_owned();
+    let delta = match (
+        theme::run_duration(other, app.now),
+        theme::run_duration(run, app.now),
+    ) {
+        (Some(then), Some(now)) => {
+            let diff = now.checked_sub(then).unwrap_or(SignedDuration::ZERO);
+            let sign = if diff.is_negative() { "-" } else { "+" };
+            format!("{sign}{}", theme::duration(diff.abs()))
+        }
+        _ => dash(),
+    };
+    let mut lines = vec![Line::styled(
+        format!(
+            "vs run {}  {}  {} then, {} now ({delta})",
+            other.id,
+            theme::run_result(other),
+            theme::run_duration(other, app.now).map_or_else(dash, theme::duration),
+            theme::run_duration(run, app.now).map_or_else(dash, theme::duration),
+        ),
+        Style::new().add_modifier(Modifier::BOLD),
+    )];
+    for task in &run.tasks {
+        let Some(then) = other
+            .tasks
+            .iter()
+            .find(|then| then.task_key == task.task_key)
+        else {
+            continue;
+        };
+        let elapsed = |task: &TaskRun| {
+            theme::elapsed(task.start_time, task.end_time, app.now)
+                .map_or_else(dash, theme::duration)
+        };
+        lines.push(Line::from(format!(
+            "{:<16}{:>9} then {:>9} now   {} then, {} now",
+            chrome::fit(&task.task_key, 15),
+            elapsed(then),
+            elapsed(task),
+            theme::state_result(&then.state),
+            theme::state_result(&task.state),
+        )));
+    }
+    lines
 }
 
 /// Why each failed task failed: its state message, then the error and traceback from

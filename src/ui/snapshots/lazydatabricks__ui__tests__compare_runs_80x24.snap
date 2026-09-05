@@ -1,0 +1,28 @@
+---
+source: src/ui/mod.rs
+expression: render(&app)
+---
+"┌─[1]─Status──────────────┐┌─[0]─Runs - Detail - JSON - Output › run 5085189276┐"
+"│◐ dev → adb-1.azuredatabr││Run ID         50851892761074                      │"
+"│3 of 3 jobs · 0s ago     ││Started        31.08 10:08                         │"
+"│◐ 1 · ✗ 1 · ● 0          ││Duration       2m47s                               │"
+"└─────────────────────────┘│Result         ✗ FAILED                            │"
+"┌─[2]─Jobs by activity────┐│Message        -                                   │"
+"│ 2h ◐ [someone] okonomi_…││URL            https://adb-1.azuredatabricks.net/?o│"
+"│ 1d ✗ nightly_bronze_ing…││                                                   │"
+"│    · weekly_report      ││Task            Started      Duration  Result      │"
+"│                         ││v1compat        31.08 10:08  44s       ✓ SUCCESS   │"
+"│                         ││endring_sluttd… 31.08 10:08  2m01s     ✗ FAILED    │"
+"│                         ││                                                   │"
+"│                         ││vs run 50851892761073  SUCCESS  1m12s then, 2m47s n│"
+"└───────────────────1 of 3┘│v1compat              44s then       44s now   SUCC│"
+"┌─[3]─Pipelines ⠋ by activ┐│endring_sluttd…       26s then     2m01s now   SUCC│"
+"│                         │└───────────────────────────────────────────────────┘"
+"│                         │┌─API log───────────────────────────────────────────┐"
+"│                         ││GET  /api/2.2/jobs/list?limit=25        200    84ms│"
+"└───────────────────0 of 0┘│GET  /api/2.2/jobs/runs/list?job_id=1&… 200   131ms│"
+"┌─[4]─Compute ⠋───────────┐│                                                   │"
+"│                         ││                                                   │"
+"│                         ││                                                   │"
+"└───────────────────0 of 0┘└───────────────────────────────────────────────────┘"
+" Scroll: j/k │ Back: Esc │ Browser: o │ Actions: x │ Quit: q │ Keys: ?    v0.1.0"

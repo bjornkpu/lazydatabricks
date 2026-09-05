@@ -473,6 +473,32 @@ mod tests {
     }
 
     #[test]
+    fn compare_runs_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "0j");
+        app.update(Message::Key(Key::Enter));
+        let earlier: crate::api::models::Run =
+            serde_json::from_str(include_str!("../../tests/fixtures/run_get.json")).unwrap();
+        app.update(Message::RunDetailLoaded(earlier.clone()));
+        press(&mut app, "W");
+        app.update(Message::Key(Key::Esc));
+        press(&mut app, "j");
+        app.update(Message::Key(Key::Enter));
+        let mut later = earlier;
+        later.id = 50_851_892_761_074;
+        later.state.result_state = Some(ResultState::Failed);
+        later.end_time = later
+            .end_time
+            .map(|end| end + jiff::SignedDuration::from_secs(95));
+        later.tasks[1].state.result_state = Some(ResultState::Failed);
+        later.tasks[1].end_time = later.tasks[1]
+            .end_time
+            .map(|end| end + jiff::SignedDuration::from_secs(95));
+        app.update(Message::RunDetailLoaded(later));
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn search_80x24() {
         let mut app = with_runs();
         let full: crate::api::models::Job =
