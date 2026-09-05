@@ -23,6 +23,11 @@ pub enum MenuItem {
         job_id: i64,
         name: String,
     },
+    /// Chosen from the menu, this opens the type-the-name prompt rather than a `y` confirmation.
+    DeleteJob {
+        job_id: i64,
+        name: String,
+    },
     ResumeSchedule {
         job_id: i64,
         name: String,
@@ -95,6 +100,7 @@ impl MenuItem {
             Self::RunNow { name, .. } => format!("Run now: {name}"),
             Self::RunWith { name, .. } => format!("Run with parameters: {name}"),
             Self::PauseSchedule { name, .. } => format!("Pause schedule: {name}"),
+            Self::DeleteJob { name, .. } => format!("Delete job: {name}"),
             Self::ResumeSchedule { name, .. } => format!("Resume schedule: {name}"),
             Self::RepairRun { run_id, .. } => format!("Repair run {run_id}"),
             Self::CancelRun { run_id, .. } => format!("Cancel run {run_id}"),
@@ -134,6 +140,9 @@ impl MenuItem {
             Self::RunNow { name, .. } => format!("Start a run of \"{name}\" now?"),
             Self::RunWith { name, .. } => format!("Parameters for \"{name}\""),
             Self::PauseSchedule { name, .. } => format!("Pause the schedule of \"{name}\"?"),
+            Self::DeleteJob { name, .. } => {
+                format!("Delete \"{name}\" for good? Type its name to confirm.")
+            }
             Self::ResumeSchedule { name, .. } => format!("Resume the schedule of \"{name}\"?"),
             Self::RepairRun { run_id, .. } => format!("Re-run the failed tasks of run {run_id}?"),
             Self::CancelRun { run_id, .. } => format!("Cancel run {run_id}?"),
@@ -169,6 +178,7 @@ impl MenuItem {
                 job_id: *job_id,
                 paused: true,
             },
+            Self::DeleteJob { job_id, .. } => Command::DeleteJob { job_id: *job_id },
             Self::ResumeSchedule { job_id, .. } => Command::SetSchedulePaused {
                 job_id: *job_id,
                 paused: false,
@@ -264,6 +274,12 @@ pub enum InputMode {
     },
     /// An entry was chosen; `y` sends it, anything else backs out.
     Confirm(MenuItem),
+    /// An irreversible entry was chosen: `expected` must be typed back before it fires.
+    TypeToConfirm {
+        item: MenuItem,
+        expected: String,
+        text: String,
+    },
     /// `A` pressed in a read-only session: `y` enables actions until exit.
     ConfirmActions,
     /// *Run with parameters* chosen: one line of `key=value` pairs, `Enter` sends.

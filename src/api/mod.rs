@@ -335,6 +335,14 @@ impl Client {
         Ok(())
     }
 
+    /// Deletes a job. Irreversible; the caller has already made the person type its name.
+    pub async fn delete_job(&self, job_id: i64) -> Result<(), AppError> {
+        let _: Value = self
+            .post("/api/2.2/jobs/delete", json!({ "job_id": job_id }))
+            .await?;
+        Ok(())
+    }
+
     /// Re-runs every failed task of `run_id` inside the same run.
     pub async fn repair_run(&self, run_id: i64) -> Result<(), AppError> {
         let _: Value = self

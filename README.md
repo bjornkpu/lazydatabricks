@@ -58,7 +58,7 @@ the target. Opening a failed run shows the failing task's error and traceback.
 | `f` | cycle status: all, failed only, active only |
 | `F` | filter menu: status, mine only, clear the text filter |
 | `v` | start or end a range in a side list; `x` then offers each action for every row, named with its count; `Esc` clears it |
-| `x` | actions menu: run, run with parameters, pause/resume schedule, repair, cancel; start/stop pipeline; start/terminate cluster; start/stop warehouse |
+| `x` | actions menu: run, run with parameters, pause/resume schedule, repair, cancel, delete (type the name back); start/stop pipeline; start/terminate cluster; start/stop warehouse |
 | `r` / `R` | refresh the focused panel / everything |
 | `s` | cycle sort: activity, name, created |
 | `o` / `y` | open in browser (`$BROWSER` if set) / copy menu: URL, id, name, JSON, the last API call as `databricks api` or `curl` (`wl-copy` on Wayland) |

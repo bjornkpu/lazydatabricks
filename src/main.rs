@@ -229,6 +229,9 @@ impl Workspace {
             Command::SetSchedulePaused { job_id, paused } => {
                 tokio::spawn(set_schedule_paused(client(), tx(), job_id, paused));
             }
+            Command::DeleteJob { job_id } => {
+                tokio::spawn(delete_job(client(), tx(), job_id));
+            }
             Command::StartUpdate { pipeline_id } => {
                 tokio::spawn(start_update(client(), tx(), pipeline_id));
             }
@@ -559,6 +562,14 @@ async fn run_now(
 async fn repair_run(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id: i64, run_id: i64) {
     let message = match client.repair_run(run_id).await {
         Ok(()) => Message::RunRepaired { job_id, run_id },
+        Err(error) => Message::ActionFailed(error),
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn delete_job(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id: i64) {
+    let message = match client.delete_job(job_id).await {
+        Ok(()) => Message::JobDeleted { job_id },
         Err(error) => Message::ActionFailed(error),
     };
     let _ = tx.send(message).await;

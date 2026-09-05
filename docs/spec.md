@@ -1125,6 +1125,16 @@ there. The mapping lives on `TaskSettings` next to `kind()`, so a new task type 
 *Teaches:* decoration is opt-in and never the only carrier of meaning.
 *Done when:* a Nerd Font terminal shows a book before every notebook task and nothing else changes.
 
+### M59 — Delete a job
+lazydocker's `d` remove, with the guard GitHub uses for repositories: the name typed back. "Delete
+job" ends the `x` menu for a job; choosing it opens a prompt that names the job and fires only
+when the text matches it exactly, otherwise says so and stays. A new input mode rather than the
+`y` confirmation, because `y` is one key and a bundle redeploy cannot bring back a job's run
+history. The list drops the job at once when Databricks confirms.
+
+*Teaches:* the cost of undoing decides the shape of the confirmation.
+*Done when:* a mistyped name deletes nothing and the right one removes the row.
+
 ---
 
 ## 9. Testing

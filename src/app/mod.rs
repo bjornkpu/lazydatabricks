@@ -399,6 +399,7 @@ impl App {
                 self.on_run_cancelled(job_id, run_id, &mut commands);
             }
             Message::SchedulePaused { job_id, paused } => self.on_schedule_paused(job_id, paused),
+            Message::JobDeleted { job_id } => self.on_job_deleted(job_id),
             Message::RunRepaired { job_id, run_id } => {
                 self.on_run_repaired(job_id, run_id, &mut commands);
             }
@@ -420,6 +421,7 @@ impl App {
             InputMode::Menu { .. } => self.menu_key(key, commands),
             InputMode::Output { .. } => self.output_key(key, commands),
             InputMode::Confirm(_) => self.confirm_key(key, commands),
+            InputMode::TypeToConfirm { .. } => self.type_to_confirm_key(key, commands),
             InputMode::Params { .. } => self.params_key(key, commands),
             InputMode::Prompt { .. } => self.prompt_key(key, commands),
             InputMode::ConfirmActions => {
@@ -1918,6 +1920,10 @@ impl App {
             None if self.detailed.contains(&job.id) => {}
             None => items.extend([pause, resume]),
         }
+        items.push(MenuItem::DeleteJob {
+            job_id: job.id,
+            name: job.settings.name.clone(),
+        });
         items
     }
 
@@ -1997,6 +2003,14 @@ impl App {
                             text: String::new(),
                         };
                     }
+                    MenuItem::DeleteJob { ref name, .. } => {
+                        let expected = name.clone();
+                        self.input = InputMode::TypeToConfirm {
+                            item,
+                            expected,
+                            text: String::new(),
+                        };
+                    }
                     item => self.input = InputMode::Confirm(item),
                 }
             }
@@ -2024,6 +2038,78 @@ impl App {
         if key == Key::Char('y') {
             self.fire(&item, commands);
         }
+    }
+
+    /// Keys in the type-the-name prompt. Enter fires only on an exact match; a miss says so and
+    /// keeps the prompt, so a slip of the finger deletes nothing.
+    fn type_to_confirm_key(&mut self, key: Key, commands: &mut Vec<Command>) {
+        let InputMode::TypeToConfirm {
+            item,
+            expected,
+            mut text,
+        } = std::mem::take(&mut self.input)
+        else {
+            return;
+        };
+        match key {
+            Key::Ctrl('c') => commands.push(Command::Quit),
+            Key::Esc => {}
+            Key::Enter if text == expected => self.fire(&item, commands),
+            Key::Enter => {
+                self.notice = Some(format!("That is not \"{expected}\"; nothing done"));
+                self.input = InputMode::TypeToConfirm {
+                    item,
+                    expected,
+                    text,
+                };
+            }
+            Key::Backspace => {
+                text.pop();
+                self.input = InputMode::TypeToConfirm {
+                    item,
+                    expected,
+                    text,
+                };
+            }
+            Key::Char(c) => {
+                text.push(c);
+                self.input = InputMode::TypeToConfirm {
+                    item,
+                    expected,
+                    text,
+                };
+            }
+            Key::Tab
+            | Key::Up
+            | Key::Down
+            | Key::Left
+            | Key::Right
+            | Key::Home
+            | Key::End
+            | Key::Ctrl(_) => {
+                self.input = InputMode::TypeToConfirm {
+                    item,
+                    expected,
+                    text,
+                };
+            }
+        }
+    }
+
+    /// The job is gone from Databricks; drop it here without waiting for a refetch.
+    fn on_job_deleted(&mut self, job_id: i64) {
+        let name = self
+            .all_jobs
+            .iter()
+            .find(|job| job.id == job_id)
+            .map(|job| job.settings.name.clone());
+        self.all_jobs.retain(|job| job.id != job_id);
+        self.latest_runs.remove(&job_id);
+        self.apply_filter();
+        self.notice = Some(name.map_or_else(
+            || "Deleted the job".to_owned(),
+            |name| format!("Deleted job: {name}"),
+        ));
     }
 
     /// Keys in the output overlay: scroll, copy, close.
@@ -2733,7 +2819,7 @@ pub mod tests {
                 confirm: false,
             })
         );
-        press(&mut app, "jjjj");
+        press(&mut app, "jjjjj");
         let commands = app.update(key(Key::Enter));
         assert_eq!(
             commands,
@@ -2852,7 +2938,8 @@ pub mod tests {
                 "Run now: a",
                 "Run with parameters: a",
                 "Pause schedule: a",
-                "Resume schedule: a"
+                "Resume schedule: a",
+                "Delete job: a"
             ],
             "schedule unknown: both"
         );
@@ -3475,6 +3562,46 @@ pub mod tests {
         app.update(key(Key::Home));
         assert_eq!(app.jobs.selected_index(), Some(0));
         assert_eq!(app.keys.labels(Action::First), "g/Home");
+    }
+
+    #[test]
+    fn deleting_a_job_takes_its_name_typed_back() {
+        let mut app = loaded();
+        app.allow_actions = true;
+        press(&mut app, "x");
+        let InputMode::Menu { items, .. } = &app.input else {
+            panic!("{:?}", app.input);
+        };
+        let index = items
+            .iter()
+            .position(|item| item.label() == "Delete job: a")
+            .expect("delete is offered");
+        for _ in 0..index {
+            press(&mut app, "j");
+        }
+        app.update(key(Key::Enter));
+        assert!(
+            matches!(&app.input, InputMode::TypeToConfirm { expected, .. } if expected == "a"),
+            "{:?}",
+            app.input
+        );
+        press(&mut app, "b");
+        assert_eq!(app.update(key(Key::Enter)), vec![], "wrong name: nothing");
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("That is not \"a\"; nothing done")
+        );
+        assert!(matches!(app.input, InputMode::TypeToConfirm { .. }));
+        app.update(key(Key::Backspace));
+        press(&mut app, "a");
+        assert_eq!(
+            app.update(key(Key::Enter)),
+            vec![Command::DeleteJob { job_id: 1 }]
+        );
+        assert_eq!(app.input, InputMode::Normal);
+        app.update(Message::JobDeleted { job_id: 1 });
+        assert_eq!(names(&app), ["b", "c"]);
+        assert_eq!(app.notice.as_deref(), Some("Deleted job: a"));
     }
 
     #[test]
@@ -4262,16 +4389,20 @@ pub mod tests {
                         job_id: 1,
                         name: "a".to_owned()
                     },
+                    MenuItem::DeleteJob {
+                        job_id: 1,
+                        name: "a".to_owned()
+                    },
                 ],
                 selected: 0,
             }
         );
-        press(&mut app, "jjjjjj");
+        press(&mut app, "jjjjjjj");
         assert!(
-            matches!(app.input, InputMode::Menu { selected: 4, .. }),
+            matches!(app.input, InputMode::Menu { selected: 5, .. }),
             "clamped at the end"
         );
-        press(&mut app, "kkkk");
+        press(&mut app, "kkkkk");
         assert!(matches!(app.input, InputMode::Menu { selected: 0, .. }));
         press(&mut app, "q");
         assert!(

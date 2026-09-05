@@ -41,6 +41,9 @@ pub fn hints(
         }
         InputMode::Menu { .. } => return " Choose: j/k │ Confirm: Enter │ Close: Esc".to_owned(),
         InputMode::Confirm(_) => return " Send: y │ Back: any other key".to_owned(),
+        InputMode::TypeToConfirm { .. } => {
+            return " Type the exact name │ Do it: Enter │ Cancel: Esc".to_owned();
+        }
         InputMode::ConfirmActions => return " Enable: y │ Back: any other key".to_owned(),
         InputMode::Params { .. } => {
             return " Type key=value pairs, space separated │ Start: Enter │ Cancel: Esc"

@@ -12,6 +12,11 @@ pub fn draw(app: &App, frame: &mut Frame) {
     match &app.input {
         InputMode::Menu { items, selected } => menu(app, items, *selected, frame),
         InputMode::Confirm(item) => confirm(app, &item.confirmation(), frame),
+        InputMode::TypeToConfirm {
+            item,
+            expected,
+            text,
+        } => type_to_confirm(app, &item.confirmation(), expected, text, frame),
         InputMode::ConfirmActions => confirm(
             app,
             "Enable run, repair, cancel and start for this session?",
@@ -75,6 +80,28 @@ fn confirm(app: &App, question: &str, frame: &mut Frame) {
         .title(" Confirm ")
         .title_bottom(Line::from(footer).centered());
     frame.render_widget(Paragraph::new(question).centered().block(block), area);
+}
+
+/// An irreversible action: the question, then the name being typed back under it.
+fn type_to_confirm(app: &App, question: &str, expected: &str, text: &str, frame: &mut Frame) {
+    let footer = "type the name │ Enter: do it │ Esc: cancel";
+    let typed = format!(" {text}▌");
+    let width = question
+        .chars()
+        .count()
+        .max(footer.chars().count())
+        .max(expected.chars().count().saturating_add(2))
+        .max(typed.chars().count());
+    let area = chrome::centered(chrome::columns(width), chrome::rows(2), frame.area());
+    frame.render_widget(Clear, area);
+    let block = Block::bordered()
+        .border_style(Style::new().fg(theme::palette(app).danger))
+        .title(" Confirm ")
+        .title_bottom(Line::from(footer).centered());
+    frame.render_widget(
+        Paragraph::new(vec![Line::from(question).centered(), Line::from(typed)]).block(block),
+        area,
+    );
 }
 
 /// The `:` prompt: one `databricks` CLI line, the profile added on Enter.

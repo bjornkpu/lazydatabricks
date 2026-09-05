@@ -198,7 +198,7 @@ mod tests {
     use super::*;
     use crate::api::models::ResultState;
     use crate::app::tests::{api_call, app, job, pipeline, run, task, theirs};
-    use crate::app::{Glyphs, Key, Message};
+    use crate::app::{Glyphs, InputMode, Key, Message};
     use crate::config::Theme;
     use crate::error::AppError;
 
@@ -469,6 +469,26 @@ mod tests {
                     .to_owned(),
             ),
         });
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn delete_prompt_80x24() {
+        let mut app = with_runs();
+        app.allow_actions = true;
+        press(&mut app, "x");
+        let InputMode::Menu { items, .. } = &app.input else {
+            panic!("{:?}", app.input);
+        };
+        let index = items
+            .iter()
+            .position(|item| matches!(item, crate::app::MenuItem::DeleteJob { .. }))
+            .unwrap();
+        for _ in 0..index {
+            press(&mut app, "j");
+        }
+        app.update(Message::Key(Key::Enter));
+        press(&mut app, "[someone] oko");
         insta::assert_snapshot!(render(&app));
     }
 

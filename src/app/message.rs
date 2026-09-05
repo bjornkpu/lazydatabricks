@@ -134,6 +134,10 @@ pub enum Message {
         job_id: i64,
         run_id: i64,
     },
+    /// `jobs/delete` accepted; the job is gone.
+    JobDeleted {
+        job_id: i64,
+    },
     /// `jobs/update` accepted the new pause status.
     SchedulePaused {
         job_id: i64,
@@ -199,6 +203,10 @@ pub enum Command {
     /// Full spec of one pipeline, for its JSON tab.
     FetchPipeline {
         pipeline_id: String,
+    },
+    /// `jobs/delete`, after the name was typed back.
+    DeleteJob {
+        job_id: i64,
     },
     /// Pause or resume a job's schedule via `jobs/update`.
     SetSchedulePaused {

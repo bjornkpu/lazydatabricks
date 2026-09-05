@@ -142,7 +142,7 @@ fn jobs_rows(keys: &Keymap) -> Vec<(String, &'static str)> {
         (k(Action::Open), "focus the main panel"),
         (
             k(Action::Menu),
-            "actions menu: run, pause schedule, repair, cancel",
+            "actions menu: run, pause schedule, repair, cancel, delete",
         ),
         (k(Action::Refresh), "refresh jobs"),
         (k(Action::Browse), "open job in browser"),
