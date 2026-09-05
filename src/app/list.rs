@@ -20,6 +20,8 @@ pub enum Move {
 pub struct Selectable<T> {
     items: Vec<T>,
     selected: Option<usize>,
+    /// The other end of a `v` range. `None` means the cursor alone is selected.
+    anchor: Option<usize>,
 }
 
 impl<T> Default for Selectable<T> {
@@ -27,6 +29,7 @@ impl<T> Default for Selectable<T> {
         Self {
             items: Vec::new(),
             selected: None,
+            anchor: None,
         }
     }
 }
@@ -54,11 +57,44 @@ impl<T> Selectable<T> {
     }
 
     /// Replaces the items, keeping the cursor where it was if that is still a valid position.
+    /// A range does not survive: the rows it spanned may be gone.
     pub fn set_items(&mut self, items: Vec<T>) {
         self.items = items;
+        self.anchor = None;
         self.selected = self
             .last_index()
             .map(|last| self.selected.unwrap_or(0).min(last));
+    }
+
+    /// `v`: start a range at the cursor, or end the one in progress.
+    pub const fn toggle_anchor(&mut self) {
+        self.anchor = match self.anchor {
+            Some(_) => None,
+            None => self.selected,
+        };
+    }
+
+    pub const fn clear_anchor(&mut self) {
+        self.anchor = None;
+    }
+
+    /// The rows between the anchor and the cursor, inclusive, while a range is in progress.
+    pub fn range(&self) -> Option<std::ops::RangeInclusive<usize>> {
+        let (anchor, selected) = (self.anchor?, self.selected?);
+        Some(anchor.min(selected)..=anchor.max(selected))
+    }
+
+    /// Whether row `index` is inside the range, cursor row included.
+    pub fn in_range(&self, index: usize) -> bool {
+        self.range().is_some_and(|range| range.contains(&index))
+    }
+
+    /// The rows an action applies to: the range when one is in progress, else the cursor row.
+    pub fn selected_items(&self) -> Vec<&T> {
+        self.range().map_or_else(
+            || self.selected().into_iter().collect(),
+            |range| self.items.get(range).unwrap_or_default().iter().collect(),
+        )
     }
 
     pub const fn items(&self) -> &[T] {
@@ -122,6 +158,27 @@ mod tests {
         assert_eq!(list.selected_index(), None);
         assert_eq!(list.selected(), None);
         assert_eq!(list.counter(), "0 of 0");
+    }
+
+    #[test]
+    fn a_range_spans_anchor_to_cursor_either_way() {
+        let mut list = three();
+        assert_eq!(list.selected_items(), [&"a"]);
+        assert_eq!(list.range(), None);
+        list.apply(Move::Down);
+        list.toggle_anchor();
+        assert_eq!(list.selected_items(), [&"b"], "anchor alone: one row");
+        list.apply(Move::Down);
+        assert_eq!(list.range(), Some(1..=2));
+        assert_eq!(list.selected_items(), [&"b", &"c"]);
+        assert!(list.in_range(1) && list.in_range(2) && !list.in_range(0));
+        list.apply(Move::First);
+        assert_eq!(list.range(), Some(0..=1), "backwards too");
+        list.toggle_anchor();
+        assert_eq!(list.range(), None, "v again ends it");
+        list.toggle_anchor();
+        list.set_items(vec!["x", "y"]);
+        assert_eq!(list.range(), None, "new rows: no range");
     }
 
     #[test]

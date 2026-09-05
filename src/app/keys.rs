@@ -56,6 +56,8 @@ pub enum Action {
     EditConfig,
     /// The filter menu: status, mine only, clear the text.
     FilterMenu,
+    /// Start or end a range in the focused list, lazygit's `v`.
+    RangeSelect,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -101,6 +103,7 @@ impl Default for Keymap {
             (Action::Prompt, vec![Key::Char(':')]),
             (Action::EditConfig, vec![Key::Char('e')]),
             (Action::FilterMenu, vec![Key::Char('F')]),
+            (Action::RangeSelect, vec![Key::Char('v')]),
         ]))
     }
 }

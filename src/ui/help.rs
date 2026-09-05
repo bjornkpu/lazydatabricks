@@ -88,6 +88,10 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
                 k(Action::FilterMenu),
                 "filter menu: status, mine only, clear text",
             ),
+            (
+                k(Action::RangeSelect),
+                "start or end a range; x then acts on every row",
+            ),
             (k(Action::Open), "focus the main panel"),
             (
                 k(Action::Menu),
@@ -129,6 +133,10 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
                 k(Action::FilterMenu),
                 "filter menu: status, mine only, clear text",
             ),
+            (
+                k(Action::RangeSelect),
+                "start or end a range; x then acts on every row",
+            ),
             (k(Action::Open), "focus the main panel"),
             (k(Action::Menu), "actions menu"),
             (k(Action::Refresh), "refresh pipelines"),
@@ -143,6 +151,10 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             (k(Action::Filter), "filter by name or creator"),
             (k(Action::MineOnly), "toggle mine only"),
             (k(Action::StatusFilter), "cycle status: all, error, active"),
+            (
+                k(Action::RangeSelect),
+                "start or end a range; x then acts on every row",
+            ),
             (k(Action::Open), "focus the main panel"),
             (k(Action::Menu), "actions menu: start, terminate or stop"),
             (k(Action::Refresh), "refresh compute"),

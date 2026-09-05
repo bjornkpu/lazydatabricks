@@ -1025,6 +1025,29 @@ commands, so `MenuItem::command` became `commands`, a list, which bulk actions w
 *Teaches:* a menu that mutates state and returns nothing is still the same menu.
 *Done when:* someone who never found `m` reads "Mine only: on" and presses Enter.
 
+### M50 — Range select
+lazygit's `v`. The cursor list gains an anchor: `v` sets it, moving extends the range from it,
+`v` or `Esc` ends it, and a refetch that replaces the rows drops it rather than guess. Rows in
+the range take the unfocused highlight so the cursor still reads as the cursor, and the hint bar
+turns into `3 selected │ Actions: x`. `Esc` takes the range before it takes anything else.
+Nothing acts on the range yet; that is M51, and it will find `selected_items` waiting.
+
+*Teaches:* selection is list state, not app state; one `Option<usize>` on `Selectable` carries it.
+*Done when:* `v j j` highlights three rows and `Esc` leaves the cursor where it was.
+
+### M51 — Bulk actions
+lazydocker's `b`, without the extra key: over a range of two or more, `x` offers the same
+actions as for one row, each once per row and named with its count: "Run now: 3 jobs", "Cancel
+2 active runs", "Stop 4 running compute". A `Bulk` entry carries its commands, so `commands()`
+being a list (M49) pays off here. The confirmation names the count, the same `allow_actions` gate
+holds, and firing ends the range so Enter twice cannot double it. Custom commands stay single-row:
+their placeholders name one thing.
+
+*Teaches:* the bulk version of an action is the action mapped over a list; design the single
+version so that the map is all there is.
+*Done when:* an on-call person cancels every active run of six jobs with `v`, five `j`, `x`, Enter,
+`y`.
+
 ---
 
 ## 9. Testing

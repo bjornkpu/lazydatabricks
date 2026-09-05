@@ -70,6 +70,13 @@ pub enum MenuItem {
     },
     /// One setting from the `F` menu. Applied in `update`; no command leaves the program.
     Filter(FilterChoice),
+    /// One action over a `v` range: the label and question name the count, the commands are
+    /// one per row.
+    Bulk {
+        label: String,
+        confirmation: String,
+        commands: Vec<Command>,
+    },
     /// A custom command from config, its placeholders already filled in.
     Shell {
         name: String,
@@ -99,6 +106,7 @@ impl MenuItem {
             Self::SwitchProfile { name } => format!("Switch to {name}"),
             Self::CopyText { label, .. } => format!("Copy {label}"),
             Self::Filter(choice) => choice.label(),
+            Self::Bulk { label, .. } => label.clone(),
         }
     }
 
@@ -135,6 +143,7 @@ impl MenuItem {
             Self::SwitchProfile { name } => format!("Switch to {name}?"),
             Self::CopyText { label, .. } => format!("Copy {label}?"),
             Self::Filter(choice) => format!("{}?", choice.label()),
+            Self::Bulk { confirmation, .. } => confirmation.clone(),
         }
     }
 
@@ -145,6 +154,7 @@ impl MenuItem {
     pub fn commands(&self) -> Vec<Command> {
         let command = match self {
             Self::Filter(_) => return Vec::new(),
+            Self::Bulk { commands, .. } => return commands.clone(),
             Self::RunNow { job_id, .. } | Self::RunWith { job_id, .. } => Command::RunNow {
                 job_id: *job_id,
                 params: BTreeMap::new(),

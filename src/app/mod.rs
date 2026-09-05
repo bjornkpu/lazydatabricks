@@ -1125,6 +1125,7 @@ impl App {
             }
             Action::EditConfig => commands.push(Command::EditConfig),
             Action::FilterMenu => self.open_filter_menu(),
+            Action::RangeSelect => self.toggle_range(),
             Action::Sort => {
                 self.sort = self.sort.next();
                 self.apply_filter();
@@ -1160,7 +1161,9 @@ impl App {
             Action::NextPanel => self.set_focus(self.next_visible_side(self.focus)),
             Action::Open => self.open(commands),
             Action::Back => {
-                if self.viewing_run.is_some() {
+                if self.range_len().is_some() {
+                    self.clear_range();
+                } else if self.viewing_run.is_some() {
                     self.leave_run_detail();
                 } else if self.focus == Panel::Main {
                     self.set_focus(self.context);
@@ -1295,6 +1298,34 @@ impl App {
             Some(text) => commands.push(Command::Page(text)),
             None => self.notice = Some("Nothing to page yet".to_owned()),
         }
+    }
+
+    /// `v` on a side list: anchor a range at the cursor, or end the one in progress.
+    const fn toggle_range(&mut self) {
+        match self.focus {
+            Panel::Jobs => self.jobs.toggle_anchor(),
+            Panel::Pipelines => self.pipelines.toggle_anchor(),
+            Panel::Compute => self.compute.toggle_anchor(),
+            Panel::Status | Panel::Main => {}
+        }
+    }
+
+    const fn clear_range(&mut self) {
+        self.jobs.clear_anchor();
+        self.pipelines.clear_anchor();
+        self.compute.clear_anchor();
+    }
+
+    /// How many rows the focused list's range covers, while one is in progress.
+    #[must_use]
+    pub fn range_len(&self) -> Option<usize> {
+        let range = match self.focus {
+            Panel::Jobs => self.jobs.range(),
+            Panel::Pipelines => self.pipelines.range(),
+            Panel::Compute => self.compute.range(),
+            Panel::Status | Panel::Main => None,
+        }?;
+        Some(range.end().saturating_sub(*range.start()).saturating_add(1))
     }
 
     /// `F`: every filter as a menu, the cursor on the status in force. The same three settings
@@ -1446,8 +1477,12 @@ impl App {
         self.input = InputMode::Menu { items, selected: 0 };
     }
 
-    /// The built-in actions for the selection, then the custom commands that apply to it.
+    /// The built-in actions for the selection, then the custom commands that apply to it. Over
+    /// a `v` range of two or more rows, the bulk actions instead.
     fn menu_items(&self) -> Vec<MenuItem> {
+        if let Some(bulk) = self.bulk_items() {
+            return bulk;
+        }
         let mut items = self.builtin_items();
         let vars = self.template_vars();
         items.extend(
@@ -1536,10 +1571,136 @@ impl App {
         vars
     }
 
-    /// Sends an action and says so; the reply, or its failure, comes back as a message.
+    /// Sends an action and says so; the reply, or its failure, comes back as a message. A bulk
+    /// action also ends the range, so a second Enter cannot repeat it by accident.
     fn fire(&mut self, item: &MenuItem, commands: &mut Vec<Command>) {
         self.notice = Some(format!("{}…", item.label()));
         commands.extend(item.commands());
+        if matches!(item, MenuItem::Bulk { .. }) {
+            self.clear_range();
+        }
+    }
+
+    /// lazydocker's bulk commands: the same actions as the single-row menu, once per selected
+    /// row, each named with its count. `None` unless a range of two or more is in progress.
+    fn bulk_items(&self) -> Option<Vec<MenuItem>> {
+        if self.range_len()? < 2 {
+            return None;
+        }
+        Some(match self.focus {
+            Panel::Jobs => self.bulk_jobs(),
+            Panel::Pipelines => self.bulk_pipelines(),
+            Panel::Compute => self.bulk_compute(),
+            Panel::Status | Panel::Main => Vec::new(),
+        })
+    }
+
+    fn bulk_jobs(&self) -> Vec<MenuItem> {
+        let mut items = Vec::new();
+        let jobs = self.jobs.selected_items();
+        let n = plural(jobs.len(), "job");
+        items.push(bulk(
+            format!("Run now: {n}"),
+            format!("Start a run of {n} now?"),
+            jobs.iter()
+                .map(|job| Command::RunNow {
+                    job_id: job.id,
+                    params: BTreeMap::new(),
+                })
+                .collect(),
+        ));
+        let cancels: Vec<Command> = jobs
+            .iter()
+            .filter_map(|job| self.latest_runs.get(&job.id))
+            .filter(|run| run.state.life_cycle_state.is_active())
+            .map(|run| Command::CancelRun {
+                job_id: run.job_id,
+                run_id: run.id,
+            })
+            .collect();
+        if !cancels.is_empty() {
+            let m = plural(cancels.len(), "active run");
+            items.push(bulk(format!("Cancel {m}"), format!("Cancel {m}?"), cancels));
+        }
+        for (paused, verb) in [(true, "Pause"), (false, "Resume")] {
+            items.push(bulk(
+                format!("{verb} schedule: {n}"),
+                format!("{verb} the schedule of {n}?"),
+                jobs.iter()
+                    .map(|job| Command::SetSchedulePaused {
+                        job_id: job.id,
+                        paused,
+                    })
+                    .collect(),
+            ));
+        }
+        items
+    }
+
+    fn bulk_pipelines(&self) -> Vec<MenuItem> {
+        let mut items = Vec::new();
+        let pipelines = self.pipelines.selected_items();
+        let n = plural(pipelines.len(), "pipeline");
+        items.push(bulk(
+            format!("Start update: {n}"),
+            format!("Start an update of {n} now?"),
+            pipelines
+                .iter()
+                .map(|pipeline| Command::StartUpdate {
+                    pipeline_id: pipeline.id.clone(),
+                })
+                .collect(),
+        ));
+        let stops: Vec<Command> = pipelines
+            .iter()
+            .filter(|pipeline| pipeline.state.is_active())
+            .map(|pipeline| Command::StopPipeline {
+                pipeline_id: pipeline.id.clone(),
+            })
+            .collect();
+        if !stops.is_empty() {
+            let m = plural(stops.len(), "running pipeline");
+            items.push(bulk(format!("Stop {m}"), format!("Stop {m}?"), stops));
+        }
+        items
+    }
+
+    fn bulk_compute(&self) -> Vec<MenuItem> {
+        let mut items = Vec::new();
+        let rows = self.compute.selected_items();
+        let starts: Vec<Command> = rows
+            .iter()
+            .filter(|row| !row.state.is_active())
+            .map(|row| match row.kind {
+                ComputeKind::Cluster => Command::StartCluster {
+                    cluster_id: row.id.clone(),
+                },
+                ComputeKind::Warehouse => Command::StartWarehouse {
+                    warehouse_id: row.id.clone(),
+                },
+            })
+            .collect();
+        if !starts.is_empty() {
+            let m = plural(starts.len(), "stopped compute");
+            items.push(bulk(format!("Start {m}"), format!("Start {m}?"), starts));
+        }
+        let stops: Vec<Command> = rows
+            .iter()
+            .filter(|row| row.state.is_active())
+            .map(|row| match row.kind {
+                ComputeKind::Cluster => Command::TerminateCluster {
+                    cluster_id: row.id.clone(),
+                },
+                ComputeKind::Warehouse => Command::StopWarehouse {
+                    warehouse_id: row.id.clone(),
+                },
+            })
+            .collect();
+        if !stops.is_empty() {
+            let m = plural(stops.len(), "running compute");
+            items.push(bulk(format!("Stop {m}"), format!("Stop {m}?"), stops));
+        }
+        items
     }
 
     /// A popup command's output goes into the overlay; nothing, or a failure, into the notice.
@@ -2041,6 +2202,24 @@ impl App {
             .checked_sub(1)
             .unwrap_or_else(|| len.saturating_sub(1));
         self.main_scroll = 0;
+    }
+}
+
+/// One `x` entry over a range: named with its count, carrying one command per row.
+const fn bulk(label: String, confirmation: String, commands: Vec<Command>) -> MenuItem {
+    MenuItem::Bulk {
+        label,
+        confirmation,
+        commands,
+    }
+}
+
+/// `3 jobs`, `1 active run`: a count with its noun.
+fn plural(n: usize, noun: &str) -> String {
+    if n == 1 {
+        format!("1 {noun}")
+    } else {
+        format!("{n} {noun}s")
     }
 }
 
@@ -2946,6 +3125,74 @@ pub mod tests {
         };
         assert_eq!(items.len(), 4, "no text, no clear entry");
         assert_eq!(items[3].label(), "Mine only: off");
+    }
+
+    #[test]
+    fn v_anchors_a_range_that_esc_clears() {
+        let mut app = loaded();
+        assert_eq!(app.range_len(), None);
+        press(&mut app, "vjj");
+        assert_eq!(app.range_len(), Some(3));
+        assert_eq!(app.jobs.selected_items().len(), 3);
+        press(&mut app, "k");
+        assert_eq!(app.range_len(), Some(2));
+        press(&mut app, "0");
+        assert_eq!(app.range_len(), None, "the main panel has no range");
+        press(&mut app, "2");
+        assert_eq!(app.range_len(), Some(2), "the list kept it");
+        app.update(key(Key::Esc));
+        assert_eq!(app.range_len(), None);
+        assert_eq!(app.focus, Panel::Jobs, "Esc took the range, not the focus");
+        press(&mut app, "vj");
+        app.update(Message::JobsLoaded(vec![job(1, "a"), job(2, "b")]));
+        assert_eq!(app.range_len(), None, "a refetch ends the range");
+    }
+
+    #[test]
+    fn x_on_a_range_acts_on_every_row() {
+        let mut app = loaded();
+        let mut active = run(20, 1000, 0, None);
+        active.job_id = 2;
+        app.update(Message::RecentRunsLoaded(vec![active]));
+        // The active run sorted job 2 first and the cursor followed job 1; start from the top.
+        press(&mut app, "gvjjx");
+        let InputMode::Menu { items, .. } = &app.input else {
+            panic!("{:?}", app.input);
+        };
+        let labels: Vec<String> = items.iter().map(MenuItem::label).collect();
+        assert_eq!(
+            labels,
+            [
+                "Run now: 3 jobs",
+                "Cancel 1 active run",
+                "Pause schedule: 3 jobs",
+                "Resume schedule: 3 jobs"
+            ]
+        );
+        assert_eq!(items[1].confirmation(), "Cancel 1 active run?");
+        app.allow_actions = true;
+        app.update(key(Key::Enter));
+        assert!(matches!(
+            app.input,
+            InputMode::Confirm(MenuItem::Bulk { .. })
+        ));
+        let commands = app.update(key(Key::Char('y')));
+        assert_eq!(commands.len(), 3, "{commands:?}");
+        assert!(
+            commands
+                .iter()
+                .all(|command| matches!(command, Command::RunNow { .. }))
+        );
+        assert_eq!(app.notice.as_deref(), Some("Run now: 3 jobs…"));
+        assert_eq!(app.range_len(), None, "the range ends with the action");
+        press(&mut app, "vx");
+        let InputMode::Menu { items, .. } = &app.input else {
+            panic!("{:?}", app.input);
+        };
+        assert!(
+            matches!(items.first(), Some(MenuItem::RunNow { .. })),
+            "one row anchored: the single-row menu"
+        );
     }
 
     #[test]

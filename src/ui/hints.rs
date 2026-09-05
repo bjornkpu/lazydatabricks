@@ -13,8 +13,25 @@ use crate::app::{Action, App, InputMode, Keymap, Panel};
 const VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"));
 
 #[must_use]
-pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap, viewing_run: bool) -> String {
+pub fn hints(
+    focus: Panel,
+    input: &InputMode,
+    keys: &Keymap,
+    viewing_run: bool,
+    range: Option<usize>,
+) -> String {
     let k = |action| keys.label(action);
+    if let Some(count) = range
+        && *input == InputMode::Normal
+    {
+        return format!(
+            " {count} selected │ Actions: {} │ Extend: {}/{} │ Done: {}",
+            k(Action::Menu),
+            k(Action::Down),
+            k(Action::Up),
+            k(Action::Back)
+        );
+    }
     match input {
         InputMode::Filter => {
             return " Type to filter │ Keep: Enter │ Clear: Esc │ Select: ↑/↓".to_owned();
@@ -84,7 +101,13 @@ pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
         frame.render_widget(Paragraph::new(format!(" {notice}")).style(style), area);
         return;
     }
-    let text = hints(app.focus, &app.input, &app.keys, app.viewing_run.is_some());
+    let text = hints(
+        app.focus,
+        &app.input,
+        &app.keys,
+        app.viewing_run.is_some(),
+        app.range_len(),
+    );
     // The version stamp yields to the hints on narrow terminals.
     let fits = text
         .chars()

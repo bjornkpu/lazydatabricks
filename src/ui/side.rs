@@ -8,6 +8,15 @@ use ratatui::widgets::{Block, List, ListState, Paragraph};
 
 use super::{chrome, theme};
 use crate::app::{App, InputMode, Panel};
+
+/// Rows inside a `v` range read as selected but not under the cursor: the unfocused highlight.
+const fn range_style(in_range: bool, palette: &theme::Palette) -> Style {
+    if in_range {
+        palette.highlight_unfocused
+    } else {
+        Style::new()
+    }
+}
 use crate::error::AppError;
 
 pub fn status(app: &App, area: Rect, frame: &mut Frame) {
@@ -108,7 +117,7 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
     // `2m ✓ name`: age of the latest run, its result, then the name. Blank age and a dot when
     // no run is known yet. Names truncate with `…`, never silently.
     let name_width = usize::from(area.width).saturating_sub(2 + 6);
-    let rows = app.jobs.items().iter().map(|job| {
+    let rows = app.jobs.items().iter().enumerate().map(|(index, job)| {
         let latest = app.latest_runs.get(&job.id);
         let age = match (latest.and_then(|run| run.start_time), app.now) {
             (Some(started), Some(now)) => theme::age_short(now.duration_since(started)),
@@ -135,6 +144,7 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
                 chrome::fit(&app.display_name(&job.settings.name), name_width)
             )),
         ])
+        .style(range_style(app.jobs.in_range(index), &palette))
     });
     let list = List::new(rows)
         .block(block)
@@ -167,25 +177,31 @@ pub fn pipelines(app: &App, area: Rect, frame: &mut Frame) {
     }
     // Same shape as a job row: age of the latest update, its state, the name.
     let name_width = usize::from(area.width).saturating_sub(2 + 6);
-    let rows = app.pipelines.items().iter().map(|pipeline| {
-        let (glyph, color) = theme::pipeline_glyph(pipeline);
-        let created = pipeline
-            .latest_updates
-            .first()
-            .and_then(|update| update.creation_time);
-        let age = match (created, app.now) {
-            (Some(created), Some(now)) => theme::age_short(now.duration_since(created)),
-            _ => String::new(),
-        };
-        Line::from(vec![
-            Span::styled(format!("{age:>3} "), theme::dim(app)),
-            Span::styled(glyph.to_string(), theme::tint(app, color)),
-            Span::raw(format!(
-                " {}",
-                chrome::fit(&app.display_name(&pipeline.name), name_width)
-            )),
-        ])
-    });
+    let rows = app
+        .pipelines
+        .items()
+        .iter()
+        .enumerate()
+        .map(|(index, pipeline)| {
+            let (glyph, color) = theme::pipeline_glyph(pipeline);
+            let created = pipeline
+                .latest_updates
+                .first()
+                .and_then(|update| update.creation_time);
+            let age = match (created, app.now) {
+                (Some(created), Some(now)) => theme::age_short(now.duration_since(created)),
+                _ => String::new(),
+            };
+            Line::from(vec![
+                Span::styled(format!("{age:>3} "), theme::dim(app)),
+                Span::styled(glyph.to_string(), theme::tint(app, color)),
+                Span::raw(format!(
+                    " {}",
+                    chrome::fit(&app.display_name(&pipeline.name), name_width)
+                )),
+            ])
+            .style(range_style(app.pipelines.in_range(index), &palette))
+        });
     let list = List::new(rows)
         .block(block)
         .highlight_style(chrome::highlight(focused, &palette));
@@ -234,16 +250,22 @@ pub fn compute(app: &App, area: Rect, frame: &mut Frame) {
     }
     // `● name`: state glyph, then the name. Job compute carry the job in their name already.
     let name_width = usize::from(area.width).saturating_sub(2 + 2);
-    let rows = app.compute.items().iter().map(|cluster| {
-        let (glyph, color) = theme::cluster_glyph(cluster);
-        Line::from(vec![
-            Span::styled(glyph.to_string(), theme::tint(app, color)),
-            Span::raw(format!(
-                " {}",
-                chrome::fit(&app.display_name(&cluster.name), name_width)
-            )),
-        ])
-    });
+    let rows = app
+        .compute
+        .items()
+        .iter()
+        .enumerate()
+        .map(|(index, cluster)| {
+            let (glyph, color) = theme::cluster_glyph(cluster);
+            Line::from(vec![
+                Span::styled(glyph.to_string(), theme::tint(app, color)),
+                Span::raw(format!(
+                    " {}",
+                    chrome::fit(&app.display_name(&cluster.name), name_width)
+                )),
+            ])
+            .style(range_style(app.compute.in_range(index), &palette))
+        });
     let list = List::new(rows)
         .block(block)
         .highlight_style(chrome::highlight(focused, &palette));

@@ -466,6 +466,20 @@ mod tests {
     }
 
     #[test]
+    fn bulk_menu_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "vjx");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn range_select_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "vj");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn filter_menu_80x24() {
         let mut app = with_runs();
         press(&mut app, "F");
