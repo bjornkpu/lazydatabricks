@@ -16,7 +16,7 @@ expression: render(&app)
 "│ ┌ databricks … ─────────────────────────────────────────────────────────────┐│"
 "│ │ databricks jobs get {{job_id}} --output json▌                             ││"
 "└─└─{{job_id}} {{run_id}} {{name}} {{host}} expand │ Enter: run │ Esc: cancel─┘│"
-"┌─[3]─Pipelines ⠋ by activ┐│                                                   │"
+"┌─[3]─Pipelines ⠋ by activ┐│durations    █                                     │"
 "│                         │└───────────────────────────────────────────────────┘"
 "│                         │┌─API log───────────────────────────────────────────┐"
 "│                         ││GET  /api/2.2/jobs/list?limit=25        200    84ms│"

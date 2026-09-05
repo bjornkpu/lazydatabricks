@@ -2,16 +2,19 @@
 
 use jiff::SignedDuration;
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Rect};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState};
+use ratatui::widgets::{Block, Cell, Paragraph, Row, Sparkline, Table, TableState};
 
 use super::theme::Palette;
 use super::{Drawn, chrome, theme};
 use crate::api::models::{ComputeKind, Run, TaskRun};
 use crate::app::{App, InputMode, Load, Panel, Tab};
 
+/// Inner height from which the runs table gives its last row to a duration sparkline: below
+/// this, rows are worth more than the trend.
+const SPARKLINE_MIN_HEIGHT: u16 = 8;
 /// Inner width below which the runs table drops its Run ID column: ids plus dates plus a
 /// result word need about this much.
 const NARROW_RUNS_TABLE: u16 = 50;
@@ -227,12 +230,41 @@ fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> Draw
     let focused = app.focus == Panel::Main;
     let table = Table::new(rows, widths)
         .header(header)
-        .block(block)
         .row_highlight_style(chrome::highlight(focused, &palette))
         .highlight_symbol("› ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    // lazydocker's stats graph, for the one metric a job has: how long its runs took, oldest to
+    // newest, so a creeping regression shows as a slope before anyone reads the numbers.
+    let durations: Vec<u64> = runs
+        .items()
+        .iter()
+        .rev()
+        .filter_map(|run| theme::run_duration(run, app.now))
+        .map(|duration| u64::try_from(duration.as_secs()).unwrap_or(0))
+        .collect();
+    let table_area = if inner.height >= SPARKLINE_MIN_HEIGHT && durations.len() >= 2 {
+        let [table_area, spark_area] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(inner);
+        let [label_area, graph_area] =
+            Layout::horizontal([Constraint::Length(11), Constraint::Fill(1)]).areas(spark_area);
+        frame.render_widget(
+            Paragraph::new("durations ").style(theme::dim(app)),
+            label_area,
+        );
+        frame.render_widget(
+            Sparkline::default()
+                .data(&durations)
+                .style(Style::new().fg(palette.accent)),
+            graph_area,
+        );
+        table_area
+    } else {
+        inner
+    };
     // Local widget state built from `App`: the render stays a pure function of the app.
     let mut state = TableState::default().with_selected(runs.selected_index());
-    frame.render_stateful_widget(table, area, &mut state);
+    frame.render_stateful_widget(table, table_area, &mut state);
     Drawn::default()
 }
 

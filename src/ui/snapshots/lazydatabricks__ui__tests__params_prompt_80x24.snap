@@ -16,7 +16,7 @@ expression: render(&app)
 "│            ┌ Parameters for [someone] okonomi_gold ─────────────┐            │"
 "│            │ date=2026-09-01 mode=full▌                         │            │"
 "└────────────└─key=value key2=value2 │ Enter: start │ Esc: cancel─┘            │"
-"┌─[3]─Pipelines ⠋ by activ┐│                                                   │"
+"┌─[3]─Pipelines ⠋ by activ┐│durations    █                                     │"
 "│                         │└───────────────────────────────────────────────────┘"
 "│                         │┌─API log───────────────────────────────────────────┐"
 "│                         ││GET  /api/2.2/jobs/list?limit=25        200    84ms│"

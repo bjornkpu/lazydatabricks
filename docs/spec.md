@@ -1071,6 +1071,17 @@ is fetched: both runs came through `runs/get` already.
 *Teaches:* a comparison is two values already held and one render; resist a "diff" data model.
 *Done when:* the on-call person marks yesterday's run, opens today's, and reads the delta.
 
+### M54 — Duration sparkline
+lazydocker draws a stats graph under a container; a job has one metric worth a graph, how long
+its runs took. The runs table gives its last row to a ratatui `Sparkline` of the listed runs'
+durations, oldest to newest, when the panel is at least eight rows tall and two runs have
+finished. §10 deferred this because the browser draws it; the browser draws it on another page,
+and the widget is already in the crate. No config: the row goes back to the table when there is
+no room.
+
+*Teaches:* a deferred feature whose cost dropped to zero is no longer deferred.
+*Done when:* a job whose runs went from 40 s to 4 min shows a slope under its table.
+
 ---
 
 ## 9. Testing
@@ -1103,7 +1114,7 @@ Deliberately out of the first thirty-two milestones. Revisit only if you actuall
 - Billing / usage views: need a SQL warehouse and `system.billing.usage`
 - Notebook or SQL browsing
 - Editing job JSON in `$EDITOR` and lazygit-style custom commands
-- Dependency graph between jobs and duration sparklines: the browser draws these already
+- Dependency graph between jobs: the browser draws it already (duration sparklines landed in M54)
 
 ---
 

@@ -16,7 +16,7 @@ expression: render(&app)
 "│          ┌ Confirm ───────────────────────────────────────────────┐          │"
 "│          │ Enable run, repair, cancel and start for this session? │          │"
 "└──────────└───────────────y: yes │ any other key: no───────────────┘          │"
-"┌─[3]─Pipelines ⠋ by activ┐│                                                   │"
+"┌─[3]─Pipelines ⠋ by activ┐│durations    █                                     │"
 "│                         │└───────────────────────────────────────────────────┘"
 "│                         │┌─API log───────────────────────────────────────────┐"
 "│                         ││GET  /api/2.2/jobs/list?limit=25        200    84ms│"
