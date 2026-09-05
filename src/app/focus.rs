@@ -79,6 +79,15 @@ impl Panel {
     }
 }
 
+/// How `q` and a top-level `Esc` behave, from config. Two flags that travel together.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct QuitPolicy {
+    /// `q` asks first.
+    pub confirm: bool,
+    /// `Esc` with nothing to back out of quits.
+    pub on_top_level_return: bool,
+}
+
 /// How the side column shares its height. An enum for the same reason as `ComputePanel`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SideLayout {

@@ -48,7 +48,7 @@ the target. Opening a failed run shows the failing task's error and traceback.
 | Key | Action |
 |---|---|
 | `0`–`4`, `Tab` | focus a panel |
-| `j`/`k`, `g`/`G` | move the cursor, or scroll a detail view in `[0]` |
+| `j`/`k`, `g`/`G` (`Home`/`End`) | move the cursor, or scroll a detail view in `[0]` |
 | `ctrl+d`/`ctrl+u` | ten rows or lines down / up |
 | `h`/`l`, `[`/`]` | switch main-panel tabs: Runs, Detail, JSON, Output |
 | `Enter` | focus `[0]`; open the run under the cursor; on JSON and Output, view the text in `$PAGER` |
@@ -87,6 +87,8 @@ status = "all"             # or "failed", "active"; f cycles it
 compute = true             # false hides [4] Compute and never fetches clusters or warehouses
 expand_focused = true      # the side panel in context is twice as tall as the others
 check_updates = false      # ask GitHub for the newest release at start; u asks any time
+confirm_on_quit = false    # q asks first
+quit_on_top_level_return = false  # Esc with nothing to back out of quits
 dev_tag = "bjorn_punsvik"  # tag value that marks a job as mine; derived from the email if unset
 me_aliases = ["sp-1234"]   # service principals whose jobs count as mine
 allow_actions = false

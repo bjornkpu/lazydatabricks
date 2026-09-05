@@ -70,6 +70,8 @@ pub enum MenuItem {
     },
     /// One setting from the `F` menu. Applied in `update`; no command leaves the program.
     Filter(FilterChoice),
+    /// `q` with `confirm_on_quit`: the question before leaving.
+    Quit,
     /// One action over a `v` range: the label and question name the count, the commands are
     /// one per row.
     Bulk {
@@ -107,6 +109,7 @@ impl MenuItem {
             Self::CopyText { label, .. } => format!("Copy {label}"),
             Self::Filter(choice) => choice.label(),
             Self::Bulk { label, .. } => label.clone(),
+            Self::Quit => "Quit".to_owned(),
         }
     }
 
@@ -120,6 +123,7 @@ impl MenuItem {
                 | Self::SwitchProfile { .. }
                 | Self::CopyText { .. }
                 | Self::Filter(_)
+                | Self::Quit
         )
     }
 
@@ -144,6 +148,7 @@ impl MenuItem {
             Self::CopyText { label, .. } => format!("Copy {label}?"),
             Self::Filter(choice) => format!("{}?", choice.label()),
             Self::Bulk { confirmation, .. } => confirmation.clone(),
+            Self::Quit => "Quit lazydatabricks?".to_owned(),
         }
     }
 
@@ -155,6 +160,7 @@ impl MenuItem {
         let command = match self {
             Self::Filter(_) => return Vec::new(),
             Self::Bulk { commands, .. } => return commands.clone(),
+            Self::Quit => Command::Quit,
             Self::RunNow { job_id, .. } | Self::RunWith { job_id, .. } => Command::RunNow {
                 job_id: *job_id,
                 params: BTreeMap::new(),

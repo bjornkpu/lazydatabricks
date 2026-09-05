@@ -24,6 +24,8 @@ pub enum Key {
     Enter,
     Esc,
     Backspace,
+    Home,
+    End,
     /// A letter with Control held, `ctrl+d` in config.
     Ctrl(char),
 }

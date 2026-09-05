@@ -86,8 +86,8 @@ impl Default for Keymap {
             (Action::Back, vec![Key::Esc]),
             (Action::Down, vec![Key::Char('j'), Key::Down]),
             (Action::Up, vec![Key::Char('k'), Key::Up]),
-            (Action::First, vec![Key::Char('g')]),
-            (Action::Last, vec![Key::Char('G')]),
+            (Action::First, vec![Key::Char('g'), Key::Home]),
+            (Action::Last, vec![Key::Char('G'), Key::End]),
             (
                 Action::NextTab,
                 vec![Key::Char('l'), Key::Char(']'), Key::Right],
@@ -187,6 +187,8 @@ impl fmt::Display for Key {
             Self::Enter => f.write_str("Enter"),
             Self::Esc => f.write_str("Esc"),
             Self::Backspace => f.write_str("Bksp"),
+            Self::Home => f.write_str("Home"),
+            Self::End => f.write_str("End"),
             Self::Ctrl(c) => write!(f, "^{}", c.to_ascii_uppercase()),
         }
     }
@@ -218,9 +220,11 @@ impl FromStr for Key {
             "enter" => Self::Enter,
             "esc" => Self::Esc,
             "backspace" => Self::Backspace,
+            "home" => Self::Home,
+            "end" => Self::End,
             _ => {
                 return Err(format!(
-                    "unknown key {s:?}; use one character, ctrl+<character>, or tab, up, down, left, right, enter, esc, backspace"
+                    "unknown key {s:?}; use one character, ctrl+<character>, or tab, up, down, left, right, enter, esc, backspace, home, end"
                 ));
             }
         })
@@ -250,6 +254,8 @@ impl From<Key> for String {
             Key::Enter => "enter".to_owned(),
             Key::Esc => "esc".to_owned(),
             Key::Backspace => "backspace".to_owned(),
+            Key::Home => "home".to_owned(),
+            Key::End => "end".to_owned(),
         }
     }
 }

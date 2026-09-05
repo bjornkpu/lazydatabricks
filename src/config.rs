@@ -36,6 +36,10 @@ pub struct Config {
     /// Ask GitHub for the newest release at start and say so in `[1]` when it is newer. Off by
     /// default: one request to a third party is a choice. `u` asks on demand either way.
     pub check_updates: bool,
+    /// `q` asks first (lazygit's `confirmOnQuit`).
+    pub confirm_on_quit: bool,
+    /// `Esc` with nothing left to back out of quits (lazygit's `quitOnTopLevelReturn`).
+    pub quit_on_top_level_return: bool,
     /// Enable run-now and cancel in the `x` menu. Read-only without it (or `--allow-actions`).
     pub allow_actions: bool,
     /// Value of the `dev` tag that marks a job as mine. Derived from the email when unset.
@@ -75,6 +79,8 @@ impl Default for Config {
             compute: true,
             expand_focused: true,
             check_updates: false,
+            confirm_on_quit: false,
+            quit_on_top_level_return: false,
             allow_actions: false,
             dev_tag: None,
             me_aliases: Vec::new(),

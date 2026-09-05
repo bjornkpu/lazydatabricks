@@ -666,6 +666,8 @@ fn read_key(timeout: std::time::Duration) -> Result<Option<Message>> {
         KeyCode::Enter => Key::Enter,
         KeyCode::Esc => Key::Esc,
         KeyCode::Backspace => Key::Backspace,
+        KeyCode::Home => Key::Home,
+        KeyCode::End => Key::End,
         _ => return Ok(None),
     };
     Ok(Some(Message::Key(key)))

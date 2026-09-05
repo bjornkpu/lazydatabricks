@@ -14,7 +14,7 @@ use std::time::Duration;
 
 pub use custom::{Context, CustomCommand, Output as CommandOutput, expand};
 pub use filter::{Filter, Me, Status};
-pub use focus::{ComputePanel, Panel, ScreenMode, SideLayout, Tab};
+pub use focus::{ComputePanel, Panel, QuitPolicy, ScreenMode, SideLayout, Tab};
 use jiff::tz::TimeZone;
 pub use keys::{Action, Keymap};
 pub use list::{Move, Selectable};
@@ -126,6 +126,8 @@ pub struct App {
     pub compute_panel: ComputePanel,
     /// Config: whether the side panel in context is the tall one.
     pub side_layout: SideLayout,
+    /// Config: whether `q` asks and whether a top-level `Esc` quits.
+    pub quit_policy: QuitPolicy,
     /// Every cluster fetched. `compute` is the filtered view of this.
     pub all_compute: Vec<Cluster>,
     pub compute: Selectable<Cluster>,
@@ -246,6 +248,10 @@ impl App {
             compute: Selectable::default(),
             compute_panel: ComputePanel::from_config(config.compute),
             side_layout: SideLayout::from_config(config.expand_focused),
+            quit_policy: QuitPolicy {
+                confirm: config.confirm_on_quit,
+                on_top_level_return: config.quit_on_top_level_return,
+            },
             // The launch fetch is in flight, unless config turned the panel off.
             compute_inflight: config.compute.then_some(0),
             compute_fetched_at: None,
@@ -1117,6 +1123,9 @@ impl App {
             return;
         };
         match action {
+            Action::Quit if self.quit_policy.confirm && key != Key::Ctrl('c') => {
+                self.input = InputMode::Confirm(MenuItem::Quit);
+            }
             Action::Quit => commands.push(Command::Quit),
             Action::ScreenMode => self.mode = self.mode.next(),
             Action::ToggleLog => self.show_api_log = !self.show_api_log,
@@ -1191,6 +1200,8 @@ impl App {
                     self.leave_run_detail();
                 } else if self.focus == Panel::Main {
                     self.set_focus(self.context);
+                } else if self.quit_policy.on_top_level_return {
+                    commands.push(Command::Quit);
                 }
             }
             Action::Down => self.move_cursor(Move::Down),
@@ -1376,7 +1387,14 @@ impl App {
                 self.search.pop();
             }
             Key::Char(c) => self.search.push(c),
-            Key::Tab | Key::Up | Key::Down | Key::Left | Key::Right | Key::Ctrl(_) => {}
+            Key::Tab
+            | Key::Up
+            | Key::Down
+            | Key::Left
+            | Key::Right
+            | Key::Home
+            | Key::End
+            | Key::Ctrl(_) => {}
         }
     }
 
@@ -1539,7 +1557,7 @@ impl App {
             }
             Key::Down => self.move_cursor(Move::Down),
             Key::Up => self.move_cursor(Move::Up),
-            Key::Tab | Key::Left | Key::Right | Key::Ctrl(_) => {}
+            Key::Tab | Key::Left | Key::Right | Key::Home | Key::End | Key::Ctrl(_) => {}
         }
     }
 
@@ -2070,7 +2088,14 @@ impl App {
                 text.push(c);
                 self.input = InputMode::Params { job_id, name, text };
             }
-            Key::Tab | Key::Up | Key::Down | Key::Left | Key::Right | Key::Ctrl(_) => {
+            Key::Tab
+            | Key::Up
+            | Key::Down
+            | Key::Left
+            | Key::Right
+            | Key::Home
+            | Key::End
+            | Key::Ctrl(_) => {
                 self.input = InputMode::Params { job_id, name, text };
             }
         }
@@ -2112,7 +2137,14 @@ impl App {
                 text.push(c);
                 self.input = InputMode::Prompt { text };
             }
-            Key::Tab | Key::Up | Key::Down | Key::Left | Key::Right | Key::Ctrl(_) => {
+            Key::Tab
+            | Key::Up
+            | Key::Down
+            | Key::Left
+            | Key::Right
+            | Key::Home
+            | Key::End
+            | Key::Ctrl(_) => {
                 self.input = InputMode::Prompt { text };
             }
         }
@@ -3393,6 +3425,53 @@ pub mod tests {
             Some("99.0.0"),
             "a failed recheck keeps it"
         );
+    }
+
+    #[test]
+    fn quit_policy_asks_first_and_quits_on_top_level_esc() {
+        let mut app = loaded();
+        assert_eq!(
+            app.update(key(Key::Esc)),
+            vec![],
+            "top-level Esc is nothing by default"
+        );
+        app.quit_policy = QuitPolicy {
+            confirm: true,
+            on_top_level_return: true,
+        };
+        assert_eq!(app.update(key(Key::Char('q'))), vec![]);
+        assert_eq!(app.input, InputMode::Confirm(MenuItem::Quit));
+        assert_eq!(
+            app.update(key(Key::Char('n'))),
+            vec![],
+            "anything but y stays"
+        );
+        assert_eq!(app.input, InputMode::Normal);
+        press(&mut app, "q");
+        assert_eq!(app.update(key(Key::Char('y'))), vec![Command::Quit]);
+        assert_eq!(
+            app.update(key(Key::Ctrl('c'))),
+            vec![Command::Quit],
+            "ctrl+c never asks"
+        );
+        press(&mut app, "0");
+        assert_eq!(
+            app.update(key(Key::Esc)),
+            vec![],
+            "Esc from [0] goes back first"
+        );
+        assert_eq!(app.focus, Panel::Jobs);
+        assert_eq!(app.update(key(Key::Esc)), vec![Command::Quit], "then quits");
+    }
+
+    #[test]
+    fn home_and_end_are_first_and_last() {
+        let mut app = loaded();
+        app.update(key(Key::End));
+        assert_eq!(app.jobs.selected_index(), Some(2));
+        app.update(key(Key::Home));
+        assert_eq!(app.jobs.selected_index(), Some(0));
+        assert_eq!(app.keys.labels(Action::First), "g/Home");
     }
 
     #[test]

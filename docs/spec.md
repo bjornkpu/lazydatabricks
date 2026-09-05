@@ -1094,6 +1094,18 @@ belong in the API log.
 *Teaches:* a third-party call is opt-in, off the API log, and one function.
 *Done when:* `u` on an old binary names the newer version and where to get it.
 
+### M56 — Quit polish
+The small lazygit settings that people miss when they are gone: `confirm_on_quit` makes `q` ask
+(the confirmation reuses the `x` machinery with a `Quit` entry; `ctrl+c` never asks),
+`quit_on_top_level_return` makes `Esc` quit once there is nothing left to back out of, and `Home`
+and `End` join `g` and `G` as first and last, in config spelling too. Both settings stay off by
+default: a TUI that quits on a stray `Esc` is a surprise the first time. `ctrl+z` suspend is not
+here: it needs a signal the standard library cannot raise, and every terminal already has a
+second tab.
+
+*Teaches:* the last five percent of a port is settings, and each one is a test.
+*Done when:* `q` asks, `Esc` `Esc` from `[0]` quits, and `End` lands on the last job.
+
 ---
 
 ## 9. Testing
