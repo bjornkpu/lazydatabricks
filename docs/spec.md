@@ -650,6 +650,75 @@ because the order did. Panel titles say which order is on.
 *Teaches:* `sort_by_cached_key` with `Reverse<Option<_>>` to put unknowns last.
 *Done when:* `s` cycles the three orders and the title follows.
 
+M17 to M21 come out of a persona review: eight imagined users (on-call engineer, platform admin,
+junior analyst, lazygit power user, team lead, colour-blind user, SRE, ML engineer) walked the
+snapshots and reported what they missed. Six of eight opened the browser for the same reason: the
+run detail shows *which* task failed, never *why*.
+
+### M17 — Task errors
+Run detail gains the failing task's error. `runs/get` already carries `tasks[].run_id` and a
+per-task `state.state_message`; for every task whose result is not `SUCCESS`, the app also calls
+`GET /api/2.2/jobs/runs/get-output?run_id=<task run id>` and shows `error` and `error_trace`
+under the task table, wrapped, newest task first. Outputs are cached by task run id for as long
+as the run is open, so a refresh of the run does not refetch tracebacks that already arrived.
+Fetch failures show inline in the same place, never as a notice.
+
+*Teaches:* one message per remote value, keyed so late replies for a run you left are dropped.
+*Done when:* a failed multi-task run shows the Python exception without leaving the terminal.
+
+### M18 — Stale beats blank
+A failed refresh used to blank the panel with the error and, because `jobs_fetched_at` stayed
+stale, refetch on the very next tick: with the VPN down that is a request every 100 ms. Now a
+failure counts as a fetch for TTL purposes, so the next attempt waits a whole TTL (or `r`), the
+last good list stays on screen, and the error sits in the panel's bottom border. The error
+replaces the list only when there was never a list. A stale runs cache keeps showing too. A 401
+drops the cached token, so the next request after `databricks auth login` mints a fresh one
+instead of resending the rejected bearer for up to 55 minutes.
+
+*Teaches:* the TTL is the backoff. `ponytail:` no exponential backoff and no `Retry-After`;
+one attempt per TTL is already gentler than any rate limit, and `r` is the manual retry.
+*Done when:* pulling the network cable leaves the job list visible, one error line, one request
+per TTL, and plugging it back in recovers on the next refresh.
+
+### M19 — Status filter
+`f` cycles **all**, **failed only**, **active only** for both lists, and `status` in config
+starts there. Failed means the newest known run has a result other than `SUCCESS`; active means
+it is still in an active life-cycle state. Pipelines use the latest update, else the pipeline
+state, the same rule as the glyph. Data is already on screen, so no new endpoint. The status
+line says `failed only · 3 of 90 jobs`, and the hint bar shows the key. `mine only` and the
+text filter still apply on top.
+
+*Teaches:* a filter is a predicate over what the app already knows.
+*Done when:* the 08:30 check is `f` and a glance, not twelve pages of `j`.
+
+### M20 — Repair and parameters
+Two more `x` entries for jobs. **Repair run** appears when the run under the cursor (or the
+newest run, from the side panel) ended in anything but `SUCCESS`, and sends
+`POST /api/2.2/jobs/runs/repair` with `rerun_all_failed_tasks: true`; the run shows as pending
+until the refetch. **Run with parameters** opens a one-line prompt for `key=value` pairs
+separated by spaces, and `Enter` sends `run-now` with them as `job_parameters`; `Esc` cancels.
+Typing the parameters is the confirmation, so there is no second `y`. Both sit behind the same
+`--allow-actions` gate.
+
+*Teaches:* the menu is data (M14) and the prompt is one more `InputMode`, not a widget library.
+*Done when:* a failed task can be re-run alone, and a notebook can be started with `date=2026-09-01`
+without opening the browser.
+
+### M21 — Fit and finish
+Small things every persona tripped on:
+
+- `date_format` in config, `strftime` syntax, default `%d.%m %H:%M`. `09/01` read as January
+  to every Norwegian in the room. Invalid formats fail at config load, not at render.
+- Side-list names truncate with `…` instead of clipping silently, so `[team] nightly_gold` never
+  masquerades as `[team] nightly_bronze`.
+- `ctrl+d` / `ctrl+u` page the focused list, as §7 promised. Config keys accept any `ctrl+<x>`.
+- Narrow main panels (half mode, small terminals) drop the Run ID column from the runs table
+  and keep Result. Never truncate an identifier; drop the column instead.
+
+*Teaches:* a config value validated at load is a config value that cannot crash a render.
+*Done when:* a Norwegian reads the dates right, half mode still shows `✗ FAILED`, and `ctrl+d`
+moves ten rows.
+
 ---
 
 ## 9. Testing
@@ -674,7 +743,7 @@ No test should require network or a live workspace.
 
 ## 10. Deferred
 
-Deliberately out of the first sixteen milestones. Revisit only if you actually want them:
+Deliberately out of the first twenty-one milestones. Revisit only if you actually want them:
 
 - Cluster and warehouse panes (endpoints verified, just more of the same)
 - Log tailing for a run
