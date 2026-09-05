@@ -932,6 +932,18 @@ and nothing else reads it.
 *Teaches:* when the view is "the raw thing", do not type the raw thing.
 *Done when:* the JSON tab of a bundle-deployed job shows its `deployment` block and no `null`.
 
+### M41 — Output tab
+lazydocker's Logs tab, as far as a REST API allows. A fourth Jobs tab, **Output**, lists every
+task of the viewed run with what `runs/get-output` returned for it: the notebook result, the
+logs of a Python or JAR task, then the error and its trace. Detail already fetched output for
+failed tasks; Output asks for the rest while it is open, one call per task, once. Truncation is
+written out rather than hidden. The text is built in `App` as plain lines, so the same string can
+go to a pager next. Log *tailing* stays deferred: the API returns the last 5 MB on request, not a
+stream, and `o` opens the page that does stream.
+
+*Teaches:* when the API gives a snapshot, show a snapshot and say where the stream is.
+*Done when:* a notebook that exits with JSON shows it under `▸ task  SUCCESS`.
+
 ---
 
 ## 9. Testing

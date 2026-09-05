@@ -71,7 +71,7 @@ impl Panel {
     pub const fn tabs(self) -> &'static [Tab] {
         match self {
             Self::Status => &[Tab::Profile],
-            Self::Jobs => &[Tab::Runs, Tab::Detail, Tab::Json],
+            Self::Jobs => &[Tab::Runs, Tab::Detail, Tab::Json, Tab::Output],
             Self::Pipelines => &[Tab::Updates, Tab::Detail, Tab::Json],
             Self::Compute => &[Tab::Detail],
             Self::Main => &[],
@@ -127,6 +127,8 @@ pub enum Tab {
     Detail,
     /// The raw settings, pretty-printed: `jobs/get` or `pipelines/get` as Databricks sent it.
     Json,
+    /// What every task of the viewed run printed or returned.
+    Output,
 }
 
 impl Tab {
@@ -138,6 +140,7 @@ impl Tab {
             Self::Updates => "Updates",
             Self::Detail => "Detail",
             Self::Json => "JSON",
+            Self::Output => "Output",
         }
     }
 }

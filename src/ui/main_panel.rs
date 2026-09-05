@@ -38,12 +38,29 @@ pub fn draw(app: &App, area: Rect, frame: &mut Frame) -> usize {
         }
         Some(Tab::Detail) => detail(app, block, area, frame),
         Some(Tab::Json) => json(app, block, area, frame),
+        Some(Tab::Output) => output(app, block, area, frame),
         Some(Tab::Profile) => profile(app, block, area, frame),
         None => {
             frame.render_widget(block, area);
             0
         }
     }
+}
+
+/// Every task's output for the viewed run; task headers bold, the rest as printed.
+fn output(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
+    let lines = app
+        .output_lines()
+        .into_iter()
+        .map(|line| {
+            if line.starts_with("▸ ") {
+                Line::styled(line, Style::new().add_modifier(Modifier::BOLD))
+            } else {
+                Line::raw(line)
+            }
+        })
+        .collect();
+    text_view(app, lines, block, area, frame)
 }
 
 /// The selection's settings as Databricks sent them, once fetched.

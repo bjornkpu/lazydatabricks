@@ -23,7 +23,7 @@ pub use message::{ApiCall, Command, Key, Message};
 
 use crate::api::models::{
     Cluster, ClusterState, ComputeKind, Job, LifeCycleState, Pipeline, PipelineState,
-    PipelineUpdate, Run, RunOutput, UpdateState,
+    PipelineUpdate, ResultState, Run, RunOutput, UpdateState,
 };
 use crate::config::{Loaded, Sort, Theme};
 use crate::error::AppError;
@@ -443,6 +443,21 @@ impl App {
         {
             self.job_inflight = Some(job_id);
             commands.push(Command::FetchJob { job_id });
+        }
+        // The Output tab wants every task's output, not only the failed ones Detail asks for.
+        if self.active_tab() == Some(Tab::Output)
+            && let Load::Loaded(run) = &self.run_detail
+        {
+            let missing: Vec<i64> = run
+                .tasks
+                .iter()
+                .map(|task| task.run_id)
+                .filter(|run_id| matches!(self.run_outputs.get(run_id), None | Some(Load::Idle)))
+                .collect();
+            for run_id in missing {
+                self.run_outputs.insert(run_id, Load::Loading);
+                commands.push(Command::FetchRunOutput { run_id });
+            }
         }
         // A pipeline's JSON tab fetches its spec the first time it is opened.
         if self.context == Panel::Pipelines
@@ -930,6 +945,39 @@ impl App {
 
     /// What the JSON tab shows for the selection: the job's settings once `jobs/get` has been
     /// seen, the pipeline's spec once fetched.
+    /// The Output tab: every task of the viewed run with what `runs/get-output` returned for
+    /// it. Plain strings, so the pager gets exactly what the panel shows; a `▸ ` prefix marks
+    /// a task header.
+    #[must_use]
+    pub fn output_lines(&self) -> Vec<String> {
+        let Some(run_id) = self.viewing_run else {
+            return vec!["Open a run with Enter on the Runs tab to see its output.".to_owned()];
+        };
+        let run = match &self.run_detail {
+            Load::Loaded(run) => run,
+            Load::Failed(error) => return vec![error.to_string()],
+            Load::Idle | Load::Loading => return vec![format!("Loading run {run_id}…")],
+        };
+        let mut lines = Vec::new();
+        for task in &run.tasks {
+            let result = task
+                .state
+                .result_state
+                .map_or_else(|| task.state.life_cycle_state.as_str(), ResultState::as_str);
+            lines.push(format!("▸ {}  {result}", task.task_key));
+            match self.run_outputs.get(&task.run_id) {
+                Some(Load::Loaded(output)) => lines.extend(output_body(output)),
+                Some(Load::Failed(error)) => lines.push(error.to_string()),
+                Some(Load::Loading | Load::Idle) | None => {
+                    lines.push(format!("{} fetching output…", self.spinner_glyph()));
+                }
+            }
+            lines.push(String::new());
+        }
+        lines.pop();
+        lines
+    }
+
     /// `pipelines/get` landed, or did not; either way the JSON tab has something to show.
     fn on_pipeline_spec(&mut self, pipeline_id: String, spec: Result<serde_json::Value, AppError>) {
         let load = match spec {
@@ -1788,6 +1836,44 @@ impl App {
     }
 }
 
+/// What one task's output reads as: the notebook result, then logs, then the error and its
+/// trace, each only when present. Truncation is said, not hidden.
+fn output_body(output: &RunOutput) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(notebook) = &output.notebook_output
+        && let Some(result) = &notebook.result
+    {
+        lines.extend(result.lines().map(str::to_owned));
+        if notebook.truncated {
+            lines.push("[result truncated]".to_owned());
+        }
+    }
+    if let Some(logs) = &output.logs {
+        lines.extend(logs.lines().map(str::to_owned));
+        if output.logs_truncated {
+            lines.push("[logs truncated to the last 5 MB]".to_owned());
+        }
+    }
+    lines.extend(
+        output
+            .error
+            .iter()
+            .flat_map(|s| s.lines())
+            .map(str::to_owned),
+    );
+    lines.extend(
+        output
+            .error_trace
+            .iter()
+            .flat_map(|s| s.lines())
+            .map(str::to_owned),
+    );
+    if lines.is_empty() {
+        lines.push("no output".to_owned());
+    }
+    lines
+}
+
 /// Pretty JSON with `null` members left out: the model fills absent fields with `None`, and a
 /// page of `"schedule": null` says nothing.
 fn pretty_json(value: &impl serde::Serialize) -> String {
@@ -2373,6 +2459,62 @@ pub mod tests {
     }
 
     #[test]
+    fn output_tab_fetches_every_task_and_lists_them() {
+        let mut app = with_active_run();
+        assert_eq!(
+            app.output_lines(),
+            vec!["Open a run with Enter on the Runs tab to see its output."]
+        );
+        press(&mut app, "0j");
+        app.update(key(Key::Enter));
+        let mut detail = run(9, 1000, 2000, Some(ResultState::Failed));
+        detail.tasks = vec![
+            task(91, "extract", Some(ResultState::Success)),
+            task(92, "load", Some(ResultState::Failed)),
+        ];
+        assert_eq!(
+            app.update(Message::RunDetailLoaded(detail)),
+            vec![Command::FetchRunOutput { run_id: 92 }],
+            "Detail asks for the failed task only"
+        );
+        press(&mut app, "]]]");
+        assert_eq!(app.active_tab(), Some(Tab::Output));
+        assert_eq!(
+            ticks(&mut app, 1),
+            vec![Command::FetchRunOutput { run_id: 91 }],
+            "Output asks for the rest"
+        );
+        assert_eq!(ticks(&mut app, 1), vec![], "once");
+        app.update(Message::RunOutputLoaded {
+            run_id: 91,
+            output: RunOutput {
+                notebook_output: Some(crate::api::models::NotebookOutput {
+                    result: Some("rows=42".to_owned()),
+                    truncated: true,
+                }),
+                logs: Some("line 1\nline 2".to_owned()),
+                logs_truncated: true,
+                ..RunOutput::default()
+            },
+        });
+        let lines = app.output_lines();
+        assert_eq!(lines[0], "▸ extract  SUCCESS");
+        assert_eq!(lines[1], "rows=42");
+        assert_eq!(lines[2], "[result truncated]");
+        assert_eq!(lines[3], "line 1");
+        assert_eq!(lines[5], "[logs truncated to the last 5 MB]");
+        assert_eq!(lines[6], "");
+        assert_eq!(lines[7], "▸ load  FAILED");
+        assert!(lines[8].contains("fetching output"), "{lines:?}");
+        assert_eq!(lines.len(), 9, "no trailing blank: {lines:?}");
+        app.update(Message::RunOutputFailed {
+            run_id: 92,
+            error: boom(),
+        });
+        assert_eq!(app.output_lines()[8], "internal error: boom");
+    }
+
+    #[test]
     fn other_keys_do_nothing() {
         assert_eq!(app().update(key(Key::Char('z'))), vec![]);
     }
@@ -2822,10 +2964,12 @@ pub mod tests {
         app.update(key(Key::Char(']')));
         assert_eq!(app.active_tab(), Some(Tab::Json));
         app.update(key(Key::Char(']')));
-        assert_eq!(app.active_tab(), Some(Tab::Runs));
+        assert_eq!(app.active_tab(), Some(Tab::Output));
+        app.update(key(Key::Char(']')));
+        assert_eq!(app.active_tab(), Some(Tab::Runs), "wraps");
         app.update(key(Key::Char('h')));
-        assert_eq!(app.active_tab(), Some(Tab::Json));
-        app.update(key(Key::Char('h')));
+        assert_eq!(app.active_tab(), Some(Tab::Output));
+        press(&mut app, "hh");
         assert_eq!(app.active_tab(), Some(Tab::Detail));
         app.update(key(Key::Char('0')));
         app.update(key(Key::Left));
@@ -3644,7 +3788,7 @@ pub mod tests {
         assert_eq!(app.run_outputs.get(&72), Some(&Load::Loading));
         let output = RunOutput {
             error: Some("ValueError: nope".to_owned()),
-            error_trace: None,
+            ..RunOutput::default()
         };
         app.update(Message::RunOutputLoaded {
             run_id: 72,

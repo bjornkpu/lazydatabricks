@@ -254,14 +254,30 @@ impl Run {
     }
 }
 
-/// `GET /api/2.2/jobs/runs/get-output` response, the parts that explain a failure. Notebook
-/// output and logs are left out: the browser is the place to read a 1 MB stdout.
+/// `GET /api/2.2/jobs/runs/get-output` response: why a task failed, and what it printed or
+/// returned. Databricks caps `logs` at 5 MB and says so with `logs_truncated`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RunOutput {
     #[serde(default)]
     pub error: Option<String>,
     #[serde(default)]
     pub error_trace: Option<String>,
+    /// stdout and stderr of a Python, JAR or spark-submit task.
+    #[serde(default)]
+    pub logs: Option<String>,
+    #[serde(default)]
+    pub logs_truncated: bool,
+    /// What a notebook task handed back through `dbutils.notebook.exit`.
+    #[serde(default)]
+    pub notebook_output: Option<NotebookOutput>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct NotebookOutput {
+    #[serde(default)]
+    pub result: Option<String>,
+    #[serde(default)]
+    pub truncated: bool,
 }
 
 /// `POST /api/2.2/jobs/run-now` response.

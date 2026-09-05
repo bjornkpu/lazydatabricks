@@ -2,7 +2,7 @@
 source: src/ui/mod.rs
 expression: render(&app)
 ---
-"┌─[0]─Runs - Detail - JSON ⠋───────────────────────────────────────────────────┐"
+"┌─[0]─Runs - Detail - JSON - Output ⠋──────────────────────────────────────────┐"
 "│Name           [someone] okonomi_gold                                         │"
 "│Job ID         1                                                              │"
 "│Creator        someone@example.com                                            │"

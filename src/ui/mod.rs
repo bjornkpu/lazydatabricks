@@ -526,6 +526,31 @@ mod tests {
     }
 
     #[test]
+    fn output_tab_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "0j");
+        app.update(Message::Key(Key::Enter));
+        let detail: crate::api::models::Run =
+            serde_json::from_str(include_str!("../../tests/fixtures/run_get.json")).unwrap();
+        let first = detail.tasks[0].run_id;
+        app.update(Message::RunDetailLoaded(detail));
+        press(&mut app, "]]]");
+        // The tab asks for the first task's output on the next tick; the reply lands after.
+        app.update(Message::Tick);
+        app.update(Message::RunOutputLoaded {
+            run_id: first,
+            output: crate::api::models::RunOutput {
+                notebook_output: Some(crate::api::models::NotebookOutput {
+                    result: Some("{\"rows\": 42, \"status\": \"ok\"}".to_owned()),
+                    truncated: false,
+                }),
+                ..Default::default()
+            },
+        });
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn json_tab_80x24() {
         let mut app = with_runs();
         let full: crate::api::models::Job =
