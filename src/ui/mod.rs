@@ -102,7 +102,13 @@ pub fn draw(app: &App, frame: &mut Frame) -> usize {
         } else {
             Constraint::Ratio(1, 3)
         };
-        let [side, main] = Layout::horizontal([side_width, Constraint::Fill(1)]).areas(body);
+        // Portrait: the side column goes on top when the terminal looks taller than wide. A
+        // cell is about twice as tall as it is wide, hence the factor.
+        let [side, main] = if body.width < body.height.saturating_mul(2) {
+            Layout::vertical([Constraint::Ratio(1, 2), Constraint::Fill(1)]).areas(body)
+        } else {
+            Layout::horizontal([side_width, Constraint::Fill(1)]).areas(body)
+        };
         let collapse_unfocused = app.mode == ScreenMode::Half && app.focus.is_side();
         // The compute panel folds away in a workspace that has none.
         let panels: Vec<Panel> = Panel::SIDE
@@ -180,7 +186,11 @@ mod tests {
     use crate::error::AppError;
 
     fn render(app: &App) -> String {
-        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        render_at(app, 80, 24)
+    }
+
+    fn render_at(app: &App, width: u16, height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal
             .draw(|frame| {
                 draw(app, frame);
@@ -312,6 +322,12 @@ mod tests {
         let mut app = with_runs();
         press(&mut app, "0@");
         insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn portrait_50x40() {
+        let app = with_runs();
+        insta::assert_snapshot!(render_at(&app, 50, 40));
     }
 
     #[test]

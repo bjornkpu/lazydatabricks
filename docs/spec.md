@@ -876,6 +876,16 @@ rather the layout never moved.
 whole feature.
 *Done when:* focusing `[3]` grows Pipelines and shrinks Jobs, and pressing `0` changes nothing.
 
+### M36 — Portrait mode
+lazygit's portrait layout. A terminal that looks taller than wide (a half-screen split on a
+laptop) gets the side column on top and `[0]` below, each half the height, instead of a
+one-third-wide side column that fits nothing. The test is `width < 2 × height` because a
+terminal cell is about twice as tall as it is wide, so that is where a window turns visually
+portrait. No config: the shape of the window is the setting. `+` still takes a panel full screen.
+
+*Teaches:* read the terminal size every frame and let the layout follow; nothing else has to know.
+*Done when:* 50×40 stacks the panels and 80×24 does not.
+
 ---
 
 ## 9. Testing
