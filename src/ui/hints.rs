@@ -21,6 +21,10 @@ pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap) -> String {
         }
         InputMode::Menu { .. } => return " Choose: j/k │ Confirm: Enter │ Close: Esc".to_owned(),
         InputMode::Confirm(_) => return " Send: y │ Back: any other key".to_owned(),
+        InputMode::Params { .. } => {
+            return " Type key=value pairs, space separated │ Start: Enter │ Cancel: Esc"
+                .to_owned();
+        }
         InputMode::Help => return " Close: Esc".to_owned(),
         InputMode::Normal => {}
     }

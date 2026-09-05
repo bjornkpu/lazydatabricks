@@ -12,6 +12,7 @@ pub fn draw(app: &App, frame: &mut Frame) {
     match &app.input {
         InputMode::Menu { items, selected } => menu(app, items, *selected, frame),
         InputMode::Confirm(item) => confirm(app, item, frame),
+        InputMode::Params { name, text, .. } => params(app, name, text, frame),
         InputMode::Normal | InputMode::Filter | InputMode::Help => {}
     }
 }
@@ -59,4 +60,22 @@ fn confirm(app: &App, item: &MenuItem, frame: &mut Frame) {
         .title(" Confirm ")
         .title_bottom(Line::from(footer).centered());
     frame.render_widget(Paragraph::new(question).centered().block(block), area);
+}
+
+/// One line of `key=value` pairs for *Run with parameters*. Enter sends, so no second prompt.
+fn params(app: &App, name: &str, text: &str, frame: &mut Frame) {
+    let title = format!(" Parameters for {name} ");
+    let footer = "key=value key2=value2 │ Enter: start │ Esc: cancel";
+    let width = footer
+        .chars()
+        .count()
+        .max(title.chars().count())
+        .max(text.chars().count().saturating_add(2));
+    let area = chrome::centered(chrome::columns(width), chrome::rows(1), frame.area());
+    frame.render_widget(Clear, area);
+    let block = Block::bordered()
+        .border_style(Style::new().fg(theme::palette(app).notice))
+        .title(title)
+        .title_bottom(Line::from(footer).centered());
+    frame.render_widget(Paragraph::new(format!(" {text}▌")).block(block), area);
 }

@@ -3,6 +3,7 @@
 mod auth;
 pub mod models;
 
+use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use reqwest::{Client as Http, Method};
@@ -150,12 +151,31 @@ impl Client {
         Ok(me.user_name)
     }
 
-    /// Starts a run of `job_id` and returns the new run's id.
-    pub async fn run_now(&self, job_id: i64) -> Result<i64, AppError> {
-        let started: RunNowResponse = self
-            .post("/api/2.2/jobs/run-now", json!({ "job_id": job_id }))
-            .await?;
+    /// Starts a run of `job_id`, with `job_parameters` when any are given, and returns the new
+    /// run's id.
+    pub async fn run_now(
+        &self,
+        job_id: i64,
+        params: &BTreeMap<String, String>,
+    ) -> Result<i64, AppError> {
+        let body = if params.is_empty() {
+            json!({ "job_id": job_id })
+        } else {
+            json!({ "job_id": job_id, "job_parameters": params })
+        };
+        let started: RunNowResponse = self.post("/api/2.2/jobs/run-now", body).await?;
         Ok(started.run_id)
+    }
+
+    /// Re-runs every failed task of `run_id` inside the same run.
+    pub async fn repair_run(&self, run_id: i64) -> Result<(), AppError> {
+        let _: Value = self
+            .post(
+                "/api/2.2/jobs/runs/repair",
+                json!({ "run_id": run_id, "rerun_all_failed_tasks": true }),
+            )
+            .await?;
+        Ok(())
     }
 
     /// Asks Databricks to cancel `run_id`. The run reaches TERMINATED a little later.

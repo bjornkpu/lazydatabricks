@@ -12,6 +12,7 @@ mod error;
 mod shell;
 mod ui;
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
@@ -110,8 +111,11 @@ async fn run(
                 Command::FetchRunOutput { run_id } => {
                     tokio::spawn(fetch_run_output(Arc::clone(&client), tx.clone(), run_id));
                 }
-                Command::RunNow { job_id } => {
-                    tokio::spawn(run_now(Arc::clone(&client), tx.clone(), job_id));
+                Command::RunNow { job_id, params } => {
+                    tokio::spawn(run_now(Arc::clone(&client), tx.clone(), job_id, params));
+                }
+                Command::RepairRun { job_id, run_id } => {
+                    tokio::spawn(repair_run(Arc::clone(&client), tx.clone(), job_id, run_id));
                 }
                 Command::CancelRun { job_id, run_id } => {
                     tokio::spawn(cancel_run(Arc::clone(&client), tx.clone(), job_id, run_id));
@@ -209,9 +213,22 @@ async fn fetch_run_output(client: Arc<api::Client>, tx: mpsc::Sender<Message>, r
     let _ = tx.send(message).await;
 }
 
-async fn run_now(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id: i64) {
-    let message = match client.run_now(job_id).await {
+async fn run_now(
+    client: Arc<api::Client>,
+    tx: mpsc::Sender<Message>,
+    job_id: i64,
+    params: BTreeMap<String, String>,
+) {
+    let message = match client.run_now(job_id, &params).await {
         Ok(run_id) => Message::RunStarted { job_id, run_id },
+        Err(error) => Message::ActionFailed(error),
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn repair_run(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id: i64, run_id: i64) {
+    let message = match client.repair_run(run_id).await {
+        Ok(()) => Message::RunRepaired { job_id, run_id },
         Err(error) => Message::ActionFailed(error),
     };
     let _ = tx.send(message).await;

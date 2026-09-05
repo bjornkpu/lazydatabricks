@@ -298,6 +298,23 @@ mod tests {
     }
 
     #[test]
+    fn params_prompt_80x24() {
+        let mut app = with_runs();
+        app.allow_actions = true;
+        press(&mut app, "xj");
+        app.update(Message::Key(Key::Enter));
+        press(&mut app, "date=2026-09-01 mode=full");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn repair_menu_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "0jjx");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn read_only_notice_80x24() {
         let mut app = with_runs();
         press(&mut app, "x");

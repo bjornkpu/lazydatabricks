@@ -1,6 +1,7 @@
 //! Everything that can happen to the app, as data. The terminal library's event types stop at
 //! `main`; the rest of the program only sees these.
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -87,6 +88,11 @@ pub enum Message {
         job_id: i64,
         run_id: i64,
     },
+    /// `runs/repair` accepted; the failed tasks run again inside the same run id.
+    RunRepaired {
+        job_id: i64,
+        run_id: i64,
+    },
     UpdateStarted {
         pipeline_id: String,
         update_id: String,
@@ -120,8 +126,15 @@ pub enum Command {
     FetchRunOutput {
         run_id: i64,
     },
+    /// `run-now`, with `job_parameters` when `params` is not empty.
     RunNow {
         job_id: i64,
+        params: BTreeMap<String, String>,
+    },
+    /// Re-run the failed tasks of a finished run.
+    RepairRun {
+        job_id: i64,
+        run_id: i64,
     },
     CancelRun {
         job_id: i64,

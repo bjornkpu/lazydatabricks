@@ -16,7 +16,7 @@ pub use focus::{Panel, ScreenMode, Tab};
 use jiff::tz::TimeZone;
 pub use keys::{Action, Keymap};
 pub use list::{Move, Selectable};
-pub use menu::{InputMode, MenuItem};
+pub use menu::{InputMode, MenuItem, parse_params};
 pub use message::{ApiCall, Command, Key, Message};
 
 use crate::api::models::{
@@ -267,15 +267,10 @@ impl App {
             Message::RunsFailed { job_id, error } => self.on_runs_failed(job_id, error),
             Message::RunDetailLoaded(run) => self.on_run_detail_loaded(run, &mut commands),
             Message::RunOutputLoaded { run_id, output } => {
-                // Only a slot opened by the viewed run takes the reply; late ones are dropped.
-                if let Some(slot) = self.run_outputs.get_mut(&run_id) {
-                    *slot = Load::Loaded(output);
-                }
+                self.set_run_output(run_id, Load::Loaded(output));
             }
             Message::RunOutputFailed { run_id, error } => {
-                if let Some(slot) = self.run_outputs.get_mut(&run_id) {
-                    *slot = Load::Failed(error);
-                }
+                self.set_run_output(run_id, Load::Failed(error));
             }
             Message::RunDetailFailed { run_id, error } => {
                 if self.viewing_run == Some(run_id) {
@@ -306,6 +301,9 @@ impl App {
             Message::RunCancelled { job_id, run_id } => {
                 self.on_run_cancelled(job_id, run_id, &mut commands);
             }
+            Message::RunRepaired { job_id, run_id } => {
+                self.on_run_repaired(job_id, run_id, &mut commands);
+            }
             Message::RecentRunsFailed(error) | Message::ActionFailed(error) => {
                 self.notice = Some(error.to_string());
             }
@@ -322,6 +320,7 @@ impl App {
             InputMode::Filter => self.filter_key(key, commands),
             InputMode::Menu { .. } => self.menu_key(key),
             InputMode::Confirm(_) => self.confirm_key(key, commands),
+            InputMode::Params { .. } => self.params_key(key, commands),
             InputMode::Help => {
                 if matches!(key, Key::Esc | Key::Char('?' | 'q')) {
                     self.input = InputMode::Normal;
@@ -415,6 +414,13 @@ impl App {
         }
     }
 
+    /// Only a slot opened by the viewed run takes the reply; late ones are dropped.
+    fn set_run_output(&mut self, run_id: i64, output: Load<RunOutput>) {
+        if let Some(slot) = self.run_outputs.get_mut(&run_id) {
+            *slot = output;
+        }
+    }
+
     /// The viewed run arrived: show it and fetch the output of every failed task not seen yet.
     fn on_run_detail_loaded(&mut self, run: Run, commands: &mut Vec<Command>) {
         if self.viewing_run != Some(run.id) {
@@ -479,13 +485,33 @@ impl App {
     /// Cancel accepted. The run shows as terminating until the refetch says otherwise.
     fn on_run_cancelled(&mut self, job_id: i64, run_id: i64, commands: &mut Vec<Command>) {
         self.notice = Some(format!("Cancel requested for run {run_id}"));
+        self.patch_run(job_id, run_id, |run| {
+            run.state.life_cycle_state = LifeCycleState::Terminating;
+        });
         if self.runs_job == Some(job_id) {
-            if let Load::Loaded(runs) = &mut self.runs
-                && let Some(run) = runs.items_mut().iter_mut().find(|run| run.id == run_id)
-            {
-                run.state.life_cycle_state = LifeCycleState::Terminating;
-            }
             self.refresh_runs(commands);
+        }
+    }
+
+    /// Repair accepted. Databricks reuses the run id; until the refetch, the run reads as pending.
+    fn on_run_repaired(&mut self, job_id: i64, run_id: i64, commands: &mut Vec<Command>) {
+        self.notice = Some(format!("Repair requested for run {run_id}"));
+        self.patch_run(job_id, run_id, |run| {
+            run.state.life_cycle_state = LifeCycleState::Pending;
+            run.state.result_state = None;
+        });
+        if self.runs_job == Some(job_id) {
+            self.refresh_runs(commands);
+        }
+    }
+
+    /// Applies `change` to a run in the table, when that job's runs are the ones shown.
+    fn patch_run(&mut self, job_id: i64, run_id: i64, change: impl FnOnce(&mut Run)) {
+        if self.runs_job == Some(job_id)
+            && let Load::Loaded(runs) = &mut self.runs
+            && let Some(run) = runs.items_mut().iter_mut().find(|run| run.id == run_id)
+        {
+            change(run);
         }
     }
 
@@ -787,22 +813,40 @@ impl App {
         let Some(job) = self.jobs.selected() else {
             return Vec::new();
         };
-        let mut items = vec![MenuItem::RunNow {
-            job_id: job.id,
-            name: job.settings.name.clone(),
-        }];
+        let mut items = vec![
+            MenuItem::RunNow {
+                job_id: job.id,
+                name: job.settings.name.clone(),
+            },
+            MenuItem::RunWith {
+                job_id: job.id,
+                name: job.settings.name.clone(),
+            },
+        ];
         let cancel = |run: &Run| MenuItem::CancelRun {
             job_id: job.id,
             run_id: run.id,
         };
+        let repair = |run: &Run| MenuItem::RepairRun {
+            job_id: job.id,
+            run_id: run.id,
+        };
         if self.focus == Panel::Main {
-            // The table has a cursor: offer cancel for that row only.
-            if let Some(run) = self.selected_run()
-                && run.state.life_cycle_state.is_active()
-            {
-                items.push(cancel(run));
+            // The table has a cursor: offer repair or cancel for that row only.
+            if let Some(run) = self.selected_run() {
+                if run.state.is_failure() {
+                    items.push(repair(run));
+                } else if run.state.life_cycle_state.is_active() {
+                    items.push(cancel(run));
+                }
             }
         } else if let Load::Loaded(runs) = &self.runs {
+            // From the side panel: repair the newest run if it failed, cancel every active one.
+            if let Some(newest) = runs.items().first()
+                && newest.state.is_failure()
+            {
+                items.push(repair(newest));
+            }
             items.extend(
                 runs.items()
                     .iter()
@@ -843,10 +887,16 @@ impl App {
                 let Some(item) = items.into_iter().nth(selected) else {
                     return;
                 };
-                if self.allow_actions {
-                    self.input = InputMode::Confirm(item);
-                } else {
+                if !self.allow_actions {
                     self.notice = Some(READ_ONLY.to_owned());
+                } else if let MenuItem::RunWith { job_id, name } = item {
+                    self.input = InputMode::Params {
+                        job_id,
+                        name,
+                        text: String::new(),
+                    };
+                } else {
+                    self.input = InputMode::Confirm(item);
                 }
             }
             Key::Char('j') | Key::Down => {
@@ -873,6 +923,44 @@ impl App {
         if key == Key::Char('y') {
             self.notice = Some(format!("{}…", item.label()));
             commands.push(item.command());
+        }
+    }
+
+    /// Keys in the parameter prompt. `Enter` parses and sends; a bad pair keeps the prompt open
+    /// with the complaint in the hint bar.
+    fn params_key(&mut self, key: Key, commands: &mut Vec<Command>) {
+        let InputMode::Params {
+            job_id,
+            name,
+            mut text,
+        } = std::mem::take(&mut self.input)
+        else {
+            return;
+        };
+        match key {
+            Key::CtrlC => commands.push(Command::Quit),
+            Key::Esc => {}
+            Key::Enter => match parse_params(&text) {
+                Ok(params) => {
+                    self.notice = Some(format!("Run now: {name}…"));
+                    commands.push(Command::RunNow { job_id, params });
+                }
+                Err(detail) => {
+                    self.notice = Some(detail);
+                    self.input = InputMode::Params { job_id, name, text };
+                }
+            },
+            Key::Backspace => {
+                text.pop();
+                self.input = InputMode::Params { job_id, name, text };
+            }
+            Key::Char(c) => {
+                text.push(c);
+                self.input = InputMode::Params { job_id, name, text };
+            }
+            Key::Tab | Key::Up | Key::Down | Key::Left | Key::Right => {
+                self.input = InputMode::Params { job_id, name, text };
+            }
         }
     }
 
@@ -1784,6 +1872,10 @@ pub mod tests {
                         job_id: 1,
                         name: "a".to_owned()
                     },
+                    MenuItem::RunWith {
+                        job_id: 1,
+                        name: "a".to_owned()
+                    },
                     MenuItem::CancelRun {
                         job_id: 1,
                         run_id: 10
@@ -1792,12 +1884,12 @@ pub mod tests {
                 selected: 0,
             }
         );
-        press(&mut app, "jjj");
+        press(&mut app, "jjjj");
         assert!(
-            matches!(app.input, InputMode::Menu { selected: 1, .. }),
+            matches!(app.input, InputMode::Menu { selected: 2, .. }),
             "clamped at the end"
         );
-        press(&mut app, "k");
+        press(&mut app, "kk");
         assert!(matches!(app.input, InputMode::Menu { selected: 0, .. }));
         press(&mut app, "q");
         assert!(
@@ -1846,7 +1938,7 @@ pub mod tests {
             "anything but y backs out"
         );
         assert_eq!(app.input, InputMode::Normal);
-        press(&mut app, "xj");
+        press(&mut app, "xjj");
         app.update(key(Key::Enter));
         assert_eq!(
             app.update(key(Key::Char('y'))),
@@ -2183,13 +2275,109 @@ pub mod tests {
         let mut app = with_active_run();
         press(&mut app, "0jx");
         assert!(
-            matches!(&app.input, InputMode::Menu { items, .. } if items.len() == 1),
-            "run 9 is finished, so only run-now"
+            matches!(&app.input, InputMode::Menu { items, .. } if items.len() == 2),
+            "run 9 succeeded, so only the two run-now entries"
         );
         app.update(key(Key::Esc));
         press(&mut app, "kx");
         assert!(matches!(&app.input, InputMode::Menu { items, .. }
-            if items[1] == MenuItem::CancelRun { job_id: 1, run_id: 10 }));
+            if items[2] == MenuItem::CancelRun { job_id: 1, run_id: 10 }));
+    }
+
+    #[test]
+    fn repair_is_offered_for_failed_runs() {
+        let mut app = loaded();
+        app.allow_actions = true;
+        ticks(&mut app, 3);
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: vec![
+                run(10, 1000, 2000, Some(ResultState::Failed)),
+                run(9, 1000, 2000, Some(ResultState::Success)),
+            ],
+        });
+        press(&mut app, "x");
+        assert!(
+            matches!(&app.input, InputMode::Menu { items, .. }
+            if items[2] == MenuItem::RepairRun { job_id: 1, run_id: 10 }),
+            "side panel: the newest run failed"
+        );
+        press(&mut app, "jj");
+        app.update(key(Key::Enter));
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![Command::RepairRun {
+                job_id: 1,
+                run_id: 10
+            }]
+        );
+        assert_eq!(
+            app.update(Message::RunRepaired {
+                job_id: 1,
+                run_id: 10
+            }),
+            vec![Command::FetchRuns { job_id: 1 }]
+        );
+        let Load::Loaded(runs) = &app.runs else {
+            panic!("runs are loaded");
+        };
+        assert_eq!(
+            runs.items()[0].state.life_cycle_state,
+            LifeCycleState::Pending
+        );
+        assert_eq!(runs.items()[0].state.result_state, None);
+        assert_eq!(app.notice, Some("Repair requested for run 10".to_owned()));
+        // From the table, only the row under the cursor; run 9 succeeded.
+        press(&mut app, "0jx");
+        assert!(matches!(&app.input, InputMode::Menu { items, .. } if items.len() == 2));
+    }
+
+    #[test]
+    fn run_with_parameters_prompts_then_sends() {
+        let mut app = with_active_run();
+        press(&mut app, "xj");
+        app.update(key(Key::Enter));
+        assert_eq!(app.notice.as_deref(), Some(READ_ONLY), "read-only refuses");
+        app.allow_actions = true;
+        press(&mut app, "xj");
+        app.update(key(Key::Enter));
+        assert_eq!(
+            app.input,
+            InputMode::Params {
+                job_id: 1,
+                name: "a".to_owned(),
+                text: String::new(),
+            }
+        );
+        press(&mut app, "datex=1");
+        app.update(key(Key::Backspace));
+        app.update(key(Key::Backspace));
+        app.update(key(Key::Backspace));
+        press(&mut app, "=2026-09-01 mode");
+        assert_eq!(
+            app.update(key(Key::Enter)),
+            vec![],
+            "a bare word is refused"
+        );
+        assert!(matches!(&app.input, InputMode::Params { text, .. } if text.ends_with("mode")));
+        assert!(app.notice.as_deref().unwrap_or("").contains("mode"));
+        press(&mut app, "=full");
+        assert_eq!(
+            app.update(key(Key::Enter)),
+            vec![Command::RunNow {
+                job_id: 1,
+                params: [("date", "2026-09-01"), ("mode", "full")]
+                    .into_iter()
+                    .map(|(k, v)| (k.to_owned(), v.to_owned()))
+                    .collect(),
+            }]
+        );
+        assert_eq!(app.input, InputMode::Normal);
+        press(&mut app, "xj");
+        app.update(key(Key::Enter));
+        press(&mut app, "x=1");
+        app.update(key(Key::Esc));
+        assert_eq!(app.input, InputMode::Normal, "Esc cancels");
     }
 
     #[test]
