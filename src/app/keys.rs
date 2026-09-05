@@ -40,6 +40,8 @@ pub enum Action {
     Copy,
     /// Cycle the list order: activity, name, created.
     Sort,
+    /// Cycle the status filter: all, failed, active.
+    StatusFilter,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -76,6 +78,7 @@ impl Default for Keymap {
             (Action::Browse, vec![Key::Char('o')]),
             (Action::Copy, vec![Key::Char('y')]),
             (Action::Sort, vec![Key::Char('s')]),
+            (Action::StatusFilter, vec![Key::Char('f')]),
         ]))
     }
 }

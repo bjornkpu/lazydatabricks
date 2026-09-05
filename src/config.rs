@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use directories::ProjectDirs;
 use serde::Deserialize;
 
-use crate::app::{Action, Key};
+use crate::app::{Action, Key, Status};
 use crate::error::AppError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -21,6 +21,8 @@ pub struct Config {
     pub mine_only: bool,
     /// Start with this name filter applied.
     pub filter: Option<String>,
+    /// Start showing `all` (default), `failed` or `active` rows only. `f` cycles it.
+    pub status: Status,
     /// Enable run-now and cancel in the `x` menu. Read-only without it (or `--allow-actions`).
     pub allow_actions: bool,
     /// Value of the `dev` tag that marks a job as mine. Derived from the email when unset.
@@ -45,6 +47,7 @@ impl Default for Config {
             max_jobs: 200,
             mine_only: false,
             filter: None,
+            status: Status::All,
             allow_actions: false,
             dev_tag: None,
             theme: Theme::Dark,
@@ -178,6 +181,7 @@ mod tests {
         assert_eq!(config.keys[&Action::Quit], vec![Key::Char('q')]);
         assert_eq!(parse("theme = \"light\"").unwrap().theme, Theme::Light);
         assert_eq!(parse("sort = \"name\"").unwrap().sort, Sort::Name);
+        assert_eq!(parse("status = \"failed\"").unwrap().status, Status::Failed);
         assert_eq!(Sort::Created.next(), Sort::Activity);
         assert!(parse("theme = \"neon\"").is_err());
     }

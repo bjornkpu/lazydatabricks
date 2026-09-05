@@ -34,17 +34,18 @@ pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap) -> String {
             k(Action::Help)
         ),
         Panel::Jobs | Panel::Pipelines => format!(
-            " Select: {}/{} │ Filter: {} │ Mine: {} │ Actions: {} │ Quit: {} │ Keys: {}",
+            " Move: {}/{} │ Filter: {} │ Mine: {} │ Status: {} │ Actions: {} │ Quit: {} │ Keys: {}",
             k(Action::Down),
             k(Action::Up),
             k(Action::Filter),
             k(Action::MineOnly),
+            k(Action::StatusFilter),
             k(Action::Menu),
             k(Action::Quit),
             k(Action::Help)
         ),
         Panel::Main => format!(
-            " Select: {}/{} │ Open: {} │ Back: {} │ Actions: {} │ Quit: {} │ Keys: {}",
+            " Move: {}/{} │ Open: {} │ Back: {} │ Actions: {} │ Quit: {} │ Keys: {}",
             k(Action::Down),
             k(Action::Up),
             k(Action::Open),
@@ -64,6 +65,15 @@ pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
         return;
     }
     let text = hints(app.focus, &app.input, &app.keys);
+    // The version stamp yields to the hints on narrow terminals.
+    let fits = text
+        .chars()
+        .count()
+        .saturating_add(VERSION.len())
+        .saturating_add(1)
+        <= usize::from(area.width);
     frame.render_widget(Paragraph::new(text).style(dim), area);
-    frame.render_widget(Paragraph::new(VERSION).style(dim).right_aligned(), area);
+    if fits {
+        frame.render_widget(Paragraph::new(VERSION).style(dim).right_aligned(), area);
+    }
 }

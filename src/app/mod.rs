@@ -11,7 +11,7 @@ use std::cmp::Reverse;
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
-pub use filter::{Filter, Me};
+pub use filter::{Filter, Me, Status};
 pub use focus::{Panel, ScreenMode, Tab};
 use jiff::tz::TimeZone;
 pub use keys::{Action, Keymap};
@@ -177,6 +177,7 @@ impl App {
             filter: Filter {
                 text: config.filter.clone().unwrap_or_default(),
                 mine_only: config.mine_only,
+                status: config.status,
             },
             input: InputMode::Normal,
             notice: None,
@@ -593,6 +594,9 @@ impl App {
     #[must_use]
     pub fn filter_summary(&self) -> String {
         let mut parts = Vec::new();
+        if self.filter.status != Status::All {
+            parts.push(format!("{} only", self.filter.status.as_str()));
+        }
         if self.filter.mine_only {
             parts.push("mine only".to_owned());
         }
@@ -663,6 +667,14 @@ impl App {
             Action::MineOnly => {
                 self.filter.mine_only = !self.filter.mine_only;
                 self.apply_filter();
+            }
+            Action::StatusFilter => {
+                self.filter.status = self.filter.status.next();
+                self.apply_filter();
+                self.notice = Some(match self.filter.status {
+                    Status::All => "Showing all".to_owned(),
+                    other => format!("Showing {} only", other.as_str()),
+                });
             }
             Action::Refresh => match self.focus {
                 Panel::Main => self.refresh_runs(commands),
@@ -889,7 +901,10 @@ impl App {
         let mut visible: Vec<Job> = self
             .all_jobs
             .iter()
-            .filter(|job| self.filter.matches(job, self.me.as_ref()))
+            .filter(|job| {
+                self.filter
+                    .matches(job, self.latest_runs.get(&job.id), self.me.as_ref())
+            })
             .cloned()
             .collect();
         self.sort_jobs(&mut visible);
@@ -1281,6 +1296,35 @@ pub mod tests {
             Load::Failed(boom()),
             "nothing cached: the error is the view"
         );
+    }
+
+    #[test]
+    fn f_cycles_the_status_filter_over_the_newest_runs() {
+        let mut app = loaded();
+        let mut failed = run(20, 1000, 2000, Some(ResultState::Failed));
+        failed.job_id = 2;
+        let mut running = run(30, 1000, 0, None);
+        running.job_id = 3;
+        app.update(Message::RecentRunsLoaded(vec![failed, running]));
+        press(&mut app, "f");
+        assert_eq!(names(&app), ["b"]);
+        assert_eq!(app.filter_summary(), "failed only · 1 of 3 jobs");
+        assert_eq!(app.notice, Some("Showing failed only".to_owned()));
+        press(&mut app, "f");
+        assert_eq!(names(&app), ["c"]);
+        assert_eq!(app.filter_summary(), "active only · 1 of 3 jobs");
+        press(&mut app, "f");
+        assert_eq!(names(&app).len(), 3);
+        assert_eq!(app.notice, Some("Showing all".to_owned()));
+        // Late-arriving runs re-apply the filter, so a job whose run just failed appears.
+        press(&mut app, "f");
+        let mut late = run(40, 3000, 4000, Some(ResultState::Timedout));
+        late.job_id = 1;
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: vec![late],
+        });
+        assert_eq!(names(&app), ["a", "b"]);
     }
 
     #[test]

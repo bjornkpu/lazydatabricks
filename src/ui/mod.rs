@@ -434,6 +434,13 @@ mod tests {
     }
 
     #[test]
+    fn failed_only_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "f");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn stale_after_failed_refresh_80x24() {
         let mut app = with_runs();
         app.update(Message::JobsFailed(AppError::Timeout {
