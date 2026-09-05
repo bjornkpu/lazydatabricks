@@ -152,8 +152,8 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             "enable or disable actions this session",
         ),
         (
-            k(Action::NextProfile),
-            "next profile, when several are open",
+            k(Action::SwitchProfile),
+            "switch profile: any in ~/.databrickscfg",
         ),
         (k(Action::Help), "this list"),
         (k(Action::Quit), "quit"),

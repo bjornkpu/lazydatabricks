@@ -98,6 +98,26 @@ pub fn host(profile: &str) -> Result<String, AppError> {
     })
 }
 
+/// Every `[section]` in `~/.databrickscfg`, in file order: what the profile menu offers.
+pub fn profiles() -> Result<Vec<String>, AppError> {
+    let path = std::env::home_dir()
+        .ok_or(AppError::HomeDir)?
+        .join(".databrickscfg");
+    let cfg = std::fs::read_to_string(&path).map_err(|error| AppError::FileRead {
+        path: path.display().to_string(),
+        detail: error.to_string(),
+    })?;
+    Ok(profiles_from_cfg(&cfg))
+}
+
+fn profiles_from_cfg(cfg: &str) -> Vec<String> {
+    cfg.lines()
+        .map(str::trim)
+        .filter_map(|line| line.strip_prefix('[')?.strip_suffix(']'))
+        .map(|name| name.trim().to_owned())
+        .collect()
+}
+
 /// Minimal INI scan: the `host` key inside the `[profile]` section. Trailing slash dropped so
 /// paths can be appended blindly.
 fn host_from_cfg(cfg: &str, profile: &str) -> Option<String> {
@@ -127,6 +147,12 @@ host = https://adb-2.azuredatabricks.net
 hostname_unrelated = nope
 auth_type = databricks-cli
 ";
+
+    #[test]
+    fn every_section_is_a_profile() {
+        assert_eq!(profiles_from_cfg(CFG), vec!["DEFAULT", "dev"]);
+        assert!(profiles_from_cfg("").is_empty());
+    }
 
     #[test]
     fn token_expiry_margin() {

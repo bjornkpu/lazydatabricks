@@ -59,6 +59,10 @@ pub enum MenuItem {
         warehouse_id: String,
         name: String,
     },
+    /// A profile from `~/.databrickscfg`, from the `p` menu.
+    SwitchProfile {
+        name: String,
+    },
     /// A custom command from config, its placeholders already filled in.
     Shell {
         name: String,
@@ -85,7 +89,15 @@ impl MenuItem {
             Self::StartWarehouse { name, .. } => format!("Start warehouse: {name}"),
             Self::StopWarehouse { name, .. } => format!("Stop warehouse: {name}"),
             Self::Shell { name, .. } => name.clone(),
+            Self::SwitchProfile { name } => format!("Switch to {name}"),
         }
+    }
+
+    /// Whether the `allow_actions` opt-in gates this entry. Custom commands and profile
+    /// switches are not Databricks writes, so they are always live.
+    #[must_use]
+    pub const fn needs_actions(&self) -> bool {
+        !matches!(self, Self::Shell { .. } | Self::SwitchProfile { .. })
     }
 
     /// The question asked before anything is sent. For `RunWith` it is the prompt's title.
@@ -105,6 +117,7 @@ impl MenuItem {
             Self::StartWarehouse { name, .. } => format!("Start warehouse \"{name}\"?"),
             Self::StopWarehouse { name, .. } => format!("Stop warehouse \"{name}\"?"),
             Self::Shell { command, .. } => format!("Run `{command}`?"),
+            Self::SwitchProfile { name } => format!("Switch to {name}?"),
         }
     }
 
@@ -161,6 +174,7 @@ impl MenuItem {
                 command: command.clone(),
                 output: *output,
             },
+            Self::SwitchProfile { name } => Command::SwitchProfile(name.clone()),
         }
     }
 }

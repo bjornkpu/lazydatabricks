@@ -214,8 +214,9 @@ pub enum Command {
     CopyVisible,
     /// Ring the terminal bell: something on screen just failed.
     Bell,
-    /// Show the next profile's workspace. `main` owns the list; `App` only asks.
-    NextProfile,
+    /// Show this profile's workspace, opening it first if it is not open. `main` owns the
+    /// workspaces; `App` only asks.
+    SwitchProfile(String),
     /// Run a custom command, placeholders already expanded. `Terminal` output means `main`
     /// hands over the screen; `Popup` captures and replies with `ShellFinished`.
     Shell {

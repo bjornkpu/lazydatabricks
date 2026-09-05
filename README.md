@@ -34,7 +34,7 @@ the exact login command.
 ```
 databricks auth login --host https://<workspace-url> -p dev
 lazydatabricks -p dev
-lazydatabricks -p dev,prod    # several workspaces in one window; p cycles them
+lazydatabricks -p dev,prod    # several workspaces in one window; p switches between them
 ```
 
 Read-only by default. `--allow-actions` (or `allow_actions = true` in config) enables run-now,
@@ -60,6 +60,7 @@ the target. Opening a failed run shows the failing task's error and traceback.
 | `o` / `y` | open in browser (`$BROWSER` if set) / copy URL (`wl-copy` on Wayland) |
 | `Y` | copy the focused panel's rows as text, for Teams |
 | `A` | enable actions for this session (asks first); again to disable |
+| `p` | switch profile: every profile in `~/.databrickscfg`, opened on first use |
 | `+` | cycle screen mode: normal, half, full |
 | `@` | toggle the API log |
 | `q` | quit |

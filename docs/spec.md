@@ -909,6 +909,18 @@ a pure function of state already in `App`; the panel grows one row; `Y` on Statu
 *Teaches:* the cheapest dashboard is a fold over data you already hold.
 *Done when:* a failed nightly shows `✗ 1 failed` while the list is filtered to something else.
 
+### M39 — Profile switcher
+lazygit's recent-repos menu. `p` used to cycle the profiles named at launch; now it opens a
+menu of every `[section]` in `~/.databrickscfg`, cursor on the current one. Choosing an open
+profile shows its workspace; choosing a closed one opens it on the spot, same as `-p` would have,
+and a profile the CLI cannot mint a token for reports why in the hint bar. `App` learns the list
+once at start; `main` still owns the workspaces and the switch, so `App` never holds two
+profiles' state. The menu is the `x` machinery with a different title and no actions gate.
+
+*Teaches:* the second use of a menu is when it earns its generality; before that, one enum
+variant was enough.
+*Done when:* a consultant with six workspaces reaches any of them in two keys without restarting.
+
 ---
 
 ## 9. Testing

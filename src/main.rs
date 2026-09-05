@@ -69,17 +69,10 @@ async fn main() -> Result<()> {
     }
     // Auth before the terminal is taken over: the CLI may print or open a browser, and its
     // errors should land in a normal shell.
+    let known = api::known_profiles();
     let mut workspaces = Vec::new();
     for profile in &profiles {
-        let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let client = Arc::new(api::Client::from_profile(profile, tx.clone())?);
-        let app = App::new(profile, client.host(), TimeZone::system(), &loaded);
-        workspaces.push(Workspace {
-            app,
-            client,
-            tx,
-            rx,
-        });
+        workspaces.push(Workspace::open(profile, &loaded, &known)?);
     }
     if let Some(command) = cli.command {
         let Some(first) = workspaces.first() else {
@@ -97,7 +90,15 @@ async fn main() -> Result<()> {
     // restores both. `clippy::exit` is denied, so the loop returns instead of exiting; that is
     // what lets `restore` run on the error path too.
     let mut terminal = ratatui::init();
-    let result = run(&mut terminal, workspaces, input_rx, &paused).await;
+    let result = run(
+        &mut terminal,
+        workspaces,
+        input_rx,
+        &paused,
+        &loaded,
+        &known,
+    )
+    .await;
     ratatui::restore();
     result
 }
@@ -112,6 +113,19 @@ struct Workspace {
 }
 
 impl Workspace {
+    /// Host from `~/.databrickscfg`, a token from the CLI, and a fresh `App`.
+    fn open(profile: &str, loaded: &config::Loaded, known: &[String]) -> Result<Self, AppError> {
+        let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
+        let client = Arc::new(api::Client::from_profile(profile, tx.clone())?);
+        let app = App::new(profile, client.host(), TimeZone::system(), loaded, known);
+        Ok(Self {
+            app,
+            client,
+            tx,
+            rx,
+        })
+    }
+
     /// The fetches every workspace starts with.
     fn start(&self) {
         let max = self.app.max_jobs;
@@ -136,14 +150,14 @@ impl Workspace {
         tokio::spawn(fetch_me(Arc::clone(&self.client), self.tx.clone()));
     }
 
-    /// Runs one side effect. `Quit`, `NextProfile` and a terminal `Shell` need the loop or the
-    /// screen, so they come back.
+    /// Runs one side effect. `Quit`, `SwitchProfile` and a terminal `Shell` need the loop or
+    /// the screen, so they come back.
     fn execute(&self, command: Command) -> Option<Command> {
         let client = || Arc::clone(&self.client);
         let tx = || self.tx.clone();
         match command {
             Command::Quit
-            | Command::NextProfile
+            | Command::SwitchProfile(_)
             | Command::Shell {
                 output: CommandOutput::Terminal,
                 ..
@@ -232,8 +246,9 @@ async fn run(
     mut workspaces: Vec<Workspace>,
     mut input: mpsc::Receiver<Message>,
     paused: &AtomicBool,
+    loaded: &config::Loaded,
+    known: &[String],
 ) -> Result<()> {
-    let count = workspaces.len();
     let mut active = 0;
     // Messages the loop itself produces (a scroll clamp, a finished terminal command) go through
     // `update` like any other, ahead of the channels.
@@ -258,18 +273,39 @@ async fn run(
         let Some(message) = message else {
             bail!("all message producers stopped");
         };
+        // Commands that outgrow one workspace wait until its borrow is released.
+        let mut deferred = Vec::new();
         for command in workspace.app.update(message) {
             tracing::debug!(?command);
-            match workspace.execute(command) {
-                Some(Command::Quit) => return Ok(()),
-                Some(Command::NextProfile) => {
-                    active = active.saturating_add(1).checked_rem(count).unwrap_or(0);
+            deferred.extend(workspace.execute(command));
+        }
+        for command in deferred {
+            match command {
+                Command::Quit => return Ok(()),
+                Command::SwitchProfile(name) => {
+                    if let Some(index) = workspaces
+                        .iter()
+                        .position(|workspace| workspace.app.profile == name)
+                    {
+                        active = index;
+                        continue;
+                    }
+                    // ponytail: minting the token blocks the loop for the CLI's round trip;
+                    // move it to spawn_blocking if switching ever feels slow.
+                    match Workspace::open(&name, loaded, known) {
+                        Ok(workspace) => {
+                            workspace.start();
+                            workspaces.push(workspace);
+                            active = workspaces.len().saturating_sub(1);
+                        }
+                        Err(error) => pending.push_back(Message::ActionFailed(error)),
+                    }
                 }
-                Some(Command::Shell { name, command, .. }) => {
+                Command::Shell { name, command, .. } => {
                     let detail = suspend(terminal, paused, &command);
                     pending.push_back(Message::ShellExited { name, detail });
                 }
-                Some(_) | None => {}
+                _ => {}
             }
         }
     }

@@ -466,6 +466,17 @@ mod tests {
     }
 
     #[test]
+    fn profile_menu_80x24() {
+        let mut app = with_runs();
+        app.profiles = ["DEFAULT", "dev", "prod"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        press(&mut app, "p");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn params_prompt_80x24() {
         let mut app = with_runs();
         app.allow_actions = true;

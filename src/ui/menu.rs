@@ -26,10 +26,18 @@ pub fn draw(app: &App, frame: &mut Frame) {
 }
 
 fn menu(app: &App, items: &[MenuItem], selected: usize, frame: &mut Frame) {
-    let footer = if app.allow_actions {
+    let footer = if app.allow_actions || !items.iter().any(MenuItem::needs_actions) {
         "Enter: choose │ Esc: close"
     } else {
         "read-only: --allow-actions to enable"
+    };
+    let title = if items
+        .iter()
+        .all(|item| matches!(item, MenuItem::SwitchProfile { .. }))
+    {
+        " Profiles "
+    } else {
+        " Actions "
     };
     let labels: Vec<String> = items.iter().map(MenuItem::label).collect();
     let width = labels
@@ -48,7 +56,7 @@ fn menu(app: &App, items: &[MenuItem], selected: usize, frame: &mut Frame) {
     frame.render_widget(Clear, area);
     let block = Block::bordered()
         .border_style(Style::new().fg(palette.notice))
-        .title(" Actions ")
+        .title(title)
         .title_bottom(Line::from(footer).centered());
     let list = List::new(labels)
         .block(block)

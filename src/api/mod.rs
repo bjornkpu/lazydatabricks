@@ -26,6 +26,13 @@ const TOKEN_REFRESH_MARGIN: Duration = Duration::from_secs(300);
 /// Per-request timeout; surfaces as `AppError::Timeout`.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Every profile name in `~/.databrickscfg`, for the profile menu. An unreadable file is an
+/// empty list here; `Client::from_profile` reports the real error for the profile in use.
+#[must_use]
+pub fn known_profiles() -> Vec<String> {
+    auth::profiles().unwrap_or_default()
+}
+
 /// Authenticated HTTP client for one workspace. Every call is reported to the API log.
 pub struct Client {
     host: String,

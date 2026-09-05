@@ -139,6 +139,8 @@ pub struct App {
     pub allow_actions: bool,
     /// Shell lines from config, offered in the `x` menu and on their own keys.
     pub custom: Vec<CustomCommand>,
+    /// Every profile in `~/.databrickscfg`, for the `p` menu.
+    pub profiles: Vec<String>,
     pub theme: Theme,
     /// `strftime` pattern for absolute times, validated at config load.
     pub date_format: String,
@@ -185,7 +187,13 @@ pub struct App {
 impl App {
     /// A freshly launched app: `main` has already kicked off the jobs and `Me` fetches.
     #[must_use]
-    pub fn new(profile: &str, host: &str, tz: TimeZone, loaded: &Loaded) -> Self {
+    pub fn new(
+        profile: &str,
+        host: &str,
+        tz: TimeZone,
+        loaded: &Loaded,
+        profiles: &[String],
+    ) -> Self {
         let config = &loaded.config;
         let config_note = if loaded.found {
             loaded.path.display().to_string()
@@ -235,6 +243,7 @@ impl App {
             notice: None,
             allow_actions: config.allow_actions,
             custom: config.commands.clone(),
+            profiles: profiles.to_vec(),
             theme: config.theme,
             date_format: config.date_format.clone(),
             sort: config.sort,
@@ -980,7 +989,7 @@ impl App {
             Action::Menu => self.open_menu(),
             Action::Help => self.input = InputMode::Help { scroll: 0 },
             Action::ToggleActions => self.toggle_actions(),
-            Action::NextProfile => commands.push(Command::NextProfile),
+            Action::SwitchProfile => self.open_profiles(),
             Action::Sort => {
                 self.sort = self.sort.next();
                 self.apply_filter();
@@ -1050,6 +1059,25 @@ impl App {
             Action::NextTab => self.next_tab(),
             Action::PrevTab => self.prev_tab(),
         }
+    }
+
+    /// `p`: every profile in `~/.databrickscfg` as a menu, the current one under the cursor.
+    fn open_profiles(&mut self) {
+        if self.profiles.len() < 2 {
+            self.notice = Some("Only one profile in ~/.databrickscfg".to_owned());
+            return;
+        }
+        let selected = self
+            .profiles
+            .iter()
+            .position(|name| *name == self.profile)
+            .unwrap_or(0);
+        let items = self
+            .profiles
+            .iter()
+            .map(|name| MenuItem::SwitchProfile { name: name.clone() })
+            .collect();
+        self.input = InputMode::Menu { items, selected };
     }
 
     /// `A`: off at once, on only after a yes.
@@ -1395,7 +1423,9 @@ impl App {
                     return;
                 };
                 match item {
-                    MenuItem::Shell { confirm: false, .. } => self.fire(&item, commands),
+                    MenuItem::Shell { confirm: false, .. } | MenuItem::SwitchProfile { .. } => {
+                        self.fire(&item, commands);
+                    }
                     MenuItem::Shell { .. } => self.input = InputMode::Confirm(item),
                     _ if !self.allow_actions => self.notice = Some(READ_ONLY.to_owned()),
                     MenuItem::RunWith { job_id, name } => {
@@ -1881,6 +1911,7 @@ pub mod tests {
             "https://adb-1.azuredatabricks.net",
             TimeZone::UTC,
             &defaults(),
+            &[],
         )
     }
 
@@ -2442,9 +2473,30 @@ pub mod tests {
     }
 
     #[test]
-    fn p_asks_the_shell_for_the_next_profile() {
+    fn p_lists_every_profile_and_switches() {
         let mut app = loaded();
-        assert_eq!(app.update(key(Key::Char('p'))), vec![Command::NextProfile]);
+        assert_eq!(app.update(key(Key::Char('p'))), vec![]);
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("Only one profile in ~/.databrickscfg")
+        );
+        app.profiles = ["DEFAULT", "dev", "prod"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        press(&mut app, "p");
+        assert!(
+            matches!(&app.input, InputMode::Menu { items, selected: 1 } if items.len() == 3),
+            "the current profile starts selected: {:?}",
+            app.input
+        );
+        press(&mut app, "j");
+        assert_eq!(
+            app.update(key(Key::Enter)),
+            vec![Command::SwitchProfile("prod".to_owned())],
+            "no actions opt-in needed"
+        );
+        assert_eq!(app.notice.as_deref(), Some("Switch to prod…"));
     }
 
     #[test]
@@ -2881,7 +2933,7 @@ pub mod tests {
             .config
             .keys
             .insert(Action::NextTab, vec![Key::Char('ø')]);
-        let mut app = App::new("dev", "https://h", TimeZone::UTC, &loaded);
+        let mut app = App::new("dev", "https://h", TimeZone::UTC, &loaded, &[]);
         assert_eq!(app.config_note, "config.toml");
         assert!(app.filter.mine_only);
         app.update(Message::MeLoaded("someone@example.com".to_owned()));
@@ -3194,6 +3246,7 @@ pub mod tests {
             "https://adb-1.azuredatabricks.net",
             TimeZone::UTC,
             &loaded,
+            &[],
         );
         assert!(!app.show_compute());
         assert!(!app.compute_loading(), "no launch fetch, so no spinner");

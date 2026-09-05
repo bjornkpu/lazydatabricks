@@ -48,8 +48,8 @@ pub enum Action {
     PageUp,
     /// Enable (after a confirmation) or disable actions for this session.
     ToggleActions,
-    /// Cycle to the next profile when several were opened.
-    NextProfile,
+    /// Open the profile menu: every profile in `~/.databrickscfg`.
+    SwitchProfile,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -91,7 +91,7 @@ impl Default for Keymap {
             (Action::PageDown, vec![Key::Ctrl('d')]),
             (Action::PageUp, vec![Key::Ctrl('u')]),
             (Action::ToggleActions, vec![Key::Char('A')]),
-            (Action::NextProfile, vec![Key::Char('p')]),
+            (Action::SwitchProfile, vec![Key::Char('p')]),
         ]))
     }
 }
