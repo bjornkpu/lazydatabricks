@@ -824,6 +824,8 @@ So `[4]` becomes **Compute**: `clusters/list` plus `GET /api/2.0/sql/warehouses`
 one row type, one glyph rule (`●` running, `◐` starting or stopping, `·` stopped, `✗` error),
 and `x` offering start and stop for warehouses like start and terminate for clusters. When both
 lists come back empty the panel folds away, `4` and `Tab` skip it, and no config is needed.
+Warehouses are shared infrastructure, so `mine only` keeps them; a serverless workspace whose
+two warehouses were created by a colleague still shows them behind `m`.
 
 *Teaches:* a fold to one shape beats a second panel; absence is a state the layout can react to.
 *Done when:* a serverless workspace shows its warehouses with their state and nothing else in

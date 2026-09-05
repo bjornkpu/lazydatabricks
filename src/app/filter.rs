@@ -2,7 +2,9 @@
 
 use serde::Deserialize;
 
-use crate::api::models::{Cluster, ClusterState, Job, Pipeline, PipelineState, Run, UpdateState};
+use crate::api::models::{
+    Cluster, ClusterState, ComputeKind, Job, Pipeline, PipelineState, Run, UpdateState,
+};
 
 /// The signed-in user, resolved once at startup from the SCIM `Me` endpoint.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,7 +155,9 @@ impl Filter {
         name_ok && mine_ok && self.status.allows_run(latest)
     }
 
-    /// Clusters: name or creator text, mine by creator or alias.
+    /// Compute: name or creator text; clusters are mine by creator or alias, warehouses are
+    /// shared infrastructure and always pass `mine`, so a serverless workspace never shows an
+    /// empty panel behind `m`.
     #[must_use]
     pub fn matches_cluster(&self, cluster: &Cluster, me: Option<&Me>) -> bool {
         let name_ok = self.text.is_empty()
@@ -162,6 +166,7 @@ impl Filter {
                 [cluster.name.as_str(), cluster.creator_user_name.as_str()],
             );
         let mine_ok = !self.mine_only
+            || cluster.kind == ComputeKind::Warehouse
             || me.is_some_and(|me| {
                 me.owns(
                     &cluster.name,
@@ -268,6 +273,29 @@ mod tests {
         assert!(!filter.matches(&job(1, "x"), None, None));
         let pipeline = crate::app::tests::pipeline("p", "x", "other@example.com");
         assert!(filter.matches_pipeline(&pipeline, None));
+    }
+
+    #[test]
+    fn warehouses_are_shared_so_mine_keeps_them() {
+        let filter = Filter {
+            mine_only: true,
+            ..Filter::default()
+        };
+        let mut theirs = crate::app::tests::cluster("c1", "shared", ClusterState::Running);
+        theirs.creator_user_name = "other@example.com".to_owned();
+        assert!(
+            !filter.matches_cluster(&theirs, Some(&me())),
+            "their cluster"
+        );
+        theirs.kind = ComputeKind::Warehouse;
+        assert!(
+            filter.matches_cluster(&theirs, Some(&me())),
+            "their warehouse"
+        );
+        assert!(
+            filter.matches_cluster(&theirs, None),
+            "even before me is known"
+        );
     }
 
     #[test]
