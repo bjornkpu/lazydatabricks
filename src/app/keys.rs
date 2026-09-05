@@ -38,6 +38,8 @@ pub enum Action {
     Browse,
     /// Copy the selected item's URL.
     Copy,
+    /// Copy the focused panel's rows as text.
+    CopyTable,
     /// Cycle the list order: activity, name, created.
     Sort,
     /// Cycle the status filter: all, failed, active.
@@ -81,6 +83,7 @@ impl Default for Keymap {
             (Action::Help, vec![Key::Char('?')]),
             (Action::Browse, vec![Key::Char('o')]),
             (Action::Copy, vec![Key::Char('y')]),
+            (Action::CopyTable, vec![Key::Char('Y')]),
             (Action::Sort, vec![Key::Char('s')]),
             (Action::StatusFilter, vec![Key::Char('f')]),
             (Action::PageDown, vec![Key::Ctrl('d')]),

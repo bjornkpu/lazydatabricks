@@ -161,6 +161,8 @@ pub enum Command {
     OpenUrl(String),
     /// Put text on the clipboard.
     Copy(String),
+    /// Put the focused panel's visible rows on the clipboard, as text. `main` renders them.
+    CopyVisible,
     /// Ring the terminal bell: something on screen just failed.
     Bell,
 }

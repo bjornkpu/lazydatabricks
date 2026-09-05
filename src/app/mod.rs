@@ -832,6 +832,10 @@ impl App {
                     self.notice = Some("Nothing selected to copy".to_owned());
                 }
             }
+            Action::CopyTable => {
+                self.notice = Some("Copied the visible rows".to_owned());
+                commands.push(Command::CopyVisible);
+            }
             Action::MineOnly => {
                 self.filter.mine_only = !self.filter.mine_only;
                 self.apply_filter();

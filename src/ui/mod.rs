@@ -19,6 +19,66 @@ use crate::app::{App, Panel, ScreenMode};
 /// Rows for the API log under the main panel.
 const API_LOG_HEIGHT: u16 = 7;
 
+/// The focused panel's rows as plain text, one line each, with words for glyphs: what `Y` puts
+/// on the clipboard. Teams and Slack render words; they mangle `◐`.
+#[must_use]
+pub fn visible_text(app: &App) -> String {
+    let age = |ts: Option<jiff::Timestamp>| match (ts, app.now) {
+        (Some(ts), Some(now)) => theme::age_short(now.duration_since(ts)),
+        _ => String::new(),
+    };
+    let lines: Vec<String> = match app.focus {
+        Panel::Status => vec![format!("{} {}", app.profile, app.filter_summary())],
+        Panel::Jobs => app
+            .jobs
+            .items()
+            .iter()
+            .map(|job| {
+                let latest = app.latest_runs.get(&job.id);
+                let result = latest.map_or("-", theme::run_result);
+                format!(
+                    "{:>3} {result} {}",
+                    age(latest.and_then(|run| run.start_time)),
+                    job.settings.name
+                )
+            })
+            .collect(),
+        Panel::Pipelines => app
+            .pipelines
+            .items()
+            .iter()
+            .map(|pipeline| {
+                let latest = pipeline.latest_updates.first();
+                let state =
+                    latest.map_or_else(|| pipeline.state.as_str(), |update| update.state.as_str());
+                format!(
+                    "{:>3} {state} {}",
+                    age(latest.and_then(|update| update.creation_time)),
+                    pipeline.name
+                )
+            })
+            .collect(),
+        Panel::Main => match &app.runs {
+            crate::app::Load::Loaded(runs) if app.active_tab() == Some(crate::app::Tab::Runs) => {
+                runs.items()
+                    .iter()
+                    .map(|run| {
+                        let started = run.start_time.map_or_else(
+                            || "-".to_owned(),
+                            |ts| theme::clock(ts, &app.tz, &app.date_format),
+                        );
+                        let duration = theme::run_duration(run, app.now)
+                            .map_or_else(|| "-".to_owned(), theme::duration);
+                        format!("{} {started} {duration} {}", run.id, theme::run_result(run))
+                    })
+                    .collect()
+            }
+            _ => Vec::new(),
+        },
+    };
+    lines.join("\n")
+}
+
 /// Draws the whole screen for the current state.
 pub fn draw(app: &App, frame: &mut Frame) {
     let [body, hint_bar] =
@@ -333,6 +393,24 @@ mod tests {
         let mut app = with_runs();
         app.theme = Theme::Mono;
         insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn visible_text_is_words_not_glyphs() {
+        let mut app = with_runs();
+        assert_eq!(
+            visible_text(&app),
+            " 2h RUNNING [someone] okonomi_gold\n 1d FAILED nightly_bronze_ingest\n    - weekly_report"
+        );
+        press(&mut app, "0");
+        let runs = visible_text(&app);
+        assert!(
+            runs.starts_with("50851892761075 01.09 10:08 2h00m RUNNING\n"),
+            "{runs}"
+        );
+        assert!(runs.ends_with("57s FAILED"), "{runs}");
+        press(&mut app, "3");
+        assert_eq!(visible_text(&app), "", "empty list, empty text");
     }
 
     #[test]

@@ -146,6 +146,10 @@ async fn run(
                 Command::Copy(text) => {
                     tokio::spawn(desktop(tx.clone(), move || shell::copy(&text)));
                 }
+                Command::CopyVisible => {
+                    let text = ui::visible_text(&app);
+                    tokio::spawn(desktop(tx.clone(), move || shell::copy(&text)));
+                }
                 Command::Bell => {
                     // BEL goes straight to the terminal; the next draw is unaffected.
                     let mut out = std::io::stdout();
