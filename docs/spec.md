@@ -900,6 +900,15 @@ no schedule, so an unopened job offers both items and Databricks settles which a
 belongs in the client, not in `update`.
 *Done when:* a paused job stops appearing in the morning's runs and shows `‖` in the list.
 
+### M38 — Status dashboard
+lazygit's `statusPanelView: dashboard`. `[1]` gains a third line, `◐ 2 running · ✗ 3 failed ·
+● 1 compute up`, counted over every job's newest run and every compute row rather than the
+filtered view, so it answers "is anything on fire" before a single key is pressed. The counts are
+a pure function of state already in `App`; the panel grows one row; `Y` on Status copies the line.
+
+*Teaches:* the cheapest dashboard is a fold over data you already hold.
+*Done when:* a failed nightly shows `✗ 1 failed` while the list is filtered to something else.
+
 ---
 
 ## 9. Testing

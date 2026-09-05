@@ -46,6 +46,18 @@ const READ_ONLY: &str =
 /// Ticks per second at `TICK` = 100ms. Turns config seconds into tick counts.
 const TICKS_PER_SECOND: u64 = 10;
 
+/// The workspace at a glance, for the Status panel: counted over every job and compute row,
+/// not the filtered view, so it says what is going on, not what is on screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Counts {
+    /// Jobs whose newest run is still going.
+    pub running: usize,
+    /// Jobs whose newest run failed.
+    pub failed: usize,
+    /// Clusters and warehouses that are up or on their way.
+    pub compute_up: usize,
+}
+
 /// A fetched value and the tick it arrived on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Cached<T> {
@@ -879,6 +891,28 @@ impl App {
         self.main_scroll = 0;
         self.run_detail = Load::Idle;
         self.run_outputs.clear();
+    }
+
+    /// lazygit's status dashboard: what is running, what is red, what is billing.
+    #[must_use]
+    pub fn counts(&self) -> Counts {
+        Counts {
+            running: self
+                .latest_runs
+                .values()
+                .filter(|run| run.state.life_cycle_state.is_active())
+                .count(),
+            failed: self
+                .latest_runs
+                .values()
+                .filter(|run| run.state.is_failure())
+                .count(),
+            compute_up: self
+                .all_compute
+                .iter()
+                .filter(|row| row.state.is_active())
+                .count(),
+        }
     }
 
     /// What the status panel says about the list: `mine only · /gold · 22 of 85`. Never a
@@ -2134,6 +2168,34 @@ pub mod tests {
         assert!(
             !labels(&app).iter().any(|label| label.contains("schedule")),
             "known to have no schedule: neither"
+        );
+    }
+
+    #[test]
+    fn counts_cover_the_whole_workspace_not_the_filter() {
+        let mut app = loaded();
+        assert_eq!(app.counts(), Counts::default());
+        let mut failed = run(20, 1000, 2000, Some(ResultState::Failed));
+        failed.job_id = 2;
+        let mut fine = run(30, 1000, 2000, Some(ResultState::Success));
+        fine.job_id = 3;
+        app.update(Message::RecentRunsLoaded(vec![
+            run(10, 1000, 0, None),
+            failed,
+            fine,
+        ]));
+        app.update(Message::ComputeLoaded(vec![
+            cluster("c1", "up", ClusterState::Running),
+            cluster("c2", "down", ClusterState::Terminated),
+        ]));
+        press(&mut app, "m");
+        assert_eq!(
+            app.counts(),
+            Counts {
+                running: 1,
+                failed: 1,
+                compute_up: 1
+            }
         );
     }
 

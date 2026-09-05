@@ -32,7 +32,16 @@ pub fn visible_text(app: &App) -> String {
         _ => String::new(),
     };
     let lines: Vec<String> = match app.focus {
-        Panel::Status => vec![format!("{} {}", app.profile, app.filter_summary())],
+        Panel::Status => {
+            let counts = app.counts();
+            vec![
+                format!("{} {}", app.profile, app.filter_summary()),
+                format!(
+                    "{} running · {} failed · {} compute up",
+                    counts.running, counts.failed, counts.compute_up
+                ),
+            ]
+        }
         Panel::Jobs => app
             .jobs
             .items()
@@ -152,7 +161,8 @@ fn side_constraint(app: &App, panel: Panel, collapse_unfocused: bool) -> Constra
         };
     }
     if panel == Panel::Status {
-        return Constraint::Length(4);
+        // Identity, filter summary, counts, plus the border.
+        return Constraint::Length(5);
     }
     if app.side_layout == SideLayout::Expand && panel == app.context {
         Constraint::Fill(EXPANDED_WEIGHT)
@@ -594,8 +604,8 @@ mod tests {
                     draw(&app, frame);
                 })
                 .unwrap();
-            // Top-left corner of the focused Jobs panel, just under the 4-row Status panel.
-            terminal.backend().buffer().cell((0, 4)).unwrap().fg
+            // Top-left corner of the focused Jobs panel, just under the 5-row Status panel.
+            terminal.backend().buffer().cell((0, 5)).unwrap().fg
         };
         assert_eq!(accent(Theme::Dark), ratatui::style::Color::Green);
         assert_eq!(accent(Theme::Light), ratatui::style::Color::Blue);

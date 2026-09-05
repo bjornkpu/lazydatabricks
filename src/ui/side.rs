@@ -38,10 +38,43 @@ pub fn status(app: &App, area: Rect, frame: &mut Frame) {
         .me_error
         .as_ref()
         .map_or(summary, |error| format!("me: {error}"));
+    let width = usize::from(block.inner(area).width);
     frame.render_widget(
-        Paragraph::new(vec![identity, Line::from(second)]).block(block),
+        Paragraph::new(vec![identity, Line::from(second), counts(app, width)]).block(block),
         area,
     );
+}
+
+/// `◐ 2 running · ✗ 3 failed · ● 1 compute up`: the workspace at a glance, glyphs tinted like
+/// the rows they count. Compute only while the panel shows. Words go when they do not fit; the
+/// glyphs are the ones every row already uses.
+fn counts(app: &App, width: usize) -> Line<'static> {
+    let counts = app.counts();
+    let mut parts = vec![
+        ('◐', Color::Yellow, counts.running, "running"),
+        ('✗', Color::Red, counts.failed, "failed"),
+    ];
+    if app.show_compute() {
+        parts.push(('●', Color::Green, counts.compute_up, "compute up"));
+    }
+    let full: usize = parts
+        .iter()
+        .map(|(_, _, n, word)| format!("{n} {word}").chars().count().saturating_add(5))
+        .sum();
+    let worded = full.saturating_sub(3) <= width;
+    let mut line = Line::default();
+    for (index, (glyph, color, n, word)) in parts.into_iter().enumerate() {
+        if index > 0 {
+            line.push_span(Span::styled(" · ", theme::dim(app)));
+        }
+        line.push_span(Span::styled(glyph.to_string(), theme::tint(app, color)));
+        line.push_span(Span::raw(if worded {
+            format!(" {n} {word}")
+        } else {
+            format!(" {n}")
+        }));
+    }
+    line
 }
 
 pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
