@@ -130,7 +130,10 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
             Span::styled(format!("{age:>3} "), theme::dim(app)),
             Span::styled(glyph.to_string(), theme::tint(app, color)),
             Span::styled(mark, theme::dim(app)),
-            Span::raw(format!(" {}", chrome::fit(&job.settings.name, name_width))),
+            Span::raw(format!(
+                " {}",
+                chrome::fit(&app.display_name(&job.settings.name), name_width)
+            )),
         ])
     });
     let list = List::new(rows)
@@ -177,7 +180,10 @@ pub fn pipelines(app: &App, area: Rect, frame: &mut Frame) {
         Line::from(vec![
             Span::styled(format!("{age:>3} "), theme::dim(app)),
             Span::styled(glyph.to_string(), theme::tint(app, color)),
-            Span::raw(format!(" {}", chrome::fit(&pipeline.name, name_width))),
+            Span::raw(format!(
+                " {}",
+                chrome::fit(&app.display_name(&pipeline.name), name_width)
+            )),
         ])
     });
     let list = List::new(rows)
@@ -232,7 +238,10 @@ pub fn compute(app: &App, area: Rect, frame: &mut Frame) {
         let (glyph, color) = theme::cluster_glyph(cluster);
         Line::from(vec![
             Span::styled(glyph.to_string(), theme::tint(app, color)),
-            Span::raw(format!(" {}", chrome::fit(&cluster.name, name_width))),
+            Span::raw(format!(
+                " {}",
+                chrome::fit(&app.display_name(&cluster.name), name_width)
+            )),
         ])
     });
     let list = List::new(rows)

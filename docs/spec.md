@@ -1005,6 +1005,16 @@ filters and the theme of every open workspace, and rebuilding those mid-session 
 *Teaches:* an honest "restart to apply" beats a reload that is right most of the time.
 *Done when:* `e`, add `mine_only = true`, save, quit, relaunch: the filter is on.
 
+### M48 — Name replacements
+lazydocker's `replacements`, for the same reason: Databricks Asset Bundles prefix every dev
+deployment with `[dev bjorn_punsvik] `, and in a 25-column list that prefix is most of the row.
+`[name_replacements]` in config is a table of literal `from = to` pairs applied in key order to
+names in the three side lists. Display only: the filter matches, the copy menu copies and the
+JSON shows the full name, so nothing is hidden, only shortened.
+
+*Teaches:* a display transform is a function on the way to the screen, never a change to state.
+*Done when:* `"[dev bk] " = ""` turns `[dev bk] nightly_bronze_ingest` into a row that fits.
+
 ---
 
 ## 9. Testing

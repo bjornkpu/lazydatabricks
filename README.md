@@ -96,6 +96,9 @@ runs_ttl_secs = 120
 next_tab = ["l", "ø", "right"]
 prev_tab = ["h", "æ", "left"]
 
+[name_replacements]        # shorten names in the lists; filters and copies keep the full name
+"[bjorn_punsvik] " = ""
+
 [[commands]]               # your own shell lines; see Custom commands below
 name = "Job JSON"
 key = "J"                  # optional; must not be bound to anything else

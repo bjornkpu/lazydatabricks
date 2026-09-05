@@ -145,6 +145,8 @@ pub struct App {
     pub custom: Vec<CustomCommand>,
     /// Every profile in `~/.databrickscfg`, for the `p` menu.
     pub profiles: Vec<String>,
+    /// `(from, to)` pairs applied to list names, in config order. See `display_name`.
+    pub replacements: Vec<(String, String)>,
     pub theme: Theme,
     /// `strftime` pattern for absolute times, validated at config load.
     pub date_format: String,
@@ -250,6 +252,11 @@ impl App {
             allow_actions: config.allow_actions,
             custom: config.commands.clone(),
             profiles: profiles.to_vec(),
+            replacements: config
+                .name_replacements
+                .iter()
+                .map(|(from, to)| (from.clone(), to.clone()))
+                .collect(),
             theme: config.theme,
             date_format: config.date_format.clone(),
             sort: config.sort,
@@ -1012,6 +1019,15 @@ impl App {
             }),
             Panel::Status | Panel::Compute | Panel::Main => Load::Idle,
         }
+    }
+
+    /// A name as the side lists show it: `name_replacements` applied in order. lazydocker's
+    /// `replacements`; the full name stays what filters match and `y` copies.
+    #[must_use]
+    pub fn display_name(&self, name: &str) -> String {
+        self.replacements
+            .iter()
+            .fold(name.to_owned(), |name, (from, to)| name.replace(from, to))
     }
 
     /// lazygit's status dashboard: what is running, what is red, what is billing.
@@ -2829,6 +2845,26 @@ pub mod tests {
         press(&mut app, "0");
         let commands = app.update(key(Key::Enter));
         assert_eq!(commands, vec![Command::Page(app.config_text.clone())]);
+    }
+
+    #[test]
+    fn display_names_apply_replacements_in_order() {
+        let mut app = loaded();
+        assert_eq!(
+            app.display_name("[dev bk] nightly_ingest"),
+            "[dev bk] nightly_ingest"
+        );
+        app.replacements = vec![
+            ("[dev bk] ".to_owned(), String::new()),
+            ("_ingest".to_owned(), " ↓".to_owned()),
+        ];
+        assert_eq!(app.display_name("[dev bk] nightly_ingest"), "nightly ↓");
+        press(&mut app, "/dev");
+        assert_eq!(
+            app.jobs.items().len(),
+            0,
+            "the filter sees the full name, which lacks it"
+        );
     }
 
     #[test]

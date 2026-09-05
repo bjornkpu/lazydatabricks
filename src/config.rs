@@ -55,6 +55,9 @@ pub struct Config {
     pub keys: BTreeMap<Action, Vec<Key>>,
     /// Shell lines offered in the `x` menu, lazygit style. See `app::custom`.
     pub commands: Vec<CustomCommand>,
+    /// Literal replacements applied to names in the side lists, in key order: `"[dev bk] " =
+    /// ""` drops a bundle prefix. Filters and copies still see the full name.
+    pub name_replacements: BTreeMap<String, String>,
 }
 
 impl Default for Config {
@@ -78,6 +81,7 @@ impl Default for Config {
             runs_ttl_secs: 120,
             keys: BTreeMap::new(),
             commands: Vec::new(),
+            name_replacements: BTreeMap::new(),
         }
     }
 }
@@ -286,6 +290,13 @@ mod tests {
             parse(&render(&Config::default())).unwrap(),
             Config::default()
         );
+    }
+
+    #[test]
+    fn name_replacements_are_a_table() {
+        let config = parse("[name_replacements]\n\"[dev bk] \" = \"\"\n_ingest = \"↓\"").unwrap();
+        assert_eq!(config.name_replacements["[dev bk] "], "");
+        assert_eq!(config.name_replacements["_ingest"], "↓");
     }
 
     #[test]
