@@ -100,7 +100,10 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             (k(Action::Up), "previous run, or scroll a line"),
             (k(Action::PageDown), "ten runs or lines down"),
             (k(Action::PageUp), "ten runs or lines up"),
-            (k(Action::Open), "open the run: tasks and message"),
+            (
+                k(Action::Open),
+                "open the run; on JSON and Output, page the text",
+            ),
             (k(Action::NextTab), "next tab"),
             (k(Action::PrevTab), "previous tab"),
             (k(Action::Back), "back: close the run, then the panel"),

@@ -158,6 +158,7 @@ impl Workspace {
         match command {
             Command::Quit
             | Command::SwitchProfile(_)
+            | Command::Page(_)
             | Command::Shell {
                 output: CommandOutput::Terminal,
                 ..
@@ -308,6 +309,12 @@ async fn run(
                     let detail = suspend(terminal, paused, &command);
                     pending.push_back(Message::ShellExited { name, detail });
                 }
+                Command::Page(text) => match shell::page_line(&text) {
+                    Ok(line) => {
+                        suspend(terminal, paused, &line);
+                    }
+                    Err(error) => pending.push_back(Message::ActionFailed(error)),
+                },
                 _ => {}
             }
         }

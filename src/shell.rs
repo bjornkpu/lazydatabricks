@@ -36,6 +36,26 @@ pub fn capture(line: &str) -> Result<String, AppError> {
     Ok(text)
 }
 
+/// Writes `text` to one scratch file and returns the shell line that pages it: `$PAGER`, else
+/// `more` on Windows and `less` elsewhere. The file is reused, never cleaned up: one small file
+/// in the temp dir beats a race with the pager over when it may go.
+pub fn page_line(text: &str) -> Result<String, AppError> {
+    let path = std::env::temp_dir().join("lazydatabricks-page.txt");
+    std::fs::write(&path, text)
+        .map_err(|error| shell_error("write the page file", &error.to_string()))?;
+    let pager = std::env::var("PAGER")
+        .ok()
+        .filter(|pager| !pager.is_empty())
+        .unwrap_or_else(|| {
+            if cfg!(target_os = "windows") {
+                "more".to_owned()
+            } else {
+                "less".to_owned()
+            }
+        });
+    Ok(format!("{pager} \"{}\"", path.display()))
+}
+
 /// Runs `line` with the terminal: stdin, stdout and stderr inherited. The caller has already
 /// stepped out of the alternate screen. Returns the exit status as words.
 pub fn interactive(line: &str) -> Result<String, AppError> {

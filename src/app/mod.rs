@@ -1140,6 +1140,10 @@ impl App {
             Action::NextPanel => self.set_focus(self.next_visible_side(self.focus)),
             Action::Open => {
                 if self.focus == Panel::Main
+                    && matches!(self.active_tab(), Some(Tab::Json | Tab::Output))
+                {
+                    self.page(commands);
+                } else if self.focus == Panel::Main
                     && self.viewing_run.is_none()
                     && let Some(run_id) = self.selected_run().map(|run| run.id)
                 {
@@ -1166,6 +1170,22 @@ impl App {
             Action::Last => self.move_cursor(Move::Last),
             Action::NextTab => self.next_tab(),
             Action::PrevTab => self.prev_tab(),
+        }
+    }
+
+    /// Enter on a text tab: the same text the tab shows, in `$PAGER`.
+    fn page(&mut self, commands: &mut Vec<Command>) {
+        let text = match self.active_tab() {
+            Some(Tab::Json) => match self.json_view() {
+                Load::Loaded(text) => Some(text),
+                Load::Idle | Load::Loading | Load::Failed(_) => None,
+            },
+            Some(Tab::Output) if self.viewing_run.is_some() => Some(self.output_lines().join("\n")),
+            _ => None,
+        };
+        match text {
+            Some(text) => commands.push(Command::Page(text)),
+            None => self.notice = Some("Nothing to page yet".to_owned()),
         }
     }
 
@@ -2512,6 +2532,31 @@ pub mod tests {
             error: boom(),
         });
         assert_eq!(app.output_lines()[8], "internal error: boom");
+    }
+
+    #[test]
+    fn enter_pages_the_json_and_output_tabs() {
+        let mut app = loaded();
+        press(&mut app, "0ll");
+        assert_eq!(app.active_tab(), Some(Tab::Json));
+        assert_eq!(app.update(key(Key::Enter)), vec![]);
+        assert_eq!(app.notice.as_deref(), Some("Nothing to page yet"));
+        app.update(Message::JobLoaded(job(1, "a")));
+        let commands = app.update(key(Key::Enter));
+        assert!(
+            matches!(&commands[..], [Command::Page(text)] if text.starts_with('{')),
+            "{commands:?}"
+        );
+        press(&mut app, "l");
+        assert_eq!(app.active_tab(), Some(Tab::Output));
+        assert_eq!(app.update(key(Key::Enter)), vec![], "no run viewed");
+        press(&mut app, "hhh");
+        assert_eq!(app.active_tab(), Some(Tab::Runs));
+        assert_eq!(
+            app.update(key(Key::Enter)),
+            vec![],
+            "no runs loaded, so Enter has nothing to open"
+        );
     }
 
     #[test]

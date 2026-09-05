@@ -944,6 +944,16 @@ stream, and `o` opens the page that does stream.
 *Teaches:* when the API gives a snapshot, show a snapshot and say where the stream is.
 *Done when:* a notebook that exits with JSON shows it under `▸ task  SUCCESS`.
 
+### M42 — Page it
+lazydocker's "view logs in pager". Enter on the JSON or Output tab hands the tab's text to
+`$PAGER` (`less`, or `more` on Windows) the way M34 hands the terminal to a command: the text
+goes to one scratch file in the temp dir, the pager runs with the screen, Enter brings the TUI
+back. Nothing new in `App` beyond `Command::Page(String)`; the tabs already build their text as
+plain lines for exactly this.
+
+*Teaches:* once the terminal hand-off exists, every "view this properly" feature is one command.
+*Done when:* a 3 000-line traceback is searchable with `/` in less.
+
 ---
 
 ## 9. Testing

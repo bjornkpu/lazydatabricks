@@ -230,6 +230,8 @@ pub enum Command {
     /// Show this profile's workspace, opening it first if it is not open. `main` owns the
     /// workspaces; `App` only asks.
     SwitchProfile(String),
+    /// Show text in `$PAGER`; `main` steps out of the TUI for it.
+    Page(String),
     /// Run a custom command, placeholders already expanded. `Terminal` output means `main`
     /// hands over the screen; `Popup` captures and replies with `ShellFinished`.
     Shell {
