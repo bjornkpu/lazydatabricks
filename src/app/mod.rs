@@ -1107,6 +1107,7 @@ impl App {
                     text: String::new(),
                 }
             }
+            Action::EditConfig => commands.push(Command::EditConfig),
             Action::Sort => {
                 self.sort = self.sort.next();
                 self.apply_filter();
@@ -2794,6 +2795,20 @@ pub mod tests {
             "blank line: nothing runs"
         );
         assert_eq!(app.input, InputMode::Normal);
+    }
+
+    #[test]
+    fn e_opens_the_config_in_the_editor() {
+        let mut app = loaded();
+        assert_eq!(app.update(key(Key::Char('e'))), vec![Command::EditConfig]);
+        app.update(Message::ShellExited {
+            name: "Config".to_owned(),
+            detail: "changes apply after a restart".to_owned(),
+        });
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("Config: changes apply after a restart")
+        );
     }
 
     #[test]

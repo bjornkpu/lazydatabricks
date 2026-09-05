@@ -24,5 +24,5 @@ expression: render(&app)
 "┌─[4]─Co│    A  enable or disable actions this session                  │      │"
 "│       │    p  switch profile: any in ~/.databrickscfg                 │      │"
 "│       │    :  run a databricks CLI line with the selection filled in  │      │"
-"└───────│    ?  this list                                               │──────┘"
+"└───────│    e  open the config file in $EDITOR                         │──────┘"
 " Scroll:└───────────────────j/k: scroll │ Esc: close────────────────────┘ v0.1.0"

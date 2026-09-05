@@ -159,6 +159,7 @@ impl Workspace {
             Command::Quit
             | Command::SwitchProfile(_)
             | Command::Page(_)
+            | Command::EditConfig
             | Command::Shell {
                 output: CommandOutput::Terminal,
                 ..
@@ -315,6 +316,15 @@ async fn run(
                     }
                     Err(error) => pending.push_back(Message::ActionFailed(error)),
                 },
+                Command::EditConfig => {
+                    // Config is read once at start; a live reload would have to rebuild the
+                    // keymap, filters and theme of every open workspace. lazygit restarts too.
+                    suspend(terminal, paused, &shell::editor_line(&loaded.path));
+                    pending.push_back(Message::ShellExited {
+                        name: "Config".to_owned(),
+                        detail: "changes apply after a restart".to_owned(),
+                    });
+                }
                 _ => {}
             }
         }

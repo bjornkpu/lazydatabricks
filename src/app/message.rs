@@ -232,6 +232,8 @@ pub enum Command {
     SwitchProfile(String),
     /// Show text in `$PAGER`; `main` steps out of the TUI for it.
     Page(String),
+    /// Open the config file in `$EDITOR`; `main` knows the path and steps out of the TUI.
+    EditConfig,
     /// Run a custom command, placeholders already expanded. `Terminal` output means `main`
     /// hands over the screen; `Popup` captures and replies with `ShellFinished`.
     Shell {

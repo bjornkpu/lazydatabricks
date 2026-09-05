@@ -995,6 +995,16 @@ pages the text like the other tabs. No "edit here": the file is the interface, a
 round-trip test catches every asymmetry.
 *Done when:* someone who never wrote a config sees every key they could set, with its default.
 
+### M47 — Edit the config
+lazygit and lazydocker both bind `e` on the project panel to "edit config". `e` here opens
+`config.toml` in `$VISUAL`, `$EDITOR`, or the platform's plain editor through the M34 hand-off,
+then says that changes apply after a restart. No live reload: the file feeds the keymap, the
+filters and the theme of every open workspace, and rebuilding those mid-session buys little over
+`q` and up-arrow. The Config tab next door shows what to type.
+
+*Teaches:* an honest "restart to apply" beats a reload that is right most of the time.
+*Done when:* `e`, add `mine_only = true`, save, quit, relaunch: the filter is on.
+
 ---
 
 ## 9. Testing

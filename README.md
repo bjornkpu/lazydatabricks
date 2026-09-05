@@ -62,6 +62,7 @@ the target. Opening a failed run shows the failing task's error and traceback.
 | `Y` | copy the focused panel's rows as text, for Teams |
 | `A` | enable actions for this session (asks first); again to disable |
 | `p` | switch profile: every profile in `~/.databrickscfg`, opened on first use |
+| `e` | open the config file in `$VISUAL` or `$EDITOR`; changes apply after a restart |
 | `:` | run one `databricks` CLI line: `:jobs get {{job_id}}` runs `databricks jobs get <id> -p <profile>` and shows the output |
 | `+` | cycle screen mode: normal, half, full |
 | `@` | toggle the API log |
@@ -105,7 +106,7 @@ confirm = false
 ```
 
 `[1]` has a Config tab (`1`, then `l`) showing the effective configuration as TOML, defaults
-filled in; `Enter` there pages it.
+filled in; `Enter` there pages it and `e` opens the file in your editor.
 
 ## Custom commands
 

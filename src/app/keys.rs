@@ -52,6 +52,8 @@ pub enum Action {
     SwitchProfile,
     /// The `:` prompt: one ad-hoc `databricks` CLI line with the selection filled in.
     Prompt,
+    /// Open the config file in `$EDITOR`.
+    EditConfig,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -95,6 +97,7 @@ impl Default for Keymap {
             (Action::ToggleActions, vec![Key::Char('A')]),
             (Action::SwitchProfile, vec![Key::Char('p')]),
             (Action::Prompt, vec![Key::Char(':')]),
+            (Action::EditConfig, vec![Key::Char('e')]),
         ]))
     }
 }

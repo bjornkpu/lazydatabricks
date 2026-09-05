@@ -150,7 +150,14 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             ),
         ],
     };
-    rows.extend([
+    rows.extend(everywhere(keys));
+    rows
+}
+
+/// The bindings that work in every panel, listed after the panel's own.
+fn everywhere(keys: &Keymap) -> Vec<(String, &'static str)> {
+    let k = |action| keys.labels(action);
+    vec![
         ("0-4".to_owned(), "focus panel by number"),
         (k(Action::NextPanel), "next side panel"),
         (k(Action::RefreshAll), "refresh everything"),
@@ -168,8 +175,8 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             k(Action::Prompt),
             "run a databricks CLI line with the selection filled in",
         ),
+        (k(Action::EditConfig), "open the config file in $EDITOR"),
         (k(Action::Help), "this list"),
         (k(Action::Quit), "quit"),
-    ]);
-    rows
+    ]
 }

@@ -56,6 +56,24 @@ pub fn page_line(text: &str) -> Result<String, AppError> {
     Ok(format!("{pager} \"{}\"", path.display()))
 }
 
+/// The shell line that opens `path` in the person's editor: `$VISUAL`, else `$EDITOR`, else
+/// `notepad` on Windows and `vi` elsewhere.
+#[must_use]
+pub fn editor_line(path: &std::path::Path) -> String {
+    let editor = ["VISUAL", "EDITOR"]
+        .into_iter()
+        .filter_map(|name| std::env::var(name).ok())
+        .find(|editor| !editor.is_empty())
+        .unwrap_or_else(|| {
+            if cfg!(target_os = "windows") {
+                "notepad".to_owned()
+            } else {
+                "vi".to_owned()
+            }
+        });
+    format!("{editor} \"{}\"", path.display())
+}
+
 /// Runs `line` with the terminal: stdin, stdout and stderr inherited. The caller has already
 /// stepped out of the alternate screen. Returns the exit status as words.
 pub fn interactive(line: &str) -> Result<String, AppError> {
