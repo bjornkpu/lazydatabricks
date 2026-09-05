@@ -79,6 +79,21 @@ impl Panel {
     }
 }
 
+/// How the side column shares its height. An enum for the same reason as `ComputePanel`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SideLayout {
+    /// The panel in context gets `EXPANDED_WEIGHT` shares, the other lists one each.
+    Expand,
+    Even,
+}
+
+impl SideLayout {
+    #[must_use]
+    pub const fn from_config(expand: bool) -> Self {
+        if expand { Self::Expand } else { Self::Even }
+    }
+}
+
 /// Whether config allows the `[4] Compute` panel at all. An enum rather than a bool so the
 /// state struct stays readable; `App` already carries three flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

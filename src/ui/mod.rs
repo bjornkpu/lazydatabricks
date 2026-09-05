@@ -15,10 +15,13 @@ mod theme;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 
-use crate::app::{App, Panel, ScreenMode};
+use crate::app::{App, Panel, ScreenMode, SideLayout};
 
 /// Rows for the API log under the main panel.
 const API_LOG_HEIGHT: u16 = 7;
+/// Height shares for the side panel in context against one each for the rest, when
+/// `expand_focused` is on. lazygit's `expandedSidePanelWeight` default.
+const EXPANDED_WEIGHT: u16 = 2;
 
 /// The focused panel's rows as plain text, one line each, with words for glyphs: what `Y` puts
 /// on the clipboard. Teams and Slack render words; they mangle `◐`.
@@ -108,7 +111,7 @@ pub fn draw(app: &App, frame: &mut Frame) -> usize {
             .collect();
         let constraints: Vec<Constraint> = panels
             .iter()
-            .map(|panel| side_constraint(*panel, app.focus, collapse_unfocused))
+            .map(|panel| side_constraint(app, *panel, collapse_unfocused))
             .collect();
         let areas = Layout::vertical(constraints).split(side);
         for (panel, area) in panels.into_iter().zip(areas.iter()) {
@@ -131,18 +134,24 @@ pub fn draw(app: &App, frame: &mut Frame) -> usize {
     limit
 }
 
-/// Height of one side panel. Status is two lines of text; the lists share the rest.
-fn side_constraint(panel: Panel, focus: Panel, collapse_unfocused: bool) -> Constraint {
+/// Height of one side panel. Status is two lines of text; the lists share the rest, with the
+/// one in context taking more when config says so. The context panel, not the focused one, so
+/// the column holds still when focus moves to `[0]` and back.
+fn side_constraint(app: &App, panel: Panel, collapse_unfocused: bool) -> Constraint {
     if collapse_unfocused {
-        return if panel == focus {
+        return if panel == app.focus {
             Constraint::Fill(1)
         } else {
             Constraint::Length(1)
         };
     }
-    match panel {
-        Panel::Status => Constraint::Length(4),
-        Panel::Jobs | Panel::Pipelines | Panel::Compute | Panel::Main => Constraint::Fill(1),
+    if panel == Panel::Status {
+        return Constraint::Length(4);
+    }
+    if app.side_layout == SideLayout::Expand && panel == app.context {
+        Constraint::Fill(EXPANDED_WEIGHT)
+    } else {
+        Constraint::Fill(1)
     }
 }
 
@@ -302,6 +311,13 @@ mod tests {
     fn main_focused_log_hidden_80x24() {
         let mut app = with_runs();
         press(&mut app, "0@");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn even_side_panels_80x24() {
+        let mut app = with_runs();
+        app.side_layout = SideLayout::Even;
         insta::assert_snapshot!(render(&app));
     }
 

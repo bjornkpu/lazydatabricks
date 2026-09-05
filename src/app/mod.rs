@@ -14,7 +14,7 @@ use std::time::Duration;
 
 pub use custom::{Context, CustomCommand, Output as CommandOutput, expand};
 pub use filter::{Filter, Me, Status};
-pub use focus::{ComputePanel, Panel, ScreenMode, Tab};
+pub use focus::{ComputePanel, Panel, ScreenMode, SideLayout, Tab};
 use jiff::tz::TimeZone;
 pub use keys::{Action, Keymap};
 pub use list::{Move, Selectable};
@@ -108,6 +108,8 @@ pub struct App {
     pub pipelines_error: Option<AppError>,
     /// Config: fetch and show `[4] Compute` at all.
     pub compute_panel: ComputePanel,
+    /// Config: whether the side panel in context is the tall one.
+    pub side_layout: SideLayout,
     /// Every cluster fetched. `compute` is the filtered view of this.
     pub all_compute: Vec<Cluster>,
     pub compute: Selectable<Cluster>,
@@ -206,6 +208,7 @@ impl App {
             all_compute: Vec::new(),
             compute: Selectable::default(),
             compute_panel: ComputePanel::from_config(config.compute),
+            side_layout: SideLayout::from_config(config.expand_focused),
             // The launch fetch is in flight, unless config turned the panel off.
             compute_inflight: config.compute.then_some(0),
             compute_fetched_at: None,

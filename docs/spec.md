@@ -864,6 +864,18 @@ messages (`ScrollLimit`, `ShellExited`) queue ahead of the channels instead of b
 *Done when:* `databricks jobs get {{job_id}}` on `J` shows the job's JSON in a popup, and a
 `terminal` command gets the keyboard and returns on Enter.
 
+### M35 — Expand the panel in context
+lazygit's `expandFocusedSidePanel`. Four side panels on a 24-row terminal left each list four
+rows. The list whose selection `[0]` shows now takes two height shares against one for each
+other list (lazygit's `expandedSidePanelWeight` default), and it is the *context* panel rather
+than the focused one, so moving into `[0]` and back does not reflow the column. Status keeps its
+fixed two lines. `expand_focused = false` in config restores the even split for anyone who would
+rather the layout never moved.
+
+*Teaches:* layout is a function of state like everything else; a ratio in a constraint is the
+whole feature.
+*Done when:* focusing `[3]` grows Pipelines and shrinks Jobs, and pressing `0` changes nothing.
+
 ---
 
 ## 9. Testing

@@ -12,6 +12,8 @@ use crate::error::AppError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+// Mirrors the TOML file: each bool is a user switch, and `App` turns them into enums.
+#[allow(clippy::struct_excessive_bools)]
 pub struct Config {
     /// Databricks CLI profile. `DATABRICKS_CONFIG_PROFILE` wins over this; `DEFAULT` otherwise.
     pub profile: Option<String>,
@@ -28,6 +30,9 @@ pub struct Config {
     pub status: Status,
     /// Show the `[4] Compute` panel (clusters and SQL warehouses). `false` never fetches them.
     pub compute: bool,
+    /// The side panel in context takes twice the height of the others (lazygit's
+    /// `expandFocusedSidePanel`). `false` shares the column evenly.
+    pub expand_focused: bool,
     /// Enable run-now and cancel in the `x` menu. Read-only without it (or `--allow-actions`).
     pub allow_actions: bool,
     /// Value of the `dev` tag that marks a job as mine. Derived from the email when unset.
@@ -62,6 +67,7 @@ impl Default for Config {
             filter: None,
             status: Status::All,
             compute: true,
+            expand_focused: true,
             allow_actions: false,
             dev_tag: None,
             me_aliases: Vec::new(),
@@ -243,6 +249,12 @@ mod tests {
         .unwrap_err();
         assert!(twice.contains("used twice"), "{twice}");
         assert!(parse("[[commands]]\nname = \"a\"\ncommand = \" \"").is_err());
+    }
+
+    #[test]
+    fn expand_focused_is_a_switch() {
+        assert!(parse("").unwrap().expand_focused);
+        assert!(!parse("expand_focused = false").unwrap().expand_focused);
     }
 
     #[test]
