@@ -26,6 +26,8 @@ pub struct Config {
     pub filter: Option<String>,
     /// Start showing `all` (default), `failed` or `active` rows only. `f` cycles it.
     pub status: Status,
+    /// Show the `[4] Compute` panel (clusters and SQL warehouses). `false` never fetches them.
+    pub compute: bool,
     /// Enable run-now and cancel in the `x` menu. Read-only without it (or `--allow-actions`).
     pub allow_actions: bool,
     /// Value of the `dev` tag that marks a job as mine. Derived from the email when unset.
@@ -57,6 +59,7 @@ impl Default for Config {
             mine_only: false,
             filter: None,
             status: Status::All,
+            compute: true,
             allow_actions: false,
             dev_tag: None,
             me_aliases: Vec::new(),
@@ -222,6 +225,8 @@ mod tests {
         assert_eq!(parse("theme = \"light\"").unwrap().theme, Theme::Light);
         assert_eq!(parse("sort = \"name\"").unwrap().sort, Sort::Name);
         assert_eq!(parse("status = \"failed\"").unwrap().status, Status::Failed);
+        assert!(parse("").unwrap().compute);
+        assert!(!parse("compute = false").unwrap().compute);
         assert_eq!(Sort::Created.next(), Sort::Activity);
         assert!(parse("theme = \"neon\"").is_err());
     }
