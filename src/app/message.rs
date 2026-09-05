@@ -120,6 +120,9 @@ pub enum Message {
     ScrollLimit(usize),
     /// The lines of the main panel's text that match the search, from the draw, for `n`/`N`.
     Matches(Vec<usize>),
+    /// `--job`: put the cursor on the first job whose name contains this, now or when the list
+    /// arrives.
+    SelectJob(String),
     /// The newest released version from GitHub, or why it could not be read.
     UpdateChecked(Result<String, AppError>),
     /// Who the token belongs to, as an email.

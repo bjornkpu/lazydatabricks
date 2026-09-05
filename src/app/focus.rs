@@ -37,6 +37,14 @@ impl Panel {
         }
     }
 
+    /// The panel `--focus` names, case-insensitively.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::SIDE
+            .into_iter()
+            .find(|panel| panel.name().eq_ignore_ascii_case(name.trim()))
+    }
+
     /// The panel a digit key focuses.
     #[must_use]
     pub const fn from_digit(digit: char) -> Option<Self> {

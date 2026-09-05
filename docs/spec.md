@@ -1135,6 +1135,16 @@ history. The list drops the job at once when Databricks confirms.
 *Teaches:* the cost of undoing decides the shape of the confirmation.
 *Done when:* a mistyped name deletes nothing and the right one removes the row.
 
+### M60 — Launch positioned
+lazygit's `-f path` opens on a context. `--focus pipelines` starts with `[3]` focused; `--job
+nightly` puts the cursor on the first job whose name contains it once the list arrives, runs and
+all. Both are messages queued ahead of the channels, the same path a key takes, so `main` learns
+nothing about panels beyond a name-to-digit lookup and a shell alias like `ldb-nightly` costs one
+line.
+
+*Teaches:* a launch flag is a message that arrives before the first key.
+*Done when:* `lazydatabricks --job aktorer` opens with its runs on screen.
+
 ---
 
 ## 9. Testing

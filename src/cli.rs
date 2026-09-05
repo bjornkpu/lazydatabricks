@@ -20,6 +20,12 @@ pub struct Cli {
     /// Config file to use instead of the platform default. Also `LAZYDATABRICKS_CONFIG`.
     #[arg(long)]
     pub config: Option<std::path::PathBuf>,
+    /// Start with this panel focused: status, jobs, pipelines or compute.
+    #[arg(long)]
+    pub focus: Option<String>,
+    /// Start with the cursor on the first job whose name contains this.
+    #[arg(long)]
+    pub job: Option<String>,
 }
 
 /// Non-interactive listings for scripts: the same models the TUI holds, as a JSON array.
@@ -58,6 +64,11 @@ mod tests {
         assert_eq!(with_config.config.as_deref(), Some(Path::new("team.toml")));
         let bare = Cli::try_parse_from(["lazydatabricks"]).unwrap();
         assert_eq!(bare.profile, None);
+        let positioned =
+            Cli::try_parse_from(["lazydatabricks", "--focus", "pipelines", "--job", "nightly"])
+                .unwrap();
+        assert_eq!(positioned.focus.as_deref(), Some("pipelines"));
+        assert_eq!(positioned.job.as_deref(), Some("nightly"));
         assert!(!bare.allow_actions);
         assert_eq!(bare.command, None);
         let runs = Cli::try_parse_from(["lazydatabricks", "-p", "dev", "runs", "42"]).unwrap();

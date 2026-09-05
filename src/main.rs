@@ -83,6 +83,20 @@ async fn main() -> Result<()> {
     for workspace in &workspaces {
         workspace.start(loaded.config.check_updates);
     }
+    // `--focus` and `--job` are the first messages the loop sees, so they go through `update`
+    // like keys would.
+    let mut startup = Vec::new();
+    if let Some(name) = &cli.focus {
+        let Some(panel) = app::Panel::from_name(name) else {
+            bail!("--focus {name:?}: use status, jobs, pipelines or compute");
+        };
+        startup.push(Message::Key(Key::Char(char::from(
+            b'0'.saturating_add(panel.number()),
+        ))));
+    }
+    if let Some(name) = cli.job {
+        startup.push(Message::SelectJob(name));
+    }
     let (input_tx, input_rx) = mpsc::channel(CHANNEL_CAPACITY);
     let paused = Arc::new(AtomicBool::new(false));
     spawn_input(input_tx, Arc::clone(&paused));
@@ -97,6 +111,7 @@ async fn main() -> Result<()> {
         &paused,
         &loaded,
         &known,
+        startup,
     )
     .await;
     ratatui::restore();
@@ -272,11 +287,12 @@ async fn run(
     paused: &AtomicBool,
     loaded: &config::Loaded,
     known: &[String],
+    startup: Vec<Message>,
 ) -> Result<()> {
     let mut active = 0;
     // Messages the loop itself produces (a scroll clamp, a finished terminal command) go through
-    // `update` like any other, ahead of the channels.
-    let mut pending = VecDeque::new();
+    // `update` like any other, ahead of the channels. The launch flags go first of all.
+    let mut pending: VecDeque<Message> = startup.into();
     loop {
         let Some(workspace) = workspaces.get_mut(active) else {
             bail!("no workspace {active}");

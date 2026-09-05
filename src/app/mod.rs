@@ -188,6 +188,8 @@ pub struct App {
     pub compare: Option<Run>,
     /// A newer release than this binary, once a check has found one.
     pub update: Option<String>,
+    /// `--job` waiting for the first jobs list.
+    pending_job: Option<String>,
     /// Error output of the viewed run's failed tasks, by task run id. Cleared with the run.
     pub run_outputs: HashMap<i64, Load<RunOutput>>,
     /// The job `runs` belongs to, or is being fetched for.
@@ -294,6 +296,7 @@ impl App {
             run_detail: Load::Idle,
             compare: None,
             update: None,
+            pending_job: None,
             run_outputs: HashMap::new(),
             runs_job: None,
             pending_runs: None,
@@ -361,6 +364,7 @@ impl App {
             Message::RunDetailLoaded(run) => self.on_run_detail_loaded(run, &mut commands),
             Message::ScrollLimit(limit) => self.main_scroll = self.main_scroll.min(limit),
             Message::Matches(matches) => self.matches = matches,
+            Message::SelectJob(name) => self.select_job(name),
             Message::UpdateChecked(result) => self.on_update_checked(result),
             Message::ShellFinished { name, output } => self.on_shell_finished(name, output),
             Message::ShellExited { name, detail } => {
@@ -373,12 +377,7 @@ impl App {
                 self.set_run_output(run_id, Load::Failed(error));
             }
             Message::RunDetailFailed { run_id, error } => self.on_run_detail_failed(run_id, error),
-            Message::ApiCalled(call) => {
-                if self.api_log.len() >= API_LOG_CAPACITY {
-                    self.api_log.pop_front();
-                }
-                self.api_log.push_back(call);
-            }
+            Message::ApiCalled(call) => self.on_api_called(call),
             Message::MeLoaded(email) => {
                 let mut me = Me::from_email(&email);
                 if let Some(tag) = &self.dev_tag {
@@ -554,6 +553,33 @@ impl App {
         self.loading = false;
         self.error = None;
         self.apply_filter();
+        if let Some(name) = self.pending_job.take() {
+            self.select_job(name);
+        }
+    }
+
+    /// `--job`: the cursor goes to the first job whose name contains `name`, case-insensitively,
+    /// once there is a list to search. An absent name leaves the cursor where it was and says so.
+    fn select_job(&mut self, name: String) {
+        if self.all_jobs.is_empty() && self.loading {
+            self.pending_job = Some(name);
+            return;
+        }
+        let needle = name.to_lowercase();
+        let found = self
+            .jobs
+            .items()
+            .iter()
+            .position(|job| job.settings.name.to_lowercase().contains(&needle));
+        match found {
+            Some(_) => {
+                self.jobs
+                    .select_where(|job| job.settings.name.to_lowercase().contains(&needle));
+                self.set_focus(Panel::Jobs);
+                self.select_runs();
+            }
+            None => self.notice = Some(format!("No job named like {name:?}")),
+        }
     }
 
     fn on_job_failed(&mut self, job_id: i64, error: &AppError) {
@@ -688,6 +714,14 @@ impl App {
             }
         }
         self.run_detail = Load::Loaded(run);
+    }
+
+    /// One more row in the API log; the oldest falls off past `API_LOG_CAPACITY`.
+    fn on_api_called(&mut self, call: ApiCall) {
+        if self.api_log.len() >= API_LOG_CAPACITY {
+            self.api_log.pop_front();
+        }
+        self.api_log.push_back(call);
     }
 
     /// Only the run still being viewed gets its failure shown; a stale reply is dropped.
@@ -3602,6 +3636,30 @@ pub mod tests {
         app.update(Message::JobDeleted { job_id: 1 });
         assert_eq!(names(&app), ["b", "c"]);
         assert_eq!(app.notice.as_deref(), Some("Deleted job: a"));
+    }
+
+    #[test]
+    fn select_job_waits_for_the_list_then_moves_the_cursor() {
+        let mut app = app();
+        app.update(Message::SelectJob("C".to_owned()));
+        assert_eq!(app.jobs.selected_index(), None, "nothing loaded yet");
+        app.update(Message::JobsLoaded(vec![
+            job(1, "a"),
+            job(2, "b"),
+            job(3, "c"),
+        ]));
+        assert_eq!(
+            app.jobs.selected_index(),
+            Some(2),
+            "case-insensitive, once loaded"
+        );
+        assert_eq!(app.runs_job, Some(3), "the runs follow");
+        app.update(Message::SelectJob("zzz".to_owned()));
+        assert_eq!(app.jobs.selected_index(), Some(2));
+        assert_eq!(app.notice.as_deref(), Some("No job named like \"zzz\""));
+        assert_eq!(Panel::from_name("Pipelines"), Some(Panel::Pipelines));
+        assert_eq!(Panel::from_name(" compute "), Some(Panel::Compute));
+        assert_eq!(Panel::from_name("main"), None);
     }
 
     #[test]

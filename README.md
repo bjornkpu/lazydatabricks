@@ -35,6 +35,7 @@ the exact login command.
 databricks auth login --host https://<workspace-url> -p dev
 lazydatabricks -p dev
 lazydatabricks -p dev,prod    # several workspaces in one window; p switches between them
+lazydatabricks --focus pipelines --job nightly   # start on a panel, cursor on a job
 ```
 
 Read-only by default. `--allow-actions` (or `allow_actions = true` in config) enables run-now,
