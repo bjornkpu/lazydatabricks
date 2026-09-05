@@ -4,7 +4,7 @@ expression: render(&app)
 ---
 "┌─[1]─Status──────────────┐┌─[0]─Runs - Detail ⠋───────────────────────────────┐"
 "│◐ dev → adb-1.azuredatabr││  Run ID           Started      Duration  Result   │"
-"│3 of 3 jobs · 0s┌ Keybindings ─ Main ────────────────────────┐       ◐ RUNNING│"
+"│3 of 3 jobs · 0s┌ Keybindings ─ Main ────────────────────────┐0m     ◐ RUNNING│"
 "└────────────────│  j/↓  next run                             │2s     ✓ SUCCESS│"
 "┌─[2]─Jobs by act│  k/↑  previous run                         │       ✗ FAILED │"
 "│ 2h ◐ [someone] │   ^D  ten runs down                        │                │"

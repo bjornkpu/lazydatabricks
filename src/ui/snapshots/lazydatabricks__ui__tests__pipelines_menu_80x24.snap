@@ -17,7 +17,7 @@ expression: render(&app)
 "│                  │Stop: [someone] aktorer_ingest          │                  │"
 "└──────────────────└──read-only: --allow-actions to enable──┘                  │"
 "┌─[3]─Pipelines by activit┐│                                                   │"
-"│✓ [someone] aktorer_inge…│└───────────────────────────────────────────────────┘"
+"│ 5d ✓ [someone] aktorer_…│└───────────────────────────────────────────────────┘"
 "│                         │┌─API log───────────────────────────────────────────┐"
 "│                         ││GET  /api/2.2/jobs/list?limit=25        200    84ms│"
 "│                         ││GET  /api/2.2/jobs/runs/list?job_id=1&… 200   131ms│"

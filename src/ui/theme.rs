@@ -72,7 +72,15 @@ pub const fn state_glyph(state: &RunState) -> (char, Color) {
             | LifeCycleState::Unknown,
             None,
         ) => ('?', Color::DarkGray),
-        (_, None) => ('◐', Color::Yellow),
+        // Not yet on a cluster: hollow, so a list tells "waiting" from "running".
+        (
+            LifeCycleState::Queued
+            | LifeCycleState::Pending
+            | LifeCycleState::Blocked
+            | LifeCycleState::Waiting,
+            None,
+        ) => ('◌', Color::Yellow),
+        (LifeCycleState::Running | LifeCycleState::Terminating, None) => ('◐', Color::Yellow),
     }
 }
 
@@ -82,6 +90,9 @@ pub fn pipeline_glyph(pipeline: &Pipeline) -> (char, Color) {
     match pipeline.latest_updates.first().map(|update| update.state) {
         Some(UpdateState::Completed) => ('✓', Color::Green),
         Some(UpdateState::Failed | UpdateState::Canceled) => ('✗', Color::Red),
+        Some(UpdateState::Queued | UpdateState::Created | UpdateState::WaitingForResources) => {
+            ('◌', Color::Yellow)
+        }
         Some(_) => ('◐', Color::Yellow),
         None => match pipeline.state {
             PipelineState::Failed => ('✗', Color::Red),
@@ -107,10 +118,20 @@ pub const fn state_result(state: &RunState) -> &'static str {
     }
 }
 
-/// Wall-clock start to end, when both are known.
+/// Wall-clock start to end when both are known; start to `now` while still going, so a running
+/// run shows a ticking elapsed time instead of `-`.
 #[must_use]
-pub fn run_duration(run: &Run) -> Option<SignedDuration> {
-    span(run.start_time, run.end_time)
+pub fn run_duration(run: &Run, now: Option<Timestamp>) -> Option<SignedDuration> {
+    elapsed(run.start_time, run.end_time, now)
+}
+
+#[must_use]
+pub fn elapsed(
+    start: Option<Timestamp>,
+    end: Option<Timestamp>,
+    now: Option<Timestamp>,
+) -> Option<SignedDuration> {
+    span(start, end.or(now))
 }
 
 #[must_use]
@@ -208,6 +229,9 @@ mod tests {
         assert_eq!(run_glyph(&run(1, 1, 2, Some(ResultState::Success))).0, '✓');
         assert_eq!(run_glyph(&run(1, 1, 2, Some(ResultState::Canceled))).0, '✗');
         assert_eq!(run_glyph(&run(1, 1, 0, None)).0, '◐');
+        let mut queued = run(1, 1, 0, None);
+        queued.state.life_cycle_state = LifeCycleState::Queued;
+        assert_eq!(run_glyph(&queued).0, '◌');
         assert_eq!(run_glyph(&run(1, 1, 2, None)).0, '?');
         assert_eq!(run_result(&run(1, 1, 0, None)), "RUNNING");
         assert_eq!(
@@ -222,6 +246,8 @@ mod tests {
         assert_eq!(pipeline_glyph(&pipeline).0, '✓');
         pipeline.latest_updates[0].state = UpdateState::Running;
         assert_eq!(pipeline_glyph(&pipeline).0, '◐');
+        pipeline.latest_updates[0].state = UpdateState::WaitingForResources;
+        assert_eq!(pipeline_glyph(&pipeline).0, '◌');
         pipeline.latest_updates.clear();
         assert_eq!(pipeline_glyph(&pipeline).0, '·');
         pipeline.state = PipelineState::Failed;
@@ -229,11 +255,21 @@ mod tests {
     }
 
     #[test]
-    fn running_run_has_no_duration() {
-        assert_eq!(run_duration(&run(1, 1000, 0, None)), None);
+    fn running_run_counts_from_start_to_now() {
         assert_eq!(
-            run_duration(&run(1, 1000, 73_000, None)),
-            Some(SignedDuration::from_secs(72))
+            run_duration(&run(1, 1000, 0, None), None),
+            None,
+            "no clock yet"
+        );
+        let now = Timestamp::from_millisecond(31_000).ok();
+        assert_eq!(
+            run_duration(&run(1, 1000, 0, None), now),
+            Some(SignedDuration::from_secs(30))
+        );
+        assert_eq!(
+            run_duration(&run(1, 1000, 73_000, None), now),
+            Some(SignedDuration::from_secs(72)),
+            "finished runs ignore the clock"
         );
     }
 }

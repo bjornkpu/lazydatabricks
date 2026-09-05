@@ -4,7 +4,7 @@ expression: render(&app)
 ---
 "┌─[1]─Status───────────────────────────┐┌─[0]─Runs - Detail ⠋──────────────────┐"
 "┌─[2]─Jobs by activity─────────────────┐│  Started      Duration  Result       │"
-"│ 2h ◐ [someone] okonomi_gold          ││› 01.09 10:08  -         ◐ RUNNING    │"
+"│ 2h ◐ [someone] okonomi_gold          ││› 01.09 10:08  2h00m     ◐ RUNNING    │"
 "│ 1d ✗ nightly_bronze_ingest           ││  31.08 10:08  1m12s     ✓ SUCCESS    │"
 "│    · weekly_report                   ││  30.08 10:08  57s       ✗ FAILED     │"
 "│                                      ││                                      │"

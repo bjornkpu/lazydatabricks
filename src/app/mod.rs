@@ -32,6 +32,8 @@ pub const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦'
 const RUNS_DEBOUNCE_TICKS: u8 = 3;
 /// API log entries kept; older ones fall off.
 const API_LOG_CAPACITY: usize = 200;
+/// Refetch period for the runs table while a run on it is still going: 5 s at `TICK`.
+const ACTIVE_POLL_TICKS: u64 = 50;
 /// Heartbeat period. The input thread sends `Message::Tick` this often; ages and TTLs count
 /// ticks, so tests drive time by sending ticks.
 pub const TICK: Duration = Duration::from_millis(100);
@@ -367,12 +369,18 @@ impl App {
         {
             self.refresh_pipelines(commands);
         }
+        // Active runs poll fast so the table moves on its own; settled ones wait the TTL.
+        let runs_ttl = if self.runs_active() {
+            self.runs_ttl_ticks.min(ACTIVE_POLL_TICKS)
+        } else {
+            self.runs_ttl_ticks
+        };
         if let Some(job_id) = self.runs_job
             && self.pending_runs.is_none()
             && self
                 .runs_cache
                 .get(&job_id)
-                .is_some_and(|cached| self.age_ticks(cached.at) >= self.runs_ttl_ticks)
+                .is_some_and(|cached| self.age_ticks(cached.at) >= runs_ttl)
         {
             self.refresh_runs(commands);
         }
@@ -527,6 +535,22 @@ impl App {
     #[must_use]
     pub fn spinner_glyph(&self) -> char {
         SPINNER.get(self.spinner).copied().unwrap_or(' ')
+    }
+
+    /// A run on screen is still going, in the table or opened in detail.
+    fn runs_active(&self) -> bool {
+        let table = match &self.runs {
+            Load::Loaded(runs) => runs
+                .items()
+                .iter()
+                .any(|run| run.state.life_cycle_state.is_active()),
+            Load::Idle | Load::Loading | Load::Failed(_) => false,
+        };
+        let detail = match &self.run_detail {
+            Load::Loaded(run) => run.state.life_cycle_state.is_active(),
+            Load::Idle | Load::Loading | Load::Failed(_) => false,
+        };
+        table || detail
     }
 
     /// A runs fetch is scheduled or in flight for the shown job.
@@ -1354,6 +1378,26 @@ pub mod tests {
         assert_eq!(
             ticks(&mut app, 1),
             vec![Command::FetchPipelines { max: 200 }]
+        );
+    }
+
+    #[test]
+    fn active_runs_poll_every_five_seconds() {
+        let mut app = with_active_run();
+        assert_eq!(ticks(&mut app, ACTIVE_POLL_TICKS - 1), vec![]);
+        assert_eq!(
+            ticks(&mut app, 1),
+            vec![Command::FetchRuns { job_id: 1 }],
+            "a running run on screen polls fast"
+        );
+        app.update(Message::RunsLoaded {
+            job_id: 1,
+            runs: vec![run(10, 1000, 2000, Some(ResultState::Success))],
+        });
+        assert_eq!(
+            ticks(&mut app, ACTIVE_POLL_TICKS),
+            vec![],
+            "settled: back to the TTL"
         );
     }
 

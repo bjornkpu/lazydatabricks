@@ -4,7 +4,7 @@ expression: render(&app)
 ---
 "┌─[1]─Status──────────────┐┌─[0]─Runs - Detail ⠋───────────────────────────────┐"
 "│✓ dev → adb-1.azuredatabr││  Run ID           Started      Duration  Result   │"
-"│mine only · 3 of 4 jobs ·││› 50851892761075   01.09 10:08  -         ◐ RUNNING│"
+"│mine only · 3 of 4 jobs ·││› 50851892761075   01.09 10:08  2h00m     ◐ RUNNING│"
 "└─────────────────────────┘│  50851892761073   31.08 10:08  1m12s     ✓ SUCCESS│"
 "┌─[2]─Jobs by activity────┐│  50851892761074   30.08 10:08  57s       ✗ FAILED │"
 "│ 2h ◐ [someone] okonomi_…││                                                   │"

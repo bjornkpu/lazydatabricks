@@ -86,7 +86,8 @@ fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
             || "-".to_owned(),
             |ts| theme::clock(ts, &app.tz, &app.date_format),
         );
-        let duration = theme::run_duration(run).map_or_else(|| "-".to_owned(), theme::duration);
+        let duration =
+            theme::run_duration(run, app.now).map_or_else(|| "-".to_owned(), theme::duration);
         let result = Line::from(vec![
             Span::styled(glyph.to_string(), Style::new().fg(color)),
             Span::raw(format!(" {}", theme::run_result(run))),
@@ -173,7 +174,7 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
         ),
         field(
             "Duration",
-            theme::run_duration(run).map_or_else(dash, theme::duration),
+            theme::run_duration(run, app.now).map_or_else(dash, theme::duration),
         ),
         result,
         field(
@@ -201,8 +202,8 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
         let started = task
             .start_time
             .map_or_else(dash, |ts| theme::clock(ts, &app.tz, &app.date_format));
-        let duration =
-            theme::span(task.start_time, task.end_time).map_or_else(dash, theme::duration);
+        let duration = theme::elapsed(task.start_time, task.end_time, app.now)
+            .map_or_else(dash, theme::duration);
         Row::new([
             Cell::from(task.task_key.clone()),
             Cell::from(started),

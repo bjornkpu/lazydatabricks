@@ -120,10 +120,23 @@ pub fn pipelines(app: &App, area: Rect, frame: &mut Frame) {
         }
         block = stale(block, error, &counter, area, &palette);
     }
-    let name_width = usize::from(area.width).saturating_sub(2 + 2);
+    // Same shape as a job row: age of the latest update, its state, the name.
+    let name_width = usize::from(area.width).saturating_sub(2 + 6);
     let rows = app.pipelines.items().iter().map(|pipeline| {
         let (glyph, color) = theme::pipeline_glyph(pipeline);
+        let created = pipeline
+            .latest_updates
+            .first()
+            .and_then(|update| update.creation_time);
+        let age = match (created, app.now) {
+            (Some(created), Some(now)) => theme::age_short(now.duration_since(created)),
+            _ => String::new(),
+        };
         Line::from(vec![
+            Span::styled(
+                format!("{age:>3} "),
+                Style::new().add_modifier(Modifier::DIM),
+            ),
             Span::styled(glyph.to_string(), Style::new().fg(color)),
             Span::raw(format!(" {}", chrome::fit(&pipeline.name, name_width))),
         ])
