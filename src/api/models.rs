@@ -65,6 +65,13 @@ pub struct CronSchedule {
     pub pause_status: Option<String>,
 }
 
+impl CronSchedule {
+    #[must_use]
+    pub fn is_paused(&self) -> bool {
+        self.pause_status.as_deref() == Some("PAUSED")
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Deployment {
     #[serde(default)]

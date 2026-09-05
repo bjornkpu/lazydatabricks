@@ -19,6 +19,14 @@ pub enum MenuItem {
         job_id: i64,
         name: String,
     },
+    PauseSchedule {
+        job_id: i64,
+        name: String,
+    },
+    ResumeSchedule {
+        job_id: i64,
+        name: String,
+    },
     RepairRun {
         job_id: i64,
         run_id: i64,
@@ -66,6 +74,8 @@ impl MenuItem {
         match self {
             Self::RunNow { name, .. } => format!("Run now: {name}"),
             Self::RunWith { name, .. } => format!("Run with parameters: {name}"),
+            Self::PauseSchedule { name, .. } => format!("Pause schedule: {name}"),
+            Self::ResumeSchedule { name, .. } => format!("Resume schedule: {name}"),
             Self::RepairRun { run_id, .. } => format!("Repair run {run_id}"),
             Self::CancelRun { run_id, .. } => format!("Cancel run {run_id}"),
             Self::StartUpdate { name, .. } => format!("Start update: {name}"),
@@ -84,6 +94,8 @@ impl MenuItem {
         match self {
             Self::RunNow { name, .. } => format!("Start a run of \"{name}\" now?"),
             Self::RunWith { name, .. } => format!("Parameters for \"{name}\""),
+            Self::PauseSchedule { name, .. } => format!("Pause the schedule of \"{name}\"?"),
+            Self::ResumeSchedule { name, .. } => format!("Resume the schedule of \"{name}\"?"),
             Self::RepairRun { run_id, .. } => format!("Re-run the failed tasks of run {run_id}?"),
             Self::CancelRun { run_id, .. } => format!("Cancel run {run_id}?"),
             Self::StartUpdate { name, .. } => format!("Start an update of \"{name}\" now?"),
@@ -104,6 +116,14 @@ impl MenuItem {
             Self::RunNow { job_id, .. } | Self::RunWith { job_id, .. } => Command::RunNow {
                 job_id: *job_id,
                 params: BTreeMap::new(),
+            },
+            Self::PauseSchedule { job_id, .. } => Command::SetSchedulePaused {
+                job_id: *job_id,
+                paused: true,
+            },
+            Self::ResumeSchedule { job_id, .. } => Command::SetSchedulePaused {
+                job_id: *job_id,
+                paused: false,
             },
             Self::RepairRun { job_id, run_id } => Command::RepairRun {
                 job_id: *job_id,

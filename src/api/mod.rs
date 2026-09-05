@@ -258,6 +258,25 @@ impl Client {
         Ok(started.run_id)
     }
 
+    /// Pauses or resumes the schedule of `job_id`. `jobs/update` replaces `schedule` wholesale,
+    /// so the current cron and time zone are read first and sent back with the new status.
+    pub async fn set_schedule_paused(&self, job_id: i64, paused: bool) -> Result<(), AppError> {
+        let job = self.get_job(job_id).await?;
+        let Some(mut schedule) = job.settings.schedule else {
+            return Err(AppError::NoSchedule {
+                job: job.settings.name,
+            });
+        };
+        schedule.pause_status = Some(if paused { "PAUSED" } else { "UNPAUSED" }.to_owned());
+        let _: Value = self
+            .post(
+                "/api/2.2/jobs/update",
+                json!({ "job_id": job_id, "new_settings": { "schedule": schedule } }),
+            )
+            .await?;
+        Ok(())
+    }
+
     /// Re-runs every failed task of `run_id` inside the same run.
     pub async fn repair_run(&self, run_id: i64) -> Result<(), AppError> {
         let _: Value = self

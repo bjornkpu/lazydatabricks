@@ -886,6 +886,20 @@ portrait. No config: the shape of the window is the setting. `+` still takes a p
 *Teaches:* read the terminal size every frame and let the layout follow; nothing else has to know.
 *Done when:* 50×40 stacks the panels and 80×24 does not.
 
+### M37 — Pause and resume schedules
+lazydocker's `p` pause, for the one thing an on-call person does to a job at night: stop it
+firing. *Pause schedule* and *Resume schedule* join the `x` menu for a job, behind the same
+`allow_actions` gate and confirmation as run-now. `jobs/update` replaces `schedule` wholesale,
+so the client reads the job first and sends the cron and time zone back with the new
+`pause_status`; a job without a schedule gets a plain error naming it. The list response carries
+no schedule, so an unopened job offers both items and Databricks settles which applies; once
+`jobs/get` has been seen, only the right one shows. A paused job carries `‖` before its name in
+`[2]`, and the Detail tab already said "(paused)".
+
+*Teaches:* a PATCH-shaped API that is really a PUT wants a read before the write, and that
+belongs in the client, not in `update`.
+*Done when:* a paused job stops appearing in the morning's runs and shows `‖` in the list.
+
 ---
 
 ## 9. Testing

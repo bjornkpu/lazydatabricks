@@ -338,6 +338,7 @@ impl App {
             Message::RunCancelled { job_id, run_id } => {
                 self.on_run_cancelled(job_id, run_id, &mut commands);
             }
+            Message::SchedulePaused { job_id, paused } => self.on_schedule_paused(job_id, paused),
             Message::RunRepaired { job_id, run_id } => {
                 self.on_run_repaired(job_id, run_id, &mut commands);
             }
@@ -719,6 +720,28 @@ impl App {
         if self.runs_job == Some(job_id) {
             self.refresh_runs(commands);
         }
+    }
+
+    /// The pause status changed. Patched into the job where its schedule is known; the list
+    /// response carries no schedule, so an unopened job just gets the notice.
+    fn on_schedule_paused(&mut self, job_id: i64, paused: bool) {
+        let mut name = None;
+        for job in self
+            .all_jobs
+            .iter_mut()
+            .chain(self.jobs.items_mut().iter_mut())
+            .filter(|job| job.id == job_id)
+        {
+            name = Some(job.settings.name.clone());
+            if let Some(schedule) = &mut job.settings.schedule {
+                schedule.pause_status = Some(if paused { "PAUSED" } else { "UNPAUSED" }.to_owned());
+            }
+        }
+        let what = if paused { "paused" } else { "resumed" };
+        self.notice = Some(name.map_or_else(
+            || format!("Schedule {what}"),
+            |name| format!("Schedule {what}: {name}"),
+        ));
     }
 
     /// Repair accepted. Databricks reuses the run id; until the refetch, the run reads as pending.
@@ -1260,6 +1283,22 @@ impl App {
                     .map(cancel),
             );
         }
+        // The list response carries no schedule: until `jobs/get` has been seen, offer both
+        // and let Databricks say if there is nothing to pause.
+        let pause = MenuItem::PauseSchedule {
+            job_id: job.id,
+            name: job.settings.name.clone(),
+        };
+        let resume = MenuItem::ResumeSchedule {
+            job_id: job.id,
+            name: job.settings.name.clone(),
+        };
+        match &job.settings.schedule {
+            Some(schedule) if schedule.is_paused() => items.push(resume),
+            Some(_) => items.push(pause),
+            None if self.detailed.contains(&job.id) => {}
+            None => items.extend([pause, resume]),
+        }
         items
     }
 
@@ -1669,8 +1708,8 @@ pub mod tests {
 
     use super::*;
     use crate::api::models::{
-        JobSettings, LifeCycleState, PipelineState, PipelineUpdate, ResultState, RunState, TaskRun,
-        UpdateState,
+        CronSchedule, JobSettings, LifeCycleState, PipelineState, PipelineUpdate, ResultState,
+        RunState, TaskRun, UpdateState,
     };
     use crate::config::Config;
 
@@ -1926,7 +1965,7 @@ pub mod tests {
                 confirm: false,
             })
         );
-        press(&mut app, "jj");
+        press(&mut app, "jjjj");
         let commands = app.update(key(Key::Enter));
         assert_eq!(
             commands,
@@ -2027,6 +2066,75 @@ pub mod tests {
             detail: "exit status: 0".to_owned(),
         });
         assert_eq!(app.notice.as_deref(), Some("Deploy: exit status: 0"));
+    }
+
+    #[test]
+    fn menu_offers_pause_or_resume_by_schedule_state() {
+        let mut app = loaded();
+        let labels = |app: &App| -> Vec<String> {
+            let InputMode::Menu { items, .. } = &app.input else {
+                panic!("{:?}", app.input);
+            };
+            items.iter().map(MenuItem::label).collect()
+        };
+        press(&mut app, "x");
+        assert_eq!(
+            labels(&app),
+            [
+                "Run now: a",
+                "Run with parameters: a",
+                "Pause schedule: a",
+                "Resume schedule: a"
+            ],
+            "schedule unknown: both"
+        );
+        app.update(key(Key::Esc));
+        let mut detailed = job(1, "a");
+        detailed.settings.schedule = Some(CronSchedule {
+            quartz_cron_expression: "0 0 4 * * ?".to_owned(),
+            timezone_id: "Europe/Oslo".to_owned(),
+            pause_status: Some("UNPAUSED".to_owned()),
+        });
+        app.update(Message::JobLoaded(detailed.clone()));
+        press(&mut app, "x");
+        assert!(labels(&app).contains(&"Pause schedule: a".to_owned()));
+        assert!(!labels(&app).contains(&"Resume schedule: a".to_owned()));
+        press(&mut app, "jj");
+        app.allow_actions = true;
+        app.update(key(Key::Enter));
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![Command::SetSchedulePaused {
+                job_id: 1,
+                paused: true
+            }]
+        );
+        app.update(Message::SchedulePaused {
+            job_id: 1,
+            paused: true,
+        });
+        assert_eq!(app.notice.as_deref(), Some("Schedule paused: a"));
+        assert!(
+            app.jobs
+                .selected()
+                .unwrap()
+                .settings
+                .schedule
+                .as_ref()
+                .unwrap()
+                .is_paused()
+        );
+        press(&mut app, "x");
+        assert!(labels(&app).contains(&"Resume schedule: a".to_owned()));
+        assert!(!labels(&app).contains(&"Pause schedule: a".to_owned()));
+        app.update(key(Key::Esc));
+        detailed.settings.schedule = None;
+        app.update(Message::JobLoaded(detailed));
+        press(&mut app, "x");
+        assert!(
+            !labels(&app).iter().any(|label| label.contains("schedule")),
+            "known to have no schedule: neither"
+        );
     }
 
     #[test]
@@ -2779,16 +2887,24 @@ pub mod tests {
                         job_id: 1,
                         run_id: 10
                     },
+                    MenuItem::PauseSchedule {
+                        job_id: 1,
+                        name: "a".to_owned()
+                    },
+                    MenuItem::ResumeSchedule {
+                        job_id: 1,
+                        name: "a".to_owned()
+                    },
                 ],
                 selected: 0,
             }
         );
-        press(&mut app, "jjjj");
+        press(&mut app, "jjjjjj");
         assert!(
-            matches!(app.input, InputMode::Menu { selected: 2, .. }),
+            matches!(app.input, InputMode::Menu { selected: 4, .. }),
             "clamped at the end"
         );
-        press(&mut app, "kk");
+        press(&mut app, "kkkk");
         assert!(matches!(app.input, InputMode::Menu { selected: 0, .. }));
         press(&mut app, "q");
         assert!(
@@ -3310,8 +3426,8 @@ pub mod tests {
         let mut app = with_active_run();
         press(&mut app, "0jx");
         assert!(
-            matches!(&app.input, InputMode::Menu { items, .. } if items.len() == 2),
-            "run 9 succeeded, so only the two run-now entries"
+            matches!(&app.input, InputMode::Menu { items, .. } if !items.iter().any(|item| matches!(item, MenuItem::CancelRun { .. }))),
+            "run 9 succeeded, so nothing to cancel"
         );
         app.update(key(Key::Esc));
         press(&mut app, "kx");
@@ -3364,7 +3480,9 @@ pub mod tests {
         assert_eq!(app.notice, Some("Repair requested for run 10".to_owned()));
         // From the table, only the row under the cursor; run 9 succeeded.
         press(&mut app, "0jx");
-        assert!(matches!(&app.input, InputMode::Menu { items, .. } if items.len() == 2));
+        assert!(
+            matches!(&app.input, InputMode::Menu { items, .. } if !items.iter().any(|item| matches!(item, MenuItem::RepairRun { .. })))
+        );
     }
 
     #[test]

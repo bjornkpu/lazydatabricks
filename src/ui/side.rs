@@ -82,9 +82,21 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
             _ => String::new(),
         };
         let (glyph, color) = latest.map_or(('·', Color::DarkGray), theme::run_glyph);
+        // `‖` before the name when the schedule is known to be paused.
+        let paused = job
+            .settings
+            .schedule
+            .as_ref()
+            .is_some_and(crate::api::models::CronSchedule::is_paused);
+        let (mark, name_width) = if paused {
+            (" ‖", name_width.saturating_sub(2))
+        } else {
+            ("", name_width)
+        };
         Line::from(vec![
             Span::styled(format!("{age:>3} "), theme::dim(app)),
             Span::styled(glyph.to_string(), theme::tint(app, color)),
+            Span::styled(mark, theme::dim(app)),
             Span::raw(format!(" {}", chrome::fit(&job.settings.name, name_width))),
         ])
     });

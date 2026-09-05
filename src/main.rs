@@ -196,6 +196,9 @@ impl Workspace {
             Command::CancelRun { job_id, run_id } => {
                 tokio::spawn(cancel_run(client(), tx(), job_id, run_id));
             }
+            Command::SetSchedulePaused { job_id, paused } => {
+                tokio::spawn(set_schedule_paused(client(), tx(), job_id, paused));
+            }
             Command::StartUpdate { pipeline_id } => {
                 tokio::spawn(start_update(client(), tx(), pipeline_id));
             }
@@ -466,6 +469,19 @@ async fn run_now(
 async fn repair_run(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id: i64, run_id: i64) {
     let message = match client.repair_run(run_id).await {
         Ok(()) => Message::RunRepaired { job_id, run_id },
+        Err(error) => Message::ActionFailed(error),
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn set_schedule_paused(
+    client: Arc<api::Client>,
+    tx: mpsc::Sender<Message>,
+    job_id: i64,
+    paused: bool,
+) {
+    let message = match client.set_schedule_paused(job_id, paused).await {
+        Ok(()) => Message::SchedulePaused { job_id, paused },
         Err(error) => Message::ActionFailed(error),
     };
     let _ = tx.send(message).await;

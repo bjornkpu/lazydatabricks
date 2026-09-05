@@ -331,6 +331,20 @@ mod tests {
     }
 
     #[test]
+    fn paused_job_row_80x24() {
+        let mut app = with_runs();
+        let mut paused = job(2, "nightly_bronze_ingest");
+        paused.settings.schedule = Some(crate::api::models::CronSchedule {
+            quartz_cron_expression: "0 0 4 * * ?".to_owned(),
+            timezone_id: "Europe/Oslo".to_owned(),
+            pause_status: Some("PAUSED".to_owned()),
+        });
+        app.update(Message::JobLoaded(paused));
+        press(&mut app, "jx");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn even_side_panels_80x24() {
         let mut app = with_runs();
         app.side_layout = SideLayout::Even;

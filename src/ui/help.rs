@@ -85,7 +85,10 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             (k(Action::MineOnly), "toggle mine only"),
             (k(Action::StatusFilter), "cycle status: all, failed, active"),
             (k(Action::Open), "focus the main panel"),
-            (k(Action::Menu), "actions menu"),
+            (
+                k(Action::Menu),
+                "actions menu: run, pause schedule, repair, cancel",
+            ),
             (k(Action::Refresh), "refresh jobs"),
             (k(Action::Browse), "open job in browser"),
             (k(Action::Copy), "copy job URL"),

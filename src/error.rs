@@ -54,6 +54,8 @@ pub enum AppError {
     Json { path: String, detail: String },
     #[error("could not {what}: {detail}")]
     Shell { what: String, detail: String },
+    #[error("{job} has no schedule to pause or resume")]
+    NoSchedule { job: String },
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -87,6 +89,7 @@ impl AppError {
             | Self::NoHost { .. }
             | Self::NoCfg { .. }
             | Self::Shell { .. }
+            | Self::NoSchedule { .. }
             | Self::Internal(_) => self.to_string(),
         }
     }

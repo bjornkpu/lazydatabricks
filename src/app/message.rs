@@ -119,6 +119,11 @@ pub enum Message {
         job_id: i64,
         run_id: i64,
     },
+    /// `jobs/update` accepted the new pause status.
+    SchedulePaused {
+        job_id: i64,
+        paused: bool,
+    },
     /// `runs/repair` accepted; the failed tasks run again inside the same run id.
     RunRepaired {
         job_id: i64,
@@ -175,6 +180,11 @@ pub enum Command {
     /// Full settings of one job, for the Detail tab.
     FetchJob {
         job_id: i64,
+    },
+    /// Pause or resume a job's schedule via `jobs/update`.
+    SetSchedulePaused {
+        job_id: i64,
+        paused: bool,
     },
     /// `run-now`, with `job_parameters` when `params` is not empty.
     RunNow {
