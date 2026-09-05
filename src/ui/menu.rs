@@ -11,7 +11,12 @@ use crate::app::{App, InputMode, MenuItem};
 pub fn draw(app: &App, frame: &mut Frame) {
     match &app.input {
         InputMode::Menu { items, selected } => menu(app, items, *selected, frame),
-        InputMode::Confirm(item) => confirm(app, item, frame),
+        InputMode::Confirm(item) => confirm(app, &item.confirmation(), frame),
+        InputMode::ConfirmActions => confirm(
+            app,
+            "Enable run, repair, cancel and start for this session?",
+            frame,
+        ),
         InputMode::Params { name, text, .. } => params(app, name, text, frame),
         InputMode::Normal | InputMode::Filter | InputMode::Help => {}
     }
@@ -49,8 +54,7 @@ fn menu(app: &App, items: &[MenuItem], selected: usize, frame: &mut Frame) {
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-fn confirm(app: &App, item: &MenuItem, frame: &mut Frame) {
-    let question = item.confirmation();
+fn confirm(app: &App, question: &str, frame: &mut Frame) {
     let footer = "y: yes │ any other key: no";
     let width = question.chars().count().max(footer.chars().count());
     let area = chrome::centered(chrome::columns(width), chrome::rows(1), frame.area());

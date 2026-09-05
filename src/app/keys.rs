@@ -44,6 +44,8 @@ pub enum Action {
     StatusFilter,
     PageDown,
     PageUp,
+    /// Enable (after a confirmation) or disable actions for this session.
+    ToggleActions,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -83,6 +85,7 @@ impl Default for Keymap {
             (Action::StatusFilter, vec![Key::Char('f')]),
             (Action::PageDown, vec![Key::Ctrl('d')]),
             (Action::PageUp, vec![Key::Ctrl('u')]),
+            (Action::ToggleActions, vec![Key::Char('A')]),
         ]))
     }
 }

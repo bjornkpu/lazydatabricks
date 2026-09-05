@@ -115,6 +115,10 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
         (k(Action::RefreshAll), "refresh everything"),
         (k(Action::ScreenMode), "cycle screen mode"),
         (k(Action::ToggleLog), "toggle the API log"),
+        (
+            k(Action::ToggleActions),
+            "enable or disable actions this session",
+        ),
         (k(Action::Help), "this list"),
         (k(Action::Quit), "quit"),
     ]);

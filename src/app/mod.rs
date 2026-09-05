@@ -325,6 +325,13 @@ impl App {
             InputMode::Menu { .. } => self.menu_key(key),
             InputMode::Confirm(_) => self.confirm_key(key, commands),
             InputMode::Params { .. } => self.params_key(key, commands),
+            InputMode::ConfirmActions => {
+                self.input = InputMode::Normal;
+                if key == Key::Char('y') {
+                    self.allow_actions = true;
+                    self.notice = Some("Actions enabled for this session".to_owned());
+                }
+            }
             InputMode::Help => {
                 if matches!(key, Key::Esc | Key::Char('?' | 'q')) {
                     self.input = InputMode::Normal;
@@ -740,6 +747,7 @@ impl App {
             }
             Action::Menu => self.open_menu(),
             Action::Help => self.input = InputMode::Help,
+            Action::ToggleActions => self.toggle_actions(),
             Action::Sort => {
                 self.sort = self.sort.next();
                 self.apply_filter();
@@ -773,15 +781,7 @@ impl App {
                     other => format!("Showing {} only", other.as_str()),
                 });
             }
-            Action::Refresh => match self.focus {
-                Panel::Main => self.refresh_runs(commands),
-                Panel::Jobs => self.refresh_jobs(commands),
-                Panel::Pipelines => self.refresh_pipelines(commands),
-                Panel::Status => {
-                    self.refresh_jobs(commands);
-                    self.refresh_pipelines(commands);
-                }
-            },
+            Action::Refresh => self.refresh_focused(commands),
             Action::RefreshAll => {
                 self.refresh_jobs(commands);
                 self.refresh_pipelines(commands);
@@ -815,6 +815,29 @@ impl App {
             Action::Last => self.move_cursor(Move::Last),
             Action::NextTab => self.next_tab(),
             Action::PrevTab => self.prev_tab(),
+        }
+    }
+
+    /// `A`: off at once, on only after a yes.
+    fn toggle_actions(&mut self) {
+        if self.allow_actions {
+            self.allow_actions = false;
+            self.notice = Some("Actions disabled".to_owned());
+        } else {
+            self.input = InputMode::ConfirmActions;
+        }
+    }
+
+    /// `r`: refetch what the focused panel shows.
+    fn refresh_focused(&mut self, commands: &mut Vec<Command>) {
+        match self.focus {
+            Panel::Main => self.refresh_runs(commands),
+            Panel::Jobs => self.refresh_jobs(commands),
+            Panel::Pipelines => self.refresh_pipelines(commands),
+            Panel::Status => {
+                self.refresh_jobs(commands);
+                self.refresh_pipelines(commands);
+            }
         }
     }
 
@@ -2508,6 +2531,31 @@ pub mod tests {
         // From the table, only the row under the cursor; run 9 succeeded.
         press(&mut app, "0jx");
         assert!(matches!(&app.input, InputMode::Menu { items, .. } if items.len() == 2));
+    }
+
+    #[test]
+    fn capital_a_enables_actions_after_a_yes() {
+        let mut app = with_active_run();
+        press(&mut app, "A");
+        assert_eq!(app.input, InputMode::ConfirmActions);
+        press(&mut app, "n");
+        assert!(!app.allow_actions, "anything but y leaves it off");
+        press(&mut app, "Ay");
+        assert!(app.allow_actions);
+        assert_eq!(
+            app.notice,
+            Some("Actions enabled for this session".to_owned())
+        );
+        press(&mut app, "x");
+        app.update(key(Key::Enter));
+        assert!(
+            matches!(app.input, InputMode::Confirm(_)),
+            "the menu now confirms"
+        );
+        app.update(key(Key::Esc));
+        press(&mut app, "A");
+        assert!(!app.allow_actions, "off again without a question");
+        assert_eq!(app.input, InputMode::Normal);
     }
 
     #[test]

@@ -113,6 +113,8 @@ pub enum InputMode {
     },
     /// An entry was chosen; `y` sends it, anything else backs out.
     Confirm(MenuItem),
+    /// `A` pressed in a read-only session: `y` enables actions until exit.
+    ConfirmActions,
     /// *Run with parameters* chosen: one line of `key=value` pairs, `Enter` sends.
     Params {
         job_id: i64,
