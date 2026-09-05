@@ -85,7 +85,7 @@ mod tests {
 
     use super::*;
     use crate::api::models::ResultState;
-    use crate::app::tests::{api_call, app, job, pipeline, run, theirs};
+    use crate::app::tests::{api_call, app, job, pipeline, run, task, theirs};
     use crate::app::{Key, Message};
     use crate::config::Theme;
     use crate::error::AppError;
@@ -390,6 +390,32 @@ mod tests {
         let detail: crate::api::models::Run =
             serde_json::from_str(include_str!("../../tests/fixtures/run_get.json")).unwrap();
         app.update(Message::RunDetailLoaded(detail));
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn run_detail_failed_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "0j");
+        app.update(Message::Key(Key::Enter));
+        let mut detail: crate::api::models::Run =
+            serde_json::from_str(include_str!("../../tests/fixtures/run_get.json")).unwrap();
+        detail.state.result_state = Some(ResultState::Failed);
+        detail.state.state_message = "Task endring_sluttdato_fakta failed".to_owned();
+        detail.tasks[1] = task(
+            detail.tasks[1].run_id,
+            "endring_sluttdato_fakta",
+            Some(ResultState::Failed),
+        );
+        let task_run_id = detail.tasks[1].run_id;
+        app.update(Message::RunDetailLoaded(detail));
+        insta::assert_snapshot!(render(&app));
+        let output =
+            serde_json::from_str(include_str!("../../tests/fixtures/run_output.json")).unwrap();
+        app.update(Message::RunOutputLoaded {
+            run_id: task_run_id,
+            output,
+        });
         insta::assert_snapshot!(render(&app));
     }
 

@@ -5,9 +5,11 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState};
+use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState, Wrap};
 
+use super::theme::Palette;
 use super::{chrome, theme};
+use crate::api::models::Run;
 use crate::app::{App, Load, Panel, Tab};
 
 pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
@@ -121,8 +123,20 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
     };
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let [fields_area, tasks_area] =
-        Layout::vertical([Constraint::Length(7), Constraint::Fill(1)]).areas(inner);
+    let errors = task_errors(app, run, &palette);
+    // With failures to show, the task table gives up the lower half to them.
+    let tasks_height = if errors.is_empty() {
+        Constraint::Fill(1)
+    } else {
+        let rows = u16::try_from(run.tasks.len().saturating_add(1)).unwrap_or(u16::MAX);
+        Constraint::Length(rows.min(inner.height / 2))
+    };
+    let [fields_area, tasks_area, errors_area] =
+        Layout::vertical([Constraint::Length(7), tasks_height, Constraint::Fill(1)]).areas(inner);
+    frame.render_widget(
+        Paragraph::new(errors).wrap(Wrap { trim: false }),
+        errors_area,
+    );
     let dash = || "-".to_owned();
     let (glyph, color) = theme::run_glyph(run);
     let result = Line::from(vec![
@@ -189,6 +203,57 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
         Constraint::Length(12),
     ];
     frame.render_widget(Table::new(rows, widths).header(header), tasks_area);
+}
+
+/// Why each failed task failed: its state message, then the error and traceback from
+/// `runs/get-output` as they arrive. Empty when every task succeeded.
+// ponytail: no scrolling; the error line comes first and a long traceback is what `o` is for.
+fn task_errors(app: &App, run: &Run, palette: &Palette) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    for task in run.tasks.iter().filter(|task| task.state.is_failure()) {
+        lines.push(Line::from(vec![
+            Span::styled(
+                task.task_key.clone(),
+                Style::new().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("  {}", task.state.state_message),
+                Style::new().add_modifier(Modifier::DIM),
+            ),
+        ]));
+        match app.run_outputs.get(&task.run_id) {
+            Some(Load::Loaded(output)) => {
+                let error = Style::new().fg(palette.error);
+                let dim = Style::new().add_modifier(Modifier::DIM);
+                let text = |s: &Option<String>, style| {
+                    s.iter()
+                        .flat_map(|s| s.lines())
+                        .map(|line| Line::styled(line.to_owned(), style))
+                        .collect::<Vec<_>>()
+                };
+                let mut body = text(&output.error, error);
+                body.extend(text(&output.error_trace, dim));
+                if body.is_empty() {
+                    body.push(Line::from("no error output"));
+                }
+                lines.extend(body);
+            }
+            Some(Load::Failed(error)) => {
+                lines.push(Line::styled(
+                    error.to_string(),
+                    Style::new().fg(palette.error),
+                ));
+            }
+            Some(Load::Loading | Load::Idle) | None => {
+                lines.push(Line::from(format!(
+                    "{} fetching output…",
+                    app.spinner_glyph()
+                )));
+            }
+        }
+        lines.push(Line::default());
+    }
+    lines
 }
 
 /// The latest updates Databricks lists with the pipeline. No extra call; a handful of rows.

@@ -1,0 +1,28 @@
+---
+source: src/ui/mod.rs
+expression: render(&app)
+---
+"┌─[1]─Status──────────────┐┌─[0]─Runs - Detail › run 50851892761073 ⠋──────────┐"
+"│◐ dev → adb-1.azuredatabr││Run ID         50851892761073                      │"
+"│3 of 3 jobs · 0s ago     ││Started        08/31 10:08                         │"
+"└─────────────────────────┘│Duration       1m12s                               │"
+"┌─[2]─Jobs by activity────┐│Result         ✗ FAILED                            │"
+"│ 2h ◐ [someone] okonomi_g││Message        Task endring_sluttdato_fakta failed │"
+"│ 1d ✗ nightly_bronze_inge││URL            https://adb-1.azuredatabricks.net/?o│"
+"│    · weekly_report      ││                                                   │"
+"│                         ││Task            Started      Duration  Result      │"
+"│                         ││v1compat        08/31 10:08  44s       ✓ SUCCESS   │"
+"│                         ││endring_sluttda 08/31 10:08  26s       ✗ FAILED    │"
+"│                         ││endring_sluttdato_fakta  Workload failed, see run  │"
+"│                         ││output for details                                 │"
+"└───────────────────1 of 3┘│AnalysisException: [TABLE_OR_VIEW_NOT_FOUND] The   │"
+"┌─[3]─Pipelines ⠋ by activ┐│table or view `silver`.`sluttdato` cannot be found.│"
+"│                         │└───────────────────────────────────────────────────┘"
+"│                         │┌─API log───────────────────────────────────────────┐"
+"│                         ││GET  /api/2.2/jobs/list?limit=25        200    84ms│"
+"│                         ││GET  /api/2.2/jobs/runs/list?job_id=1&… 200   131ms│"
+"│                         ││                                                   │"
+"│                         ││                                                   │"
+"│                         ││                                                   │"
+"└───────────────────0 of 0┘└───────────────────────────────────────────────────┘"
+" Select: j/k │ Open: Enter │ Back: Esc │ Actions: x │ Quit: q │ Keys: ?   v0.1.0"

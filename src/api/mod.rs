@@ -14,7 +14,7 @@ use crate::app::{ApiCall, Message};
 use crate::error::AppError;
 use auth::Token;
 use models::{
-    Job, JobsList, Pipeline, PipelinesList, Run, RunNowResponse, RunsList, ScimMe,
+    Job, JobsList, Pipeline, PipelinesList, Run, RunNowResponse, RunOutput, RunsList, ScimMe,
     UpdateStartResponse,
 };
 
@@ -132,6 +132,16 @@ impl Client {
         let run_id = run_id.to_string();
         self.get("/api/2.2/jobs/runs/get", &[("run_id", run_id.as_str())])
             .await
+    }
+
+    /// The error and traceback of one task run. Takes a task's `run_id`, not the job run's.
+    pub async fn get_run_output(&self, run_id: i64) -> Result<RunOutput, AppError> {
+        let run_id = run_id.to_string();
+        self.get(
+            "/api/2.2/jobs/runs/get-output",
+            &[("run_id", run_id.as_str())],
+        )
+        .await
     }
 
     /// The signed-in user's name (an email). Resolved once at startup for the "mine" filter.

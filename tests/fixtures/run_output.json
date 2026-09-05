@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "job_id": 1025322370191789,
+    "run_id": 11831981220627,
+    "task_key": "endring_sluttdato_fakta",
+    "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "FAILED",
+      "state_message": "Workload failed, see run output for details",
+      "user_cancelled_or_timedout": false
+    },
+    "start_time": 1788170938500,
+    "end_time": 1788170965431,
+    "attempt_number": 0
+  },
+  "error": "AnalysisException: [TABLE_OR_VIEW_NOT_FOUND] The table or view `silver`.`sluttdato` cannot be found.",
+  "error_trace": "Traceback (most recent call last):\n  File \"src/endring.py\", line 42, in <module>\n    df = spark.table(\"silver.sluttdato\")\n  File \"/databricks/spark/python/pyspark/sql/session.py\", line 1690, in table\n    return DataFrame(self._jsparkSession.table(tableName), self)\npyspark.errors.exceptions.captured.AnalysisException: [TABLE_OR_VIEW_NOT_FOUND] The table or view `silver`.`sluttdato` cannot be found.",
+  "logs_truncated": false
+}

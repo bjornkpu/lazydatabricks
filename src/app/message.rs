@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::api::models::{Job, Pipeline, Run};
+use crate::api::models::{Job, Pipeline, Run, RunOutput};
 use crate::error::AppError;
 
 /// A key press, decoupled from the terminal library. Parsed from config via `FromStr` in
@@ -65,6 +65,15 @@ pub enum Message {
         run_id: i64,
         error: AppError,
     },
+    /// `runs/get-output` for one failed task; `run_id` is the task's.
+    RunOutputLoaded {
+        run_id: i64,
+        output: RunOutput,
+    },
+    RunOutputFailed {
+        run_id: i64,
+        error: AppError,
+    },
     ApiCalled(ApiCall),
     /// Who the token belongs to, as an email.
     MeLoaded(String),
@@ -105,6 +114,10 @@ pub enum Command {
         job_id: i64,
     },
     FetchRunDetail {
+        run_id: i64,
+    },
+    /// Error and traceback of one task run.
+    FetchRunOutput {
         run_id: i64,
     },
     RunNow {

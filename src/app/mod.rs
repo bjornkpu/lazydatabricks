@@ -20,7 +20,7 @@ pub use menu::{InputMode, MenuItem};
 pub use message::{ApiCall, Command, Key, Message};
 
 use crate::api::models::{
-    Job, LifeCycleState, Pipeline, PipelineState, PipelineUpdate, Run, UpdateState,
+    Job, LifeCycleState, Pipeline, PipelineState, PipelineUpdate, Run, RunOutput, UpdateState,
 };
 use crate::config::{Loaded, Sort, Theme};
 use crate::error::AppError;
@@ -126,6 +126,8 @@ pub struct App {
     /// The run opened with Enter from the runs table, if any. Esc backs out.
     pub viewing_run: Option<i64>,
     pub run_detail: Load<Run>,
+    /// Error output of the viewed run's failed tasks, by task run id. Cleared with the run.
+    pub run_outputs: HashMap<i64, Load<RunOutput>>,
     /// The job `runs` belongs to, or is being fetched for.
     pub runs_job: Option<i64>,
     /// Runs fetch waiting for the cursor to rest: (job, ticks left).
@@ -191,6 +193,7 @@ impl App {
             runs: Load::Idle,
             viewing_run: None,
             run_detail: Load::Idle,
+            run_outputs: HashMap::new(),
             runs_job: None,
             pending_runs: None,
             runs_inflight: None,
@@ -258,9 +261,16 @@ impl App {
                     self.show_runs(Load::Failed(error));
                 }
             }
-            Message::RunDetailLoaded(run) => {
-                if self.viewing_run == Some(run.id) {
-                    self.run_detail = Load::Loaded(run);
+            Message::RunDetailLoaded(run) => self.on_run_detail_loaded(run, &mut commands),
+            Message::RunOutputLoaded { run_id, output } => {
+                // Only a slot opened by the viewed run takes the reply; late ones are dropped.
+                if let Some(slot) = self.run_outputs.get_mut(&run_id) {
+                    *slot = Load::Loaded(output);
+                }
+            }
+            Message::RunOutputFailed { run_id, error } => {
+                if let Some(slot) = self.run_outputs.get_mut(&run_id) {
+                    *slot = Load::Failed(error);
                 }
             }
             Message::RunDetailFailed { run_id, error } => {
@@ -383,6 +393,23 @@ impl App {
         );
         // Activity order may have changed for this job.
         self.apply_filter();
+    }
+
+    /// The viewed run arrived: show it and fetch the output of every failed task not seen yet.
+    fn on_run_detail_loaded(&mut self, run: Run, commands: &mut Vec<Command>) {
+        if self.viewing_run != Some(run.id) {
+            return;
+        }
+        for task in run.tasks.iter().filter(|task| task.state.is_failure()) {
+            let slot = self.run_outputs.entry(task.run_id).or_default();
+            if matches!(slot, Load::Idle | Load::Failed(_)) {
+                *slot = Load::Loading;
+                commands.push(Command::FetchRunOutput {
+                    run_id: task.run_id,
+                });
+            }
+        }
+        self.run_detail = Load::Loaded(run);
     }
 
     /// `run-now` accepted. Optimistic: show the new run at once, then reconcile with a refetch.
@@ -539,6 +566,7 @@ impl App {
     fn leave_run_detail(&mut self) {
         self.viewing_run = None;
         self.run_detail = Load::Idle;
+        self.run_outputs.clear();
     }
 
     /// What the status panel says about the list: `mine only · /gold · 22 of 85`. Never a
@@ -963,7 +991,7 @@ pub mod tests {
 
     use super::*;
     use crate::api::models::{
-        JobSettings, LifeCycleState, PipelineState, PipelineUpdate, ResultState, RunState,
+        JobSettings, LifeCycleState, PipelineState, PipelineUpdate, ResultState, RunState, TaskRun,
         UpdateState,
     };
     use crate::config::Config;
@@ -1016,6 +1044,25 @@ pub mod tests {
             end_time: ts(end_ms),
             page_url: String::new(),
             tasks: Vec::new(),
+        }
+    }
+
+    /// One task of a run, with its own run id.
+    pub fn task(run_id: i64, key: &str, result: Option<ResultState>) -> TaskRun {
+        TaskRun {
+            run_id,
+            task_key: key.to_owned(),
+            state: RunState {
+                life_cycle_state: LifeCycleState::Terminated,
+                result_state: result,
+                state_message: if result == Some(ResultState::Failed) {
+                    "Workload failed, see run output for details".to_owned()
+                } else {
+                    String::new()
+                },
+            },
+            start_time: jiff::Timestamp::from_millisecond(1_788_170_938_500).ok(),
+            end_time: jiff::Timestamp::from_millisecond(1_788_170_965_431).ok(),
         }
     }
 
@@ -1941,6 +1988,53 @@ pub mod tests {
         assert_eq!(app.focus, Panel::Main);
         app.update(key(Key::Esc));
         assert_eq!(app.focus, Panel::Jobs);
+    }
+
+    #[test]
+    fn failed_tasks_fetch_their_output_once() {
+        let mut app = with_active_run();
+        press(&mut app, "0");
+        app.update(key(Key::Enter));
+        let mut detail = run(10, 1000, 2000, Some(ResultState::Failed));
+        detail.tasks = vec![
+            task(71, "ok", Some(ResultState::Success)),
+            task(72, "boom", Some(ResultState::Failed)),
+        ];
+        assert_eq!(
+            app.update(Message::RunDetailLoaded(detail.clone())),
+            vec![Command::FetchRunOutput { run_id: 72 }],
+            "only the failed task's output is fetched"
+        );
+        assert_eq!(app.run_outputs.get(&72), Some(&Load::Loading));
+        let output = RunOutput {
+            error: Some("ValueError: nope".to_owned()),
+            error_trace: None,
+        };
+        app.update(Message::RunOutputLoaded {
+            run_id: 72,
+            output: output.clone(),
+        });
+        assert_eq!(
+            app.run_outputs.get(&72),
+            Some(&Load::Loaded(output.clone()))
+        );
+        assert_eq!(
+            app.update(Message::RunDetailLoaded(detail)),
+            vec![],
+            "a refetched run keeps the output it already has"
+        );
+        app.update(Message::RunOutputFailed {
+            run_id: 99,
+            error: boom(),
+        });
+        assert_eq!(app.run_outputs.len(), 1, "unknown task ids are ignored");
+        app.update(key(Key::Esc));
+        assert!(
+            app.run_outputs.is_empty(),
+            "leaving the run drops its outputs"
+        );
+        app.update(Message::RunOutputLoaded { run_id: 72, output });
+        assert!(app.run_outputs.is_empty(), "late replies are dropped");
     }
 
     #[test]

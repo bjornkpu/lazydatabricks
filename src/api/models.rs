@@ -76,6 +76,9 @@ pub struct Run {
 /// One task inside a run, from `runs/get`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct TaskRun {
+    /// The task's own run id, the one `runs/get-output` wants.
+    #[serde(default)]
+    pub run_id: i64,
     #[serde(default)]
     pub task_key: String,
     #[serde(default)]
@@ -106,6 +109,16 @@ impl Run {
     }
 }
 
+/// `GET /api/2.2/jobs/runs/get-output` response, the parts that explain a failure. Notebook
+/// output and logs are left out: the browser is the place to read a 1 MB stdout.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct RunOutput {
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub error_trace: Option<String>,
+}
+
 /// `POST /api/2.2/jobs/run-now` response.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct RunNowResponse {
@@ -120,6 +133,14 @@ pub struct RunState {
     pub result_state: Option<ResultState>,
     #[serde(default)]
     pub state_message: String,
+}
+
+impl RunState {
+    /// Finished with anything but success: failed, timed out, cancelled, skipped upstream.
+    #[must_use]
+    pub const fn is_failure(&self) -> bool {
+        matches!(self.result_state, Some(result) if !matches!(result, ResultState::Success))
+    }
 }
 
 /// Closed set in practice, open in the API: anything new lands in `Unknown` instead of
@@ -372,6 +393,7 @@ mod tests {
     const SCIM_ME: &str = include_str!("../../tests/fixtures/scim_me.json");
     const PIPELINES_LIST: &str = include_str!("../../tests/fixtures/pipelines_list.json");
     const RUN_GET: &str = include_str!("../../tests/fixtures/run_get.json");
+    const RUN_OUTPUT: &str = include_str!("../../tests/fixtures/run_output.json");
 
     #[test]
     fn parses_jobs_list_fixture() {
@@ -428,10 +450,33 @@ mod tests {
         assert_eq!(run.id, 50_851_892_761_073);
         assert_eq!(run.tasks.len(), 2);
         assert_eq!(run.tasks[1].task_key, "endring_sluttdato_fakta");
+        assert_eq!(run.tasks[1].run_id, 11_831_981_220_627);
         assert_eq!(run.tasks[1].state.result_state, Some(ResultState::Success));
         assert!(run.page_url.starts_with("https://adb-1"));
         let listed: Run = serde_json::from_str(r#"{"run_id":1}"#).unwrap();
         assert!(listed.tasks.is_empty(), "list responses carry no tasks");
+    }
+
+    #[test]
+    fn parses_run_output_fixture() {
+        let output: RunOutput = serde_json::from_str(RUN_OUTPUT).unwrap();
+        assert!(output.error.unwrap().starts_with("AnalysisException"));
+        assert!(output.error_trace.unwrap().contains("endring.py"));
+        let quiet: RunOutput = serde_json::from_str(r#"{"metadata":{}}"#).unwrap();
+        assert_eq!(quiet, RunOutput::default());
+    }
+
+    #[test]
+    fn failure_is_any_result_but_success() {
+        let state = |result| RunState {
+            life_cycle_state: LifeCycleState::Terminated,
+            result_state: result,
+            state_message: String::new(),
+        };
+        assert!(state(Some(ResultState::Failed)).is_failure());
+        assert!(state(Some(ResultState::Canceled)).is_failure());
+        assert!(!state(Some(ResultState::Success)).is_failure());
+        assert!(!state(None).is_failure(), "still running is not a failure");
     }
 
     #[test]
