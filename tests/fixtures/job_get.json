@@ -1,0 +1,48 @@
+{
+  "job_id": 1025322370191789,
+  "creator_user_name": "someone@example.com",
+  "run_as_user_name": "someone@example.com",
+  "created_time": 1780000000000,
+  "settings": {
+    "name": "[someone] okonomi_gold",
+    "timeout_seconds": 7200,
+    "max_concurrent_runs": 4,
+    "tags": { "dev": "someone", "domain": "okonomi" },
+    "format": "MULTI_TASK",
+    "edit_mode": "UI_LOCKED",
+    "deployment": {
+      "kind": "BUNDLE",
+      "metadata_file_path": "/Workspace/Users/someone@example.com/.bundle/okonomi/dev/state/metadata.json"
+    },
+    "schedule": {
+      "quartz_cron_expression": "0 0 2 * * ?",
+      "timezone_id": "Europe/Oslo",
+      "pause_status": "UNPAUSED"
+    },
+    "job_clusters": [
+      {
+        "job_cluster_key": "small",
+        "new_cluster": { "spark_version": "15.4.x-scala2.12", "node_type_id": "Standard_DS3_v2", "num_workers": 2 }
+      }
+    ],
+    "tasks": [
+      {
+        "task_key": "v1compat",
+        "job_cluster_key": "small",
+        "spark_python_task": { "python_file": "src/v1compat.py" }
+      },
+      {
+        "task_key": "endring_sluttdato_fakta",
+        "depends_on": [{ "task_key": "v1compat" }],
+        "existing_cluster_id": "0901-071234-abcd1234",
+        "notebook_task": { "notebook_path": "/Repos/someone/okonomi/notebooks/endring", "source": "WORKSPACE" }
+      },
+      {
+        "task_key": "publish",
+        "depends_on": [{ "task_key": "endring_sluttdato_fakta" }],
+        "environment_key": "default",
+        "python_wheel_task": { "package_name": "okonomi", "entry_point": "publish" }
+      }
+    ]
+  }
+}

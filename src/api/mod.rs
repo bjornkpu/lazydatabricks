@@ -139,6 +139,13 @@ impl Client {
         Ok(page.runs)
     }
 
+    /// One job in full: schedule, deployment, tasks and their clusters.
+    pub async fn get_job(&self, job_id: i64) -> Result<Job, AppError> {
+        let job_id = job_id.to_string();
+        self.get("/api/2.2/jobs/get", &[("job_id", job_id.as_str())])
+            .await
+    }
+
     /// One run in full: state message, page URL and its tasks.
     pub async fn get_run(&self, run_id: i64) -> Result<Run, AppError> {
         let run_id = run_id.to_string();

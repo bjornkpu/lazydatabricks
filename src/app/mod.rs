@@ -8,7 +8,7 @@ mod menu;
 mod message;
 
 use std::cmp::Reverse;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Duration;
 
 pub use filter::{Filter, Me, Status};
@@ -92,6 +92,10 @@ pub struct App {
     pub me_error: Option<AppError>,
     /// Every job fetched. `jobs` is the filtered view of this.
     pub all_jobs: Vec<Job>,
+    /// Jobs whose full settings (`jobs/get`) have replaced the list shape. Cleared on refresh.
+    pub detailed: HashSet<i64>,
+    /// Job whose `jobs/get` is in flight.
+    job_inflight: Option<i64>,
     /// Every pipeline fetched. `pipelines` is the filtered view of this.
     pub all_pipelines: Vec<Pipeline>,
     pub pipelines: Selectable<Pipeline>,
@@ -176,6 +180,8 @@ impl App {
             me: None,
             me_error: None,
             all_jobs: Vec::new(),
+            detailed: HashSet::new(),
+            job_inflight: None,
             all_pipelines: Vec::new(),
             pipelines: Selectable::default(),
             pipelines_inflight: Some(0),
@@ -221,13 +227,9 @@ impl App {
         match message {
             Message::Key(key) => self.on_key(key, &mut commands),
             Message::Tick => self.tick(&mut commands),
-            Message::JobsLoaded(jobs) => {
-                self.all_jobs = jobs;
-                self.jobs_fetched_at = Some(self.ticks);
-                self.loading = false;
-                self.error = None;
-                self.apply_filter();
-            }
+            Message::JobsLoaded(jobs) => self.on_jobs_loaded(jobs),
+            Message::JobLoaded(job) => self.on_job_loaded(&job),
+            Message::JobFailed { job_id, error } => self.on_job_failed(job_id, &error),
             Message::JobsFailed(error) => {
                 self.loading = false;
                 self.jobs_fetched_at = Some(self.ticks);
@@ -376,6 +378,17 @@ impl App {
                 self.pending_runs = Some((job_id, left));
             }
         }
+        // The Detail tab wants the full job once the cursor has rested (no runs fetch pending).
+        if self.context == Panel::Jobs
+            && self.active_tab() == Some(Tab::Detail)
+            && self.pending_runs.is_none()
+            && let Some(job_id) = self.jobs.selected().map(|job| job.id)
+            && !self.detailed.contains(&job_id)
+            && self.job_inflight.is_none()
+        {
+            self.job_inflight = Some(job_id);
+            commands.push(Command::FetchJob { job_id });
+        }
         // Background refresh of what is on screen, once it is older than its TTL.
         if self
             .jobs_fetched_at
@@ -403,6 +416,40 @@ impl App {
                 .is_some_and(|cached| self.age_ticks(cached.at) >= runs_ttl)
         {
             self.refresh_runs(commands);
+        }
+    }
+
+    /// The list landed: list shapes again, so details are refetched when a Detail tab asks.
+    fn on_jobs_loaded(&mut self, jobs: Vec<Job>) {
+        self.all_jobs = jobs;
+        self.detailed.clear();
+        self.jobs_fetched_at = Some(self.ticks);
+        self.loading = false;
+        self.error = None;
+        self.apply_filter();
+    }
+
+    fn on_job_failed(&mut self, job_id: i64, error: &AppError) {
+        if self.job_inflight == Some(job_id) {
+            self.job_inflight = None;
+        }
+        self.notice = Some(error.to_string());
+    }
+
+    /// Full settings arrived: they replace the list shape in both lists, so the Detail tab and
+    /// the JSON output see tasks and schedule.
+    fn on_job_loaded(&mut self, job: &Job) {
+        if self.job_inflight == Some(job.id) {
+            self.job_inflight = None;
+        }
+        self.detailed.insert(job.id);
+        for slot in self
+            .all_jobs
+            .iter_mut()
+            .chain(self.jobs.items_mut().iter_mut())
+            .filter(|slot| slot.id == job.id)
+        {
+            slot.settings = job.settings.clone();
         }
     }
 
@@ -1270,6 +1317,7 @@ pub mod tests {
                     .map(|(k, v)| (k.to_owned(), v.to_owned()))
                     .collect(),
                 format: Some("MULTI_TASK".to_owned()),
+                ..JobSettings::default()
             },
         }
     }
@@ -1602,6 +1650,52 @@ pub mod tests {
             Load::Failed(boom()),
             "nothing cached: the error is the view"
         );
+    }
+
+    #[test]
+    fn detail_tab_fetches_the_full_job_once_the_cursor_rests() {
+        let mut app = loaded();
+        press(&mut app, "l");
+        assert_eq!(app.active_tab(), Some(Tab::Detail));
+        assert_eq!(
+            ticks(&mut app, 3),
+            vec![
+                Command::FetchRuns { job_id: 1 },
+                Command::FetchJob { job_id: 1 }
+            ],
+            "runs debounce first, then the job"
+        );
+        assert_eq!(ticks(&mut app, 2), vec![], "one in flight");
+        let mut full = job(1, "a");
+        full.settings.edit_mode = Some("UI_LOCKED".to_owned());
+        app.update(Message::JobLoaded(full));
+        assert_eq!(
+            app.jobs.items()[0].settings.edit_mode.as_deref(),
+            Some("UI_LOCKED"),
+            "the visible list carries the full settings"
+        );
+        assert_eq!(
+            ticks(&mut app, 2),
+            vec![],
+            "detailed jobs are not refetched"
+        );
+        press(&mut app, "j");
+        assert_eq!(
+            ticks(&mut app, 3),
+            vec![
+                Command::FetchRuns { job_id: 2 },
+                Command::FetchJob { job_id: 2 }
+            ]
+        );
+        app.update(Message::JobFailed {
+            job_id: 2,
+            error: boom(),
+        });
+        assert_eq!(app.notice, Some("internal error: boom".to_owned()));
+        press(&mut app, "h");
+        assert_eq!(ticks(&mut app, 3), vec![], "runs tab asks for nothing");
+        app.update(Message::JobsLoaded(vec![job(1, "a")]));
+        assert!(app.detailed.is_empty(), "a refresh brings list shapes back");
     }
 
     #[test]

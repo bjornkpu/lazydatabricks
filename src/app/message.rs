@@ -48,6 +48,12 @@ pub enum Message {
     Clock(jiff::Timestamp),
     JobsLoaded(Vec<Job>),
     JobsFailed(AppError),
+    /// `jobs/get` for the job whose Detail tab is open.
+    JobLoaded(Job),
+    JobFailed {
+        job_id: i64,
+        error: AppError,
+    },
     PipelinesLoaded(Vec<Pipeline>),
     PipelinesFailed(AppError),
     /// Newest runs across the workspace, for the age and glyph on each job row.
@@ -126,6 +132,10 @@ pub enum Command {
     /// Error and traceback of one task run.
     FetchRunOutput {
         run_id: i64,
+    },
+    /// Full settings of one job, for the Detail tab.
+    FetchJob {
+        job_id: i64,
     },
     /// `run-now`, with `job_parameters` when `params` is not empty.
     RunNow {

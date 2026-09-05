@@ -1,0 +1,42 @@
+{
+  "clusters": [
+    {
+      "cluster_id": "0901-071234-abcd1234",
+      "cluster_name": "someone's interactive",
+      "creator_user_name": "someone@example.com",
+      "cluster_source": "UI",
+      "state": "TERMINATED",
+      "state_message": "Inactive cluster terminated (inactive for 60 minutes).",
+      "spark_version": "15.4.x-scala2.12",
+      "node_type_id": "Standard_DS3_v2",
+      "autoscale": { "min_workers": 1, "max_workers": 4 },
+      "start_time": 1788170000000,
+      "terminated_time": 1788177200000,
+      "last_activity_time": 1788173600000
+    },
+    {
+      "cluster_id": "0905-100000-job00001",
+      "cluster_name": "job-1025322370191789-run-50851892761075",
+      "creator_user_name": "someone@example.com",
+      "cluster_source": "JOB",
+      "state": "RUNNING",
+      "state_message": "",
+      "spark_version": "15.4.x-scala2.12",
+      "node_type_id": "Standard_DS3_v2",
+      "num_workers": 2,
+      "start_time": 1788257300000
+    },
+    {
+      "cluster_id": "0801-120000-shared001",
+      "cluster_name": "shared-analytics",
+      "creator_user_name": "other@example.com",
+      "cluster_source": "UI",
+      "state": "PENDING",
+      "state_message": "Starting Spark",
+      "spark_version": "14.3.x-scala2.12",
+      "node_type_id": "Standard_E8s_v3",
+      "num_workers": 8,
+      "start_time": 1788264400000
+    }
+  ]
+}

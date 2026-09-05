@@ -1,0 +1,28 @@
+---
+source: src/ui/mod.rs
+expression: render(&app)
+---
+"┌─[0]─Runs - Detail ⠋──────────────────────────────────────────────────────────┐"
+"│Name           [someone] okonomi_gold                                         │"
+"│Job ID         1                                                              │"
+"│Creator        someone@example.com                                            │"
+"│Run as         someone@example.com                                            │"
+"│Format         MULTI_TASK                                                     │"
+"│Max concurrent 4                                                              │"
+"│Timeout        2h00m                                                          │"
+"│Tags           dev=someone domain=okonomi                                     │"
+"│Schedule       0 0 2 * * ? Europe/Oslo                                        │"
+"│Deployment     BUNDLE /Workspace/Users/someone@example.com/.bundle/okonomi/dev│"
+"│Edit mode      UI_LOCKED                                                      │"
+"│                                                                              │"
+"│Task                     Type                             Cluster             │"
+"│v1compat                 python src/v1compat.py           job cluster small   │"
+"│endring_sluttdato_fakta  notebook /Repos/someone/okonomi… all-purpose 0901-071│"
+"│publish                  wheel okonomi:publish            serverless          │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"└──────────────────────────────────────────────────────────────────────────────┘"
+" Move: j/k │ Open: Enter │ Back: Esc │ Actions: x │ Quit: q │ Keys: ?     v0.1.0"

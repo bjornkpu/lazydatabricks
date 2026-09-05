@@ -364,7 +364,60 @@ fn detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
             }),
         ),
         field(app, "Tags", tags),
+        field(
+            app,
+            "Schedule",
+            settings.schedule.as_ref().map_or_else(dash, |schedule| {
+                let paused = match schedule.pause_status.as_deref() {
+                    Some("PAUSED") => " (paused)",
+                    _ => "",
+                };
+                format!(
+                    "{} {}{paused}",
+                    schedule.quartz_cron_expression, schedule.timezone_id
+                )
+            }),
+        ),
+        field(
+            app,
+            "Deployment",
+            settings
+                .deployment
+                .as_ref()
+                .map_or_else(dash, |deployment| {
+                    deployment.metadata_file_path.as_ref().map_or_else(
+                        || deployment.kind.clone(),
+                        |path| format!("{} {path}", deployment.kind),
+                    )
+                }),
+        ),
+        field(
+            app,
+            "Edit mode",
+            settings.edit_mode.clone().unwrap_or_else(dash),
+        ),
+        Line::default(),
     ];
+    let mut lines = lines;
+    if app.detailed.contains(&job.id) {
+        lines.push(Line::styled(
+            format!("{:<24} {:<32} Cluster", "Task", "Type"),
+            Style::new().add_modifier(Modifier::BOLD),
+        ));
+        lines.extend(settings.tasks.iter().map(|task| {
+            Line::from(format!(
+                "{:<24} {:<32} {}",
+                chrome::fit(&task.task_key, 24).trim_end(),
+                chrome::fit(&task.kind(), 32).trim_end(),
+                task.cluster()
+            ))
+        }));
+    } else {
+        lines.push(Line::styled(
+            format!("{} fetching tasks…", app.spinner_glyph()),
+            theme::dim(app),
+        ));
+    }
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 

@@ -30,6 +30,7 @@ pub struct Job {
     pub settings: JobSettings,
 }
 
+/// Job settings. The list response carries the first five fields; `jobs/get` fills the rest.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct JobSettings {
     #[serde(default)]
@@ -42,6 +43,143 @@ pub struct JobSettings {
     pub tags: BTreeMap<String, String>,
     #[serde(default)]
     pub format: Option<String>,
+    #[serde(default)]
+    pub schedule: Option<CronSchedule>,
+    /// Who deployed it: `BUNDLE` with the bundle's metadata path, or nothing for the UI.
+    #[serde(default)]
+    pub deployment: Option<Deployment>,
+    /// `UI_LOCKED` for bundle-managed jobs, `EDITABLE` otherwise.
+    #[serde(default)]
+    pub edit_mode: Option<String>,
+    #[serde(default)]
+    pub tasks: Vec<TaskSettings>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct CronSchedule {
+    #[serde(default)]
+    pub quartz_cron_expression: String,
+    #[serde(default)]
+    pub timezone_id: String,
+    #[serde(default)]
+    pub pause_status: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Deployment {
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub metadata_file_path: Option<String>,
+}
+
+/// One task as configured. Only the task types worth a line on screen are named; anything else
+/// shows as its key alone.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TaskSettings {
+    #[serde(default)]
+    pub task_key: String,
+    #[serde(default)]
+    pub notebook_task: Option<NotebookTask>,
+    #[serde(default)]
+    pub spark_python_task: Option<SparkPythonTask>,
+    #[serde(default)]
+    pub python_wheel_task: Option<PythonWheelTask>,
+    #[serde(default)]
+    pub pipeline_task: Option<PipelineTask>,
+    #[serde(default)]
+    pub run_job_task: Option<RunJobTask>,
+    /// All-purpose cluster: the cost question every platform admin asks first.
+    #[serde(default)]
+    pub existing_cluster_id: Option<String>,
+    #[serde(default)]
+    pub job_cluster_key: Option<String>,
+    /// Serverless environments.
+    #[serde(default)]
+    pub environment_key: Option<String>,
+}
+
+impl TaskSettings {
+    /// `notebook /Repos/x/y`, `python src/main.py`, `wheel pkg:entry`, `pipeline <id>`,
+    /// `job <id>`, or `-`.
+    #[must_use]
+    pub fn kind(&self) -> String {
+        self.notebook_task
+            .as_ref()
+            .map(|task| format!("notebook {}", task.notebook_path))
+            .or_else(|| {
+                self.spark_python_task
+                    .as_ref()
+                    .map(|task| format!("python {}", task.python_file))
+            })
+            .or_else(|| {
+                self.python_wheel_task
+                    .as_ref()
+                    .map(|task| format!("wheel {}:{}", task.package_name, task.entry_point))
+            })
+            .or_else(|| {
+                self.pipeline_task
+                    .as_ref()
+                    .map(|task| format!("pipeline {}", task.pipeline_id))
+            })
+            .or_else(|| {
+                self.run_job_task
+                    .as_ref()
+                    .map(|task| format!("job {}", task.job_id))
+            })
+            .unwrap_or_else(|| "-".to_owned())
+    }
+
+    /// Where it runs: `job cluster <key>`, `all-purpose <id>`, `serverless`, or `-`.
+    #[must_use]
+    pub fn cluster(&self) -> String {
+        self.existing_cluster_id
+            .as_ref()
+            .map(|id| format!("all-purpose {id}"))
+            .or_else(|| {
+                self.job_cluster_key
+                    .as_ref()
+                    .map(|key| format!("job cluster {key}"))
+            })
+            .or_else(|| {
+                self.environment_key
+                    .as_ref()
+                    .map(|_| "serverless".to_owned())
+            })
+            .unwrap_or_else(|| "-".to_owned())
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct NotebookTask {
+    #[serde(default)]
+    pub notebook_path: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SparkPythonTask {
+    #[serde(default)]
+    pub python_file: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PythonWheelTask {
+    #[serde(default)]
+    pub package_name: String,
+    #[serde(default)]
+    pub entry_point: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PipelineTask {
+    #[serde(default)]
+    pub pipeline_id: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RunJobTask {
+    #[serde(default)]
+    pub job_id: i64,
 }
 
 /// `GET /api/2.2/jobs/runs/list` response.
@@ -394,6 +532,7 @@ mod tests {
     const PIPELINES_LIST: &str = include_str!("../../tests/fixtures/pipelines_list.json");
     const RUN_GET: &str = include_str!("../../tests/fixtures/run_get.json");
     const RUN_OUTPUT: &str = include_str!("../../tests/fixtures/run_output.json");
+    const JOB_GET: &str = include_str!("../../tests/fixtures/job_get.json");
 
     #[test]
     fn parses_jobs_list_fixture() {
@@ -455,6 +594,32 @@ mod tests {
         assert!(run.page_url.starts_with("https://adb-1"));
         let listed: Run = serde_json::from_str(r#"{"run_id":1}"#).unwrap();
         assert!(listed.tasks.is_empty(), "list responses carry no tasks");
+    }
+
+    #[test]
+    fn parses_job_get_fixture_with_tasks_and_deployment() {
+        let job: Job = serde_json::from_str(JOB_GET).unwrap();
+        let settings = &job.settings;
+        assert_eq!(settings.edit_mode.as_deref(), Some("UI_LOCKED"));
+        assert_eq!(settings.deployment.as_ref().unwrap().kind, "BUNDLE");
+        assert_eq!(
+            settings.schedule.as_ref().unwrap().quartz_cron_expression,
+            "0 0 2 * * ?"
+        );
+        assert_eq!(settings.tasks.len(), 3);
+        assert_eq!(settings.tasks[0].kind(), "python src/v1compat.py");
+        assert_eq!(settings.tasks[0].cluster(), "job cluster small");
+        assert_eq!(
+            settings.tasks[1].kind(),
+            "notebook /Repos/someone/okonomi/notebooks/endring"
+        );
+        assert_eq!(
+            settings.tasks[1].cluster(),
+            "all-purpose 0901-071234-abcd1234"
+        );
+        assert_eq!(settings.tasks[2].kind(), "wheel okonomi:publish");
+        assert_eq!(settings.tasks[2].cluster(), "serverless");
+        assert_eq!(TaskSettings::default().kind(), "-");
     }
 
     #[test]

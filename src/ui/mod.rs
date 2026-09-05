@@ -315,6 +315,20 @@ mod tests {
     }
 
     #[test]
+    fn detail_tab_full_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "l");
+        let full: crate::api::models::Job =
+            serde_json::from_str(include_str!("../../tests/fixtures/job_get.json")).unwrap();
+        // The fixture's id matches job 1 in `loaded()` only by settings; align the id.
+        let mut full = full;
+        full.id = 1;
+        app.update(Message::JobLoaded(full));
+        press(&mut app, "0++");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn mono_theme_80x24() {
         let mut app = with_runs();
         app.theme = Theme::Mono;
