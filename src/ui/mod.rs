@@ -198,7 +198,7 @@ mod tests {
     use super::*;
     use crate::api::models::ResultState;
     use crate::app::tests::{api_call, app, job, pipeline, run, task, theirs};
-    use crate::app::{Key, Message};
+    use crate::app::{Glyphs, Key, Message};
     use crate::config::Theme;
     use crate::error::AppError;
 
@@ -469,6 +469,19 @@ mod tests {
                     .to_owned(),
             ),
         });
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn nerd_font_icons_80x24() {
+        let mut app = with_runs();
+        app.glyphs = Glyphs::Nerd;
+        let full: crate::api::models::Job =
+            serde_json::from_str(include_str!("../../tests/fixtures/job_get.json")).unwrap();
+        let mut full = full;
+        full.id = 1;
+        app.update(Message::JobLoaded(full));
+        press(&mut app, "l");
         insta::assert_snapshot!(render(&app));
     }
 

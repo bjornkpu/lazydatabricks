@@ -1116,6 +1116,15 @@ nobody else, which is why the README shows them commented out.
 *Teaches:* an override is `Option<String>` threaded to the one place the default lives.
 *Done when:* `copy_command = "clip.exe"` under WSL puts a URL on the Windows clipboard.
 
+### M58 — Nerd Font icons
+lazygit's `nerdFontsVersion`, sized to what we show: the Detail tab's task table gets a glyph
+per task type (book, python, package, sitemap, bolt) before the type text when `nerd_fonts =
+true`. Off by default, because without the font every glyph is a box, and the words were already
+there. The mapping lives on `TaskSettings` next to `kind()`, so a new task type gets both at once.
+
+*Teaches:* decoration is opt-in and never the only carrier of meaning.
+*Done when:* a Nerd Font terminal shows a book before every notebook task and nothing else changes.
+
 ---
 
 ## 9. Testing

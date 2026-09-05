@@ -79,6 +79,20 @@ impl Panel {
     }
 }
 
+/// Whether task rows carry Nerd Font icons. An enum for the same reason as `ComputePanel`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Glyphs {
+    Plain,
+    Nerd,
+}
+
+impl Glyphs {
+    #[must_use]
+    pub const fn from_config(nerd_fonts: bool) -> Self {
+        if nerd_fonts { Self::Nerd } else { Self::Plain }
+    }
+}
+
 /// How `q` and a top-level `Esc` behave, from config. Two flags that travel together.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct QuitPolicy {

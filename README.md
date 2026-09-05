@@ -95,6 +95,7 @@ dev_tag = "bjorn_punsvik"  # tag value that marks a job as mine; derived from th
 me_aliases = ["sp-1234"]   # service principals whose jobs count as mine
 allow_actions = false
 theme = "dark"             # or "light", "mono"; NO_COLOR in the environment also picks mono
+nerd_fonts = false         # task-type icons in the Detail tab, for terminals with a Nerd Font
 sort = "activity"          # or "name", "created"; newest first, ties by name
 date_format = "%d.%m %H:%M" # strftime, checked at startup
 max_jobs = 200

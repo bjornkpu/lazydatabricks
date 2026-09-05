@@ -107,6 +107,25 @@ pub struct TaskSettings {
 }
 
 impl TaskSettings {
+    /// A Nerd Font glyph for the task type: book, python, package, sitemap, bolt; a question
+    /// mark for a type this model does not know.
+    #[must_use]
+    pub const fn icon(&self) -> &'static str {
+        if self.notebook_task.is_some() {
+            "\u{f02d}"
+        } else if self.spark_python_task.is_some() {
+            "\u{e73c}"
+        } else if self.python_wheel_task.is_some() {
+            "\u{f487}"
+        } else if self.pipeline_task.is_some() {
+            "\u{f0e8}"
+        } else if self.run_job_task.is_some() {
+            "\u{f0e7}"
+        } else {
+            "\u{f128}"
+        }
+    }
+
     /// `notebook /Repos/x/y`, `python src/main.py`, `wheel pkg:entry`, `pipeline <id>`,
     /// `job <id>`, or `-`.
     #[must_use]

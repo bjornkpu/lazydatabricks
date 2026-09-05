@@ -14,7 +14,7 @@ use std::time::Duration;
 
 pub use custom::{Context, CustomCommand, Output as CommandOutput, expand};
 pub use filter::{Filter, Me, Status};
-pub use focus::{ComputePanel, Panel, QuitPolicy, ScreenMode, SideLayout, Tab};
+pub use focus::{ComputePanel, Glyphs, Panel, QuitPolicy, ScreenMode, SideLayout, Tab};
 use jiff::tz::TimeZone;
 pub use keys::{Action, Keymap};
 pub use list::{Move, Selectable};
@@ -128,6 +128,8 @@ pub struct App {
     pub side_layout: SideLayout,
     /// Config: whether `q` asks and whether a top-level `Esc` quits.
     pub quit_policy: QuitPolicy,
+    /// Config: Nerd Font icons on task rows.
+    pub glyphs: Glyphs,
     /// Every cluster fetched. `compute` is the filtered view of this.
     pub all_compute: Vec<Cluster>,
     pub compute: Selectable<Cluster>,
@@ -252,6 +254,7 @@ impl App {
                 confirm: config.confirm_on_quit,
                 on_top_level_return: config.quit_on_top_level_return,
             },
+            glyphs: Glyphs::from_config(config.nerd_fonts),
             // The launch fetch is in flight, unless config turned the panel off.
             compute_inflight: config.compute.then_some(0),
             compute_fetched_at: None,

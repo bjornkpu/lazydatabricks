@@ -10,7 +10,7 @@ use ratatui::widgets::{Block, Cell, Paragraph, Row, Sparkline, Table, TableState
 use super::theme::Palette;
 use super::{Drawn, chrome, theme};
 use crate::api::models::{ComputeKind, Run, TaskRun};
-use crate::app::{App, InputMode, Load, Panel, Tab};
+use crate::app::{App, Glyphs, InputMode, Load, Panel, Tab};
 
 /// Inner height from which the runs table gives its last row to a duration sparkline: below
 /// this, rows are worth more than the trend.
@@ -658,10 +658,14 @@ fn detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> Dr
             Style::new().add_modifier(Modifier::BOLD),
         ));
         lines.extend(settings.tasks.iter().map(|task| {
+            let kind = match app.glyphs {
+                Glyphs::Nerd => format!("{} {}", task.icon(), task.kind()),
+                Glyphs::Plain => task.kind(),
+            };
             Line::from(format!(
                 "{:<24} {:<32} {}",
                 chrome::fit(&task.task_key, 24).trim_end(),
-                chrome::fit(&task.kind(), 32).trim_end(),
+                chrome::fit(&kind, 32).trim_end(),
                 task.cluster()
             ))
         }));

@@ -36,6 +36,9 @@ pub struct Config {
     /// Ask GitHub for the newest release at start and say so in `[1]` when it is newer. Off by
     /// default: one request to a third party is a choice. `u` asks on demand either way.
     pub check_updates: bool,
+    /// Task-type icons in the Detail tab, for terminals with a Nerd Font (lazygit's
+    /// `nerdFontsVersion`). Off by default: without the font they are boxes.
+    pub nerd_fonts: bool,
     /// `q` asks first (lazygit's `confirmOnQuit`).
     pub confirm_on_quit: bool,
     /// `Esc` with nothing left to back out of quits (lazygit's `quitOnTopLevelReturn`).
@@ -85,6 +88,7 @@ impl Default for Config {
             compute: true,
             expand_focused: true,
             check_updates: false,
+            nerd_fonts: false,
             confirm_on_quit: false,
             quit_on_top_level_return: false,
             open_command: None,
