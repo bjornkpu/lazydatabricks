@@ -418,6 +418,17 @@ pub struct Cluster {
 }
 
 impl Cluster {
+    /// The state in the row's own vocabulary: a warehouse is `STOPPED`, not `TERMINATED`.
+    #[must_use]
+    pub const fn state_label(&self) -> &'static str {
+        match (self.kind, self.state) {
+            (ComputeKind::Warehouse, ClusterState::Terminated) => "STOPPED",
+            (ComputeKind::Warehouse, ClusterState::Pending) => "STARTING",
+            (ComputeKind::Warehouse, ClusterState::Terminating) => "STOPPING",
+            _ => self.state.as_str(),
+        }
+    }
+
     /// `2`, `1-4` for autoscale, or `-`.
     #[must_use]
     pub fn workers(&self) -> String {
@@ -823,8 +834,10 @@ mod tests {
         assert_eq!(stopped.source, "SQL warehouse, serverless");
         assert_eq!(stopped.node_type_id, "2X-Small");
         assert_eq!(stopped.state_message, "auto-stop after 10 min");
+        assert_eq!(stopped.state_label(), "STOPPED");
         let running: Cluster = page.warehouses[1].clone().into();
         assert_eq!(running.state, ClusterState::Running);
+        assert_eq!(running.state_label(), "RUNNING");
         assert_eq!(running.workers(), "1");
         let listed: Cluster = serde_json::from_str(r#"{"cluster_id":"x"}"#).unwrap();
         assert_eq!(

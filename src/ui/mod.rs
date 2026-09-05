@@ -62,7 +62,7 @@ pub fn visible_text(app: &App) -> String {
             .compute
             .items()
             .iter()
-            .map(|cluster| format!("{} {}", cluster.state.as_str(), cluster.name))
+            .map(|cluster| format!("{} {}", cluster.state_label(), cluster.name))
             .collect(),
         Panel::Main => match &app.runs {
             crate::app::Load::Loaded(runs) if app.active_tab() == Some(crate::app::Tab::Runs) => {

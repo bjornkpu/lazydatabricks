@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState, Wrap};
 
 use super::theme::Palette;
 use super::{chrome, theme};
-use crate::api::models::Run;
+use crate::api::models::{ComputeKind, Run};
 use crate::app::{App, Load, Panel, Tab};
 
 /// Inner width below which the runs table drops its Run ID column: ids plus dates plus a
@@ -339,11 +339,18 @@ fn cluster_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Fram
     let state = Line::from(vec![
         Span::styled(format!("{:<15}", "State"), theme::dim(app)),
         Span::styled(glyph.to_string(), theme::tint(app, color)),
-        Span::raw(format!(" {}", cluster.state.as_str())),
+        Span::raw(format!(" {}", cluster.state_label())),
     ]);
     let lines = vec![
         field(app, "Name", cluster.name.clone()),
-        field(app, "Cluster ID", cluster.id.clone()),
+        field(
+            app,
+            match cluster.kind {
+                ComputeKind::Cluster => "Cluster ID",
+                ComputeKind::Warehouse => "Warehouse ID",
+            },
+            cluster.id.clone(),
+        ),
         state,
         field(
             app,
