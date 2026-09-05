@@ -34,6 +34,14 @@ pub enum MenuItem {
         pipeline_id: String,
         name: String,
     },
+    StartCluster {
+        cluster_id: String,
+        name: String,
+    },
+    TerminateCluster {
+        cluster_id: String,
+        name: String,
+    },
 }
 
 impl MenuItem {
@@ -46,6 +54,8 @@ impl MenuItem {
             Self::CancelRun { run_id, .. } => format!("Cancel run {run_id}"),
             Self::StartUpdate { name, .. } => format!("Start update: {name}"),
             Self::StopPipeline { name, .. } => format!("Stop: {name}"),
+            Self::StartCluster { name, .. } => format!("Start cluster: {name}"),
+            Self::TerminateCluster { name, .. } => format!("Terminate cluster: {name}"),
         }
     }
 
@@ -59,6 +69,8 @@ impl MenuItem {
             Self::CancelRun { run_id, .. } => format!("Cancel run {run_id}?"),
             Self::StartUpdate { name, .. } => format!("Start an update of \"{name}\" now?"),
             Self::StopPipeline { name, .. } => format!("Stop the running update of \"{name}\"?"),
+            Self::StartCluster { name, .. } => format!("Start cluster \"{name}\"?"),
+            Self::TerminateCluster { name, .. } => format!("Terminate cluster \"{name}\"?"),
         }
     }
 
@@ -84,6 +96,12 @@ impl MenuItem {
             },
             Self::StopPipeline { pipeline_id, .. } => Command::StopPipeline {
                 pipeline_id: pipeline_id.clone(),
+            },
+            Self::StartCluster { cluster_id, .. } => Command::StartCluster {
+                cluster_id: cluster_id.clone(),
+            },
+            Self::TerminateCluster { cluster_id, .. } => Command::TerminateCluster {
+                cluster_id: cluster_id.clone(),
             },
         }
     }

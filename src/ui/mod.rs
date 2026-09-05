@@ -58,6 +58,12 @@ pub fn visible_text(app: &App) -> String {
                 )
             })
             .collect(),
+        Panel::Clusters => app
+            .clusters
+            .items()
+            .iter()
+            .map(|cluster| format!("{} {}", cluster.state.as_str(), cluster.name))
+            .collect(),
         Panel::Main => match &app.runs {
             crate::app::Load::Loaded(runs) if app.active_tab() == Some(crate::app::Tab::Runs) => {
                 runs.items()
@@ -95,7 +101,7 @@ pub fn draw(app: &App, frame: &mut Frame) {
         let collapse_unfocused = app.mode == ScreenMode::Half && app.focus.is_side();
         let constraints =
             Panel::SIDE.map(|panel| side_constraint(panel, app.focus, collapse_unfocused));
-        let areas: [Rect; 3] = Layout::vertical(constraints).areas(side);
+        let areas: [Rect; 4] = Layout::vertical(constraints).areas(side);
         for (panel, area) in Panel::SIDE.into_iter().zip(areas) {
             draw_panel(app, panel, area, frame);
         }
@@ -125,7 +131,7 @@ fn side_constraint(panel: Panel, focus: Panel, collapse_unfocused: bool) -> Cons
     }
     match panel {
         Panel::Status => Constraint::Length(4),
-        Panel::Jobs | Panel::Pipelines | Panel::Main => Constraint::Fill(1),
+        Panel::Jobs | Panel::Pipelines | Panel::Clusters | Panel::Main => Constraint::Fill(1),
     }
 }
 
@@ -134,6 +140,7 @@ fn draw_panel(app: &App, panel: Panel, area: Rect, frame: &mut Frame) {
         Panel::Status => side::status(app, area, frame),
         Panel::Jobs => side::jobs(app, area, frame),
         Panel::Pipelines => side::pipelines(app, area, frame),
+        Panel::Clusters => side::clusters(app, area, frame),
         Panel::Main => main_panel::draw(app, area, frame),
     }
 }
@@ -371,6 +378,18 @@ mod tests {
     fn repair_menu_80x24() {
         let mut app = with_runs();
         press(&mut app, "0jjx");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn clusters_80x24() {
+        let mut app = with_runs();
+        let page: crate::api::models::ClustersList =
+            serde_json::from_str(include_str!("../../tests/fixtures/clusters_list.json")).unwrap();
+        app.update(Message::ClustersLoaded(page.clusters));
+        press(&mut app, "4j");
+        insta::assert_snapshot!(render(&app));
+        press(&mut app, "x");
         insta::assert_snapshot!(render(&app));
     }
 

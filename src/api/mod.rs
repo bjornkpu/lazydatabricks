@@ -15,8 +15,8 @@ use crate::app::{ApiCall, Message};
 use crate::error::AppError;
 use auth::Token;
 use models::{
-    Job, JobsList, Pipeline, PipelinesList, Run, RunNowResponse, RunOutput, RunsList, ScimMe,
-    UpdateStartResponse,
+    Cluster, ClustersList, Job, JobsList, Pipeline, PipelinesList, Run, RunNowResponse, RunOutput,
+    RunsList, ScimMe, UpdateStartResponse,
 };
 
 /// Page size sent to Databricks. A page size, not a cap: `list_jobs` follows `next_page_token`.
@@ -77,6 +77,48 @@ impl Client {
         }
         jobs.truncate(max);
         Ok(jobs)
+    }
+
+    /// Lists clusters, following `next_page_token` until `max` clusters or the last page.
+    pub async fn list_clusters(&self, max: usize) -> Result<Vec<Cluster>, AppError> {
+        let mut clusters = Vec::new();
+        let mut page_token: Option<String> = None;
+        loop {
+            let mut query = vec![("page_size", PAGE_SIZE)];
+            if let Some(token) = &page_token {
+                query.push(("page_token", token.as_str()));
+            }
+            let page: ClustersList = self.get("/api/2.1/clusters/list", &query).await?;
+            clusters.extend(page.clusters);
+            page_token = page.next_page_token.filter(|token| !token.is_empty());
+            if clusters.len() >= max || page_token.is_none() {
+                break;
+            }
+        }
+        clusters.truncate(max);
+        Ok(clusters)
+    }
+
+    /// Starts a terminated cluster.
+    pub async fn start_cluster(&self, cluster_id: &str) -> Result<(), AppError> {
+        let _: Value = self
+            .post(
+                "/api/2.1/clusters/start",
+                json!({ "cluster_id": cluster_id }),
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Terminates a cluster. Databricks calls this `delete`; the cluster stays listed.
+    pub async fn terminate_cluster(&self, cluster_id: &str) -> Result<(), AppError> {
+        let _: Value = self
+            .post(
+                "/api/2.1/clusters/delete",
+                json!({ "cluster_id": cluster_id }),
+            )
+            .await?;
+        Ok(())
     }
 
     /// Lists pipelines, following `next_page_token` until `max` pipelines or the last page.

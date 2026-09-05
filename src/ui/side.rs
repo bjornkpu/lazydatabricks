@@ -163,3 +163,36 @@ fn stale(
         Style::new().fg(palette.error),
     ))
 }
+
+pub fn clusters(app: &App, area: Rect, frame: &mut Frame) {
+    let focused = app.focus == Panel::Clusters;
+    let spinner = if app.clusters_loading() {
+        Line::from(format!(" {}", app.spinner_glyph()))
+    } else {
+        Line::default()
+    };
+    let counter = app.clusters.counter();
+    let palette = theme::palette(app);
+    let mut block = chrome::panel(Panel::Clusters, focused, spinner, Some(&counter), &palette);
+    if let Some(error) = &app.clusters_error {
+        if app.all_clusters.is_empty() {
+            frame.render_widget(chrome::error(error, block, &palette), area);
+            return;
+        }
+        block = stale(block, error, &counter, area, &palette);
+    }
+    // `● name`: state glyph, then the name. Job clusters carry the job in their name already.
+    let name_width = usize::from(area.width).saturating_sub(2 + 2);
+    let rows = app.clusters.items().iter().map(|cluster| {
+        let (glyph, color) = theme::cluster_glyph(cluster);
+        Line::from(vec![
+            Span::styled(glyph.to_string(), theme::tint(app, color)),
+            Span::raw(format!(" {}", chrome::fit(&cluster.name, name_width))),
+        ])
+    });
+    let list = List::new(rows)
+        .block(block)
+        .highlight_style(chrome::highlight(focused, &palette));
+    let mut state = ListState::default().with_selected(app.clusters.selected_index());
+    frame.render_stateful_widget(list, area, &mut state);
+}

@@ -6,7 +6,8 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::BorderType;
 
 use crate::api::models::{
-    LifeCycleState, Pipeline, PipelineState, ResultState, Run, RunState, UpdateState,
+    Cluster, ClusterState, LifeCycleState, Pipeline, PipelineState, ResultState, Run, RunState,
+    UpdateState,
 };
 use crate::app::App;
 use crate::config::Theme;
@@ -115,6 +116,20 @@ pub const fn state_glyph(state: &RunState) -> (char, Color) {
             None,
         ) => ('◌', Color::Yellow),
         (LifeCycleState::Running | LifeCycleState::Terminating, None) => ('◐', Color::Yellow),
+    }
+}
+
+/// A cluster: `●` up, `◐` on its way up or down, `·` down, `✗` broken.
+#[must_use]
+pub const fn cluster_glyph(cluster: &Cluster) -> (char, Color) {
+    match cluster.state {
+        ClusterState::Running => ('●', Color::Green),
+        ClusterState::Pending
+        | ClusterState::Restarting
+        | ClusterState::Resizing
+        | ClusterState::Terminating => ('◐', Color::Yellow),
+        ClusterState::Terminated => ('·', Color::DarkGray),
+        ClusterState::Error | ClusterState::Unknown => ('✗', Color::Red),
     }
 }
 

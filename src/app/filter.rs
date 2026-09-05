@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use crate::api::models::{Job, Pipeline, PipelineState, Run, UpdateState};
+use crate::api::models::{Cluster, ClusterState, Job, Pipeline, PipelineState, Run, UpdateState};
 
 /// The signed-in user, resolved once at startup from the SCIM `Me` endpoint.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +86,16 @@ impl Status {
         }
     }
 
+    /// Clusters: active is anything billing; failed is `ERROR`.
+    #[must_use]
+    pub const fn allows_cluster(self, cluster: &Cluster) -> bool {
+        match self {
+            Self::All => true,
+            Self::Failed => matches!(cluster.state, ClusterState::Error),
+            Self::Active => cluster.state.is_active(),
+        }
+    }
+
     /// The latest update decides; a pipeline without updates falls back to its own state.
     #[must_use]
     pub fn allows_pipeline(self, pipeline: &Pipeline) -> bool {
@@ -141,6 +151,25 @@ impl Filter {
                     )
             });
         name_ok && mine_ok && self.status.allows_run(latest)
+    }
+
+    /// Clusters: name or creator text, mine by creator or alias.
+    #[must_use]
+    pub fn matches_cluster(&self, cluster: &Cluster, me: Option<&Me>) -> bool {
+        let name_ok = self.text.is_empty()
+            || contains_any(
+                &self.text,
+                [cluster.name.as_str(), cluster.creator_user_name.as_str()],
+            );
+        let mine_ok = !self.mine_only
+            || me.is_some_and(|me| {
+                me.owns(
+                    &cluster.name,
+                    &cluster.creator_user_name,
+                    &cluster.creator_user_name,
+                )
+            });
+        name_ok && mine_ok && self.status.allows_cluster(cluster)
     }
 
     /// Pipelines carry no tags in the list response, so "mine" is the name prefix or the creator.

@@ -368,6 +368,105 @@ impl ResultState {
     }
 }
 
+/// `GET /api/2.1/clusters/list` response.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ClustersList {
+    #[serde(default)]
+    pub clusters: Vec<Cluster>,
+    #[serde(default)]
+    pub next_page_token: Option<String>,
+}
+
+/// One cluster, all-purpose or job. Ids are strings like `0901-071234-abcd1234`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Cluster {
+    #[serde(rename = "cluster_id")]
+    pub id: String,
+    #[serde(default, rename = "cluster_name")]
+    pub name: String,
+    #[serde(default)]
+    pub creator_user_name: String,
+    /// `UI`, `JOB`, `API`, `PIPELINE`, ...
+    #[serde(default, rename = "cluster_source")]
+    pub source: String,
+    #[serde(default)]
+    pub state: ClusterState,
+    #[serde(default)]
+    pub state_message: String,
+    #[serde(default)]
+    pub spark_version: String,
+    #[serde(default)]
+    pub node_type_id: String,
+    #[serde(default)]
+    pub num_workers: Option<u32>,
+    #[serde(default)]
+    pub autoscale: Option<Autoscale>,
+    #[serde(default, deserialize_with = "epoch_millis")]
+    pub start_time: Option<Timestamp>,
+}
+
+impl Cluster {
+    /// `2`, `1-4` for autoscale, or `-`.
+    #[must_use]
+    pub fn workers(&self) -> String {
+        self.autoscale.as_ref().map_or_else(
+            || {
+                self.num_workers
+                    .map_or_else(|| "-".to_owned(), |n| n.to_string())
+            },
+            |scale| format!("{}-{}", scale.min_workers, scale.max_workers),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Autoscale {
+    #[serde(default)]
+    pub min_workers: u32,
+    #[serde(default)]
+    pub max_workers: u32,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ClusterState {
+    Pending,
+    Running,
+    Restarting,
+    Resizing,
+    Terminating,
+    Terminated,
+    Error,
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+impl ClusterState {
+    /// Up, or on its way up or down: something is billing.
+    #[must_use]
+    pub const fn is_active(self) -> bool {
+        matches!(
+            self,
+            Self::Pending | Self::Running | Self::Restarting | Self::Resizing | Self::Terminating
+        )
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "PENDING",
+            Self::Running => "RUNNING",
+            Self::Restarting => "RESTARTING",
+            Self::Resizing => "RESIZING",
+            Self::Terminating => "TERMINATING",
+            Self::Terminated => "TERMINATED",
+            Self::Error => "ERROR",
+            Self::Unknown => "UNKNOWN",
+        }
+    }
+}
+
 /// `GET /api/2.0/pipelines` response.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PipelinesList {
@@ -533,6 +632,7 @@ mod tests {
     const RUN_GET: &str = include_str!("../../tests/fixtures/run_get.json");
     const RUN_OUTPUT: &str = include_str!("../../tests/fixtures/run_output.json");
     const JOB_GET: &str = include_str!("../../tests/fixtures/job_get.json");
+    const CLUSTERS_LIST: &str = include_str!("../../tests/fixtures/clusters_list.json");
 
     #[test]
     fn parses_jobs_list_fixture() {
@@ -620,6 +720,22 @@ mod tests {
         assert_eq!(settings.tasks[2].kind(), "wheel okonomi:publish");
         assert_eq!(settings.tasks[2].cluster(), "serverless");
         assert_eq!(TaskSettings::default().kind(), "-");
+    }
+
+    #[test]
+    fn parses_clusters_list_fixture() {
+        let page: ClustersList = serde_json::from_str(CLUSTERS_LIST).unwrap();
+        assert_eq!(page.clusters.len(), 3);
+        let interactive = &page.clusters[0];
+        assert_eq!(interactive.id, "0901-071234-abcd1234");
+        assert_eq!(interactive.state, ClusterState::Terminated);
+        assert_eq!(interactive.workers(), "1-4");
+        assert_eq!(interactive.source, "UI");
+        let job = &page.clusters[1];
+        assert_eq!(job.state, ClusterState::Running);
+        assert_eq!(job.workers(), "2");
+        assert!(page.clusters[2].state.is_active(), "pending bills");
+        assert!(!ClusterState::Terminated.is_active());
     }
 
     #[test]

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::api::models::{Job, Pipeline, Run, RunOutput};
+use crate::api::models::{Cluster, Job, Pipeline, Run, RunOutput};
 use crate::error::AppError;
 
 /// A key press, decoupled from the terminal library. Parsed from config via `FromStr` in
@@ -56,6 +56,14 @@ pub enum Message {
     },
     PipelinesLoaded(Vec<Pipeline>),
     PipelinesFailed(AppError),
+    ClustersLoaded(Vec<Cluster>),
+    ClustersFailed(AppError),
+    ClusterStarted {
+        cluster_id: String,
+    },
+    ClusterTerminated {
+        cluster_id: String,
+    },
     /// Newest runs across the workspace, for the age and glyph on each job row.
     RecentRunsLoaded(Vec<Run>),
     RecentRunsFailed(AppError),
@@ -122,6 +130,15 @@ pub enum Command {
     },
     FetchPipelines {
         max: usize,
+    },
+    FetchClusters {
+        max: usize,
+    },
+    StartCluster {
+        cluster_id: String,
+    },
+    TerminateCluster {
+        cluster_id: String,
     },
     FetchRuns {
         job_id: i64,

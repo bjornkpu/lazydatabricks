@@ -20,7 +20,8 @@ pub use menu::{InputMode, MenuItem, parse_params};
 pub use message::{ApiCall, Command, Key, Message};
 
 use crate::api::models::{
-    Job, LifeCycleState, Pipeline, PipelineState, PipelineUpdate, Run, RunOutput, UpdateState,
+    Cluster, ClusterState, Job, LifeCycleState, Pipeline, PipelineState, PipelineUpdate, Run,
+    RunOutput, UpdateState,
 };
 use crate::config::{Loaded, Sort, Theme};
 use crate::error::AppError;
@@ -103,6 +104,12 @@ pub struct App {
     pipelines_inflight: Option<u64>,
     pipelines_fetched_at: Option<u64>,
     pub pipelines_error: Option<AppError>,
+    /// Every cluster fetched. `clusters` is the filtered view of this.
+    pub all_clusters: Vec<Cluster>,
+    pub clusters: Selectable<Cluster>,
+    clusters_inflight: Option<u64>,
+    clusters_fetched_at: Option<u64>,
+    pub clusters_error: Option<AppError>,
     /// The visible jobs, with the cursor.
     pub jobs: Selectable<Job>,
     pub filter: Filter,
@@ -187,6 +194,11 @@ impl App {
             pipelines_inflight: Some(0),
             pipelines_fetched_at: None,
             pipelines_error: None,
+            all_clusters: Vec::new(),
+            clusters: Selectable::default(),
+            clusters_inflight: Some(0),
+            clusters_fetched_at: None,
+            clusters_error: None,
             jobs: Selectable::default(),
             filter: Filter {
                 text: config.filter.clone().unwrap_or_default(),
@@ -240,24 +252,17 @@ impl App {
                 self.error = Some(error);
             }
             Message::PipelinesLoaded(pipelines) => {
-                self.alert(
-                    &pipeline_failures(&self.all_pipelines, &pipelines),
-                    &mut commands,
-                );
-                self.all_pipelines = pipelines;
-                self.pipelines_fetched_at = Some(self.ticks);
-                self.pipelines_inflight = None;
-                self.pipelines_error = None;
-                self.apply_filter();
+                self.on_pipelines_loaded(pipelines, &mut commands);
             }
-            Message::PipelinesFailed(error) => {
-                self.pipelines_inflight = None;
-                self.pipelines_fetched_at = Some(self.ticks);
-                if !self.all_pipelines.is_empty() {
-                    self.notice = Some(error.to_string());
-                }
-                self.pipelines_error = Some(error);
+            Message::ClustersLoaded(clusters) => self.on_clusters_loaded(clusters),
+            Message::ClustersFailed(error) => self.on_clusters_failed(error),
+            Message::ClusterStarted { cluster_id } => {
+                self.on_cluster_action(&cluster_id, ClusterState::Pending, &mut commands);
             }
+            Message::ClusterTerminated { cluster_id } => {
+                self.on_cluster_action(&cluster_id, ClusterState::Terminating, &mut commands);
+            }
+            Message::PipelinesFailed(error) => self.on_pipelines_failed(error),
             Message::UpdateStarted {
                 pipeline_id,
                 update_id,
@@ -359,7 +364,7 @@ impl App {
     /// One heartbeat: the clock, the spinner, the debounced runs fetch and TTL-driven refreshes.
     fn tick(&mut self, commands: &mut Vec<Command>) {
         self.ticks = self.ticks.saturating_add(1);
-        if self.loading || self.pipelines_loading() || self.runs_busy() {
+        if self.loading || self.pipelines_loading() || self.clusters_loading() || self.runs_busy() {
             self.spinner = self
                 .spinner
                 .wrapping_add(1)
@@ -401,6 +406,12 @@ impl App {
             .is_some_and(|at| self.age_ticks(at) >= self.jobs_ttl_ticks)
         {
             self.refresh_pipelines(commands);
+        }
+        if self
+            .clusters_fetched_at
+            .is_some_and(|at| self.age_ticks(at) >= self.jobs_ttl_ticks)
+        {
+            self.refresh_clusters(commands);
         }
         // Active runs poll fast so the table moves on its own; settled ones wait the TTL.
         let runs_ttl = if self.runs_active() {
@@ -598,6 +609,76 @@ impl App {
         self.refresh_pipelines(commands);
     }
 
+    fn on_pipelines_loaded(&mut self, pipelines: Vec<Pipeline>, commands: &mut Vec<Command>) {
+        self.alert(
+            &pipeline_failures(&self.all_pipelines, &pipelines),
+            commands,
+        );
+        self.all_pipelines = pipelines;
+        self.pipelines_fetched_at = Some(self.ticks);
+        self.pipelines_inflight = None;
+        self.pipelines_error = None;
+        self.apply_filter();
+    }
+
+    /// Same rule as jobs: the failure counts as a fetch, the old list stays, the kind shows in
+    /// the border and the full text once in the hint bar.
+    fn on_pipelines_failed(&mut self, error: AppError) {
+        self.pipelines_inflight = None;
+        self.pipelines_fetched_at = Some(self.ticks);
+        if !self.all_pipelines.is_empty() {
+            self.notice = Some(error.to_string());
+        }
+        self.pipelines_error = Some(error);
+    }
+
+    fn on_clusters_loaded(&mut self, clusters: Vec<Cluster>) {
+        self.all_clusters = clusters;
+        self.clusters_fetched_at = Some(self.ticks);
+        self.clusters_inflight = None;
+        self.clusters_error = None;
+        self.apply_filter();
+    }
+
+    fn on_clusters_failed(&mut self, error: AppError) {
+        self.clusters_inflight = None;
+        self.clusters_fetched_at = Some(self.ticks);
+        if !self.all_clusters.is_empty() {
+            self.notice = Some(error.to_string());
+        }
+        self.clusters_error = Some(error);
+    }
+
+    /// A cluster action was accepted: show the transitional state until the refetch.
+    fn on_cluster_action(
+        &mut self,
+        cluster_id: &str,
+        state: ClusterState,
+        commands: &mut Vec<Command>,
+    ) {
+        self.notice = Some(format!("{} requested", state.as_str().to_lowercase()));
+        self.all_clusters
+            .iter_mut()
+            .chain(self.clusters.items_mut().iter_mut())
+            .filter(|cluster| cluster.id == cluster_id)
+            .for_each(|cluster| cluster.state = state);
+        self.refresh_clusters(commands);
+    }
+
+    /// One clusters fetch at a time, same TTL as jobs.
+    fn refresh_clusters(&mut self, commands: &mut Vec<Command>) {
+        if self.clusters_inflight.is_none() {
+            self.clusters_inflight = Some(self.ticks);
+            commands.push(Command::FetchClusters { max: self.max_jobs });
+        }
+    }
+
+    /// A clusters fetch is in flight.
+    #[must_use]
+    pub const fn clusters_loading(&self) -> bool {
+        self.clusters_inflight.is_some()
+    }
+
     /// Applies `change` to a pipeline in both the full and the filtered list.
     fn patch_pipeline(&mut self, pipeline_id: &str, mut change: impl FnMut(&mut Pipeline)) {
         self.all_pipelines
@@ -769,14 +850,20 @@ impl App {
             parts.push(format!("/{}", self.filter.text));
         }
         // Counts follow the panel in context, so the status line explains the list you look at.
-        let (visible, total, what) = if self.context == Panel::Pipelines {
-            (
+        let (visible, total, what) = match self.context {
+            Panel::Pipelines => (
                 self.pipelines.items().len(),
                 self.all_pipelines.len(),
                 "pipelines",
-            )
-        } else {
-            (self.jobs.items().len(), self.all_jobs.len(), "jobs")
+            ),
+            Panel::Clusters => (
+                self.clusters.items().len(),
+                self.all_clusters.len(),
+                "clusters",
+            ),
+            Panel::Status | Panel::Jobs | Panel::Main => {
+                (self.jobs.items().len(), self.all_jobs.len(), "jobs")
+            }
         };
         // The fetch stops at `max_jobs`; a full list means "at least this many", so say so.
         let plus = if total >= self.max_jobs { "+" } else { "" };
@@ -852,6 +939,7 @@ impl App {
             Action::RefreshAll => {
                 self.refresh_jobs(commands);
                 self.refresh_pipelines(commands);
+                self.refresh_clusters(commands);
                 self.refresh_runs(commands);
             }
             Action::NextPanel => self.set_focus(self.focus.next_side()),
@@ -901,9 +989,11 @@ impl App {
             Panel::Main => self.refresh_runs(commands),
             Panel::Jobs => self.refresh_jobs(commands),
             Panel::Pipelines => self.refresh_pipelines(commands),
+            Panel::Clusters => self.refresh_clusters(commands),
             Panel::Status => {
                 self.refresh_jobs(commands);
                 self.refresh_pipelines(commands);
+                self.refresh_clusters(commands);
             }
         }
     }
@@ -951,6 +1041,10 @@ impl App {
                 let pipeline = self.pipelines.selected()?;
                 Some(format!("{}/pipelines/{}", self.host, pipeline.id))
             }
+            Panel::Clusters => {
+                let cluster = self.clusters.selected()?;
+                Some(format!("{}/compute/clusters/{}", self.host, cluster.id))
+            }
             Panel::Status | Panel::Main => None,
         }
     }
@@ -969,6 +1063,9 @@ impl App {
     fn menu_items(&self) -> Vec<MenuItem> {
         if self.context == Panel::Pipelines {
             return self.pipeline_menu_items();
+        }
+        if self.context == Panel::Clusters {
+            return self.cluster_menu_items();
         }
         if self.context != Panel::Jobs {
             return Vec::new();
@@ -1018,6 +1115,25 @@ impl App {
             );
         }
         items
+    }
+
+    /// Start a cluster that is down; terminate one that is up.
+    fn cluster_menu_items(&self) -> Vec<MenuItem> {
+        let Some(cluster) = self.clusters.selected() else {
+            return Vec::new();
+        };
+        let item = if cluster.state.is_active() {
+            MenuItem::TerminateCluster {
+                cluster_id: cluster.id.clone(),
+                name: cluster.name.clone(),
+            }
+        } else {
+            MenuItem::StartCluster {
+                cluster_id: cluster.id.clone(),
+                name: cluster.name.clone(),
+            }
+        };
+        vec![item]
     }
 
     /// Start an update; stop it too while one is in progress.
@@ -1146,6 +1262,20 @@ impl App {
             self.pipelines.select_where(|pipeline| pipeline.id == id);
         }
 
+        let keep_cluster = self.clusters.selected().map(|cluster| cluster.id.clone());
+        let mut visible: Vec<Cluster> = self
+            .all_clusters
+            .iter()
+            .filter(|cluster| self.filter.matches_cluster(cluster, self.me.as_ref()))
+            .cloned()
+            .collect();
+        // Clusters have no run to sort by; name order is the one that stays put.
+        visible.sort_by_cached_key(|cluster| cluster.name.to_lowercase());
+        self.clusters.set_items(visible);
+        if let Some(id) = keep_cluster {
+            self.clusters.select_where(|cluster| cluster.id == id);
+        }
+
         let keep = self.jobs.selected().map(|job| job.id);
         // The visible list is a copy of the matching jobs: a few hundred small structs per
         // keystroke, and `Selectable` stays a plain list with a cursor.
@@ -1213,6 +1343,7 @@ impl App {
                 self.select_runs();
             }
             Panel::Pipelines => self.pipelines.apply(movement),
+            Panel::Clusters => self.clusters.apply(movement),
             Panel::Main => {
                 if self.viewing_run.is_none()
                     && self.context == Panel::Jobs
@@ -1392,6 +1523,22 @@ pub mod tests {
         }
     }
 
+    pub fn cluster(id: &str, name: &str, state: ClusterState) -> Cluster {
+        Cluster {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            creator_user_name: "someone@example.com".to_owned(),
+            source: "UI".to_owned(),
+            state,
+            state_message: String::new(),
+            spark_version: "15.4.x-scala2.12".to_owned(),
+            node_type_id: "Standard_DS3_v2".to_owned(),
+            num_workers: Some(2),
+            autoscale: None,
+            start_time: None,
+        }
+    }
+
     pub fn api_call(path: &str, status: Option<u16>, ms: u64) -> ApiCall {
         ApiCall {
             method: "GET".to_owned(),
@@ -1488,7 +1635,10 @@ pub mod tests {
         assert_eq!(app.spinner, 2, "pipelines still loading");
         app.update(Message::PipelinesLoaded(vec![]));
         app.update(Message::Tick);
-        assert_eq!(app.spinner, 2);
+        assert_eq!(app.spinner, 3, "clusters still loading");
+        app.update(Message::ClustersLoaded(vec![]));
+        app.update(Message::Tick);
+        assert_eq!(app.spinner, 3);
     }
 
     #[test]
@@ -2378,6 +2528,58 @@ pub mod tests {
             pipeline("p3", "okonomi_gold", "someone@example.com"),
         ]));
         app
+    }
+
+    #[test]
+    fn clusters_list_start_and_terminate() {
+        let mut app = loaded();
+        assert!(app.clusters_loading(), "fetched from launch");
+        app.update(Message::ClustersLoaded(vec![
+            cluster("c2", "shared-analytics", ClusterState::Running),
+            cluster("c1", "someone's interactive", ClusterState::Terminated),
+        ]));
+        assert!(!app.clusters_loading());
+        press(&mut app, "4");
+        assert_eq!(app.filter_summary(), "2 of 2 clusters");
+        assert_eq!(app.clusters.selected().map(|c| c.id.as_str()), Some("c2"));
+        press(&mut app, "j");
+        assert_eq!(app.clusters.selected().map(|c| c.id.as_str()), Some("c1"));
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![Command::Copy(
+                "https://adb-1.azuredatabricks.net/compute/clusters/c1".to_owned()
+            )]
+        );
+        app.allow_actions = true;
+        press(&mut app, "x");
+        assert!(matches!(&app.input, InputMode::Menu { items, .. }
+            if items == &[MenuItem::StartCluster { cluster_id: "c1".to_owned(), name: "someone's interactive".to_owned() }]));
+        app.update(key(Key::Enter));
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![Command::StartCluster {
+                cluster_id: "c1".to_owned()
+            }]
+        );
+        assert_eq!(
+            app.update(Message::ClusterStarted {
+                cluster_id: "c1".to_owned()
+            }),
+            vec![Command::FetchClusters { max: 200 }]
+        );
+        assert_eq!(
+            app.clusters.selected().map(|c| c.state),
+            Some(ClusterState::Pending),
+            "optimistic until the refetch"
+        );
+        press(&mut app, "kx");
+        assert!(matches!(&app.input, InputMode::Menu { items, .. }
+            if matches!(items.first(), Some(MenuItem::TerminateCluster { .. }))));
+        app.update(key(Key::Esc));
+        press(&mut app, "f");
+        assert_eq!(app.filter_summary(), "failed only · 0 of 2 clusters");
+        press(&mut app, "f");
+        assert_eq!(app.filter_summary(), "active only · 2 of 2 clusters");
     }
 
     #[test]

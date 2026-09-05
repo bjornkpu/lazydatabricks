@@ -6,12 +6,13 @@ pub enum Panel {
     Status,
     Jobs,
     Pipelines,
+    Clusters,
     Main,
 }
 
 impl Panel {
     /// The side column, top to bottom.
-    pub const SIDE: [Self; 3] = [Self::Status, Self::Jobs, Self::Pipelines];
+    pub const SIDE: [Self; 4] = [Self::Status, Self::Jobs, Self::Pipelines, Self::Clusters];
 
     #[must_use]
     pub const fn number(self) -> u8 {
@@ -20,6 +21,7 @@ impl Panel {
             Self::Status => 1,
             Self::Jobs => 2,
             Self::Pipelines => 3,
+            Self::Clusters => 4,
         }
     }
 
@@ -31,6 +33,7 @@ impl Panel {
             Self::Status => "Status",
             Self::Jobs => "Jobs",
             Self::Pipelines => "Pipelines",
+            Self::Clusters => "Clusters",
         }
     }
 
@@ -42,6 +45,7 @@ impl Panel {
             '1' => Some(Self::Status),
             '2' => Some(Self::Jobs),
             '3' => Some(Self::Pipelines),
+            '4' => Some(Self::Clusters),
             _ => None,
         }
     }
@@ -57,7 +61,8 @@ impl Panel {
         match self {
             Self::Status => Self::Jobs,
             Self::Jobs => Self::Pipelines,
-            Self::Pipelines | Self::Main => Self::Status,
+            Self::Pipelines => Self::Clusters,
+            Self::Clusters | Self::Main => Self::Status,
         }
     }
 
@@ -68,6 +73,7 @@ impl Panel {
             Self::Status => &[Tab::Profile],
             Self::Jobs => &[Tab::Runs, Tab::Detail],
             Self::Pipelines => &[Tab::Updates, Tab::Detail],
+            Self::Clusters => &[Tab::Detail],
             Self::Main => &[],
         }
     }
@@ -125,7 +131,8 @@ mod tests {
     fn digits_map_to_panels() {
         assert_eq!(Panel::from_digit('0'), Some(Panel::Main));
         assert_eq!(Panel::from_digit('2'), Some(Panel::Jobs));
-        assert_eq!(Panel::from_digit('4'), None);
+        assert_eq!(Panel::from_digit('4'), Some(Panel::Clusters));
+        assert_eq!(Panel::from_digit('5'), None);
         assert_eq!(Panel::from_digit('j'), None);
     }
 
@@ -133,7 +140,8 @@ mod tests {
     fn tab_cycles_side_panels_only() {
         assert_eq!(Panel::Status.next_side(), Panel::Jobs);
         assert_eq!(Panel::Jobs.next_side(), Panel::Pipelines);
-        assert_eq!(Panel::Pipelines.next_side(), Panel::Status);
+        assert_eq!(Panel::Pipelines.next_side(), Panel::Clusters);
+        assert_eq!(Panel::Clusters.next_side(), Panel::Status);
         assert_eq!(Panel::Main.next_side(), Panel::Status);
     }
 

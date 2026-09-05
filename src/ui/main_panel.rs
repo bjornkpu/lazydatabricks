@@ -32,6 +32,9 @@ pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
         Some(Tab::Detail) if app.context == Panel::Pipelines => {
             pipeline_detail(app, block, area, frame);
         }
+        Some(Tab::Detail) if app.context == Panel::Clusters => {
+            cluster_detail(app, block, area, frame);
+        }
         Some(Tab::Detail) => detail(app, block, area, frame),
         Some(Tab::Profile) => profile(app, block, area, frame),
         None => frame.render_widget(block, area),
@@ -322,6 +325,47 @@ fn pipeline_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Fra
         field(app, "State", pipeline.state.as_str().to_owned()),
         field(app, "Creator", pipeline.creator_user_name.clone()),
         field(app, "Updates", pipeline.latest_updates.len().to_string()),
+    ];
+    frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+fn cluster_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
+    let Some(cluster) = app.clusters.selected() else {
+        frame.render_widget(block, area);
+        return;
+    };
+    let dash = || "-".to_owned();
+    let (glyph, color) = theme::cluster_glyph(cluster);
+    let state = Line::from(vec![
+        Span::styled(format!("{:<15}", "State"), theme::dim(app)),
+        Span::styled(glyph.to_string(), theme::tint(app, color)),
+        Span::raw(format!(" {}", cluster.state.as_str())),
+    ]);
+    let lines = vec![
+        field(app, "Name", cluster.name.clone()),
+        field(app, "Cluster ID", cluster.id.clone()),
+        state,
+        field(
+            app,
+            "Message",
+            if cluster.state_message.is_empty() {
+                dash()
+            } else {
+                cluster.state_message.clone()
+            },
+        ),
+        field(app, "Source", cluster.source.clone()),
+        field(app, "Creator", cluster.creator_user_name.clone()),
+        field(app, "Spark", cluster.spark_version.clone()),
+        field(app, "Node type", cluster.node_type_id.clone()),
+        field(app, "Workers", cluster.workers()),
+        field(
+            app,
+            "Started",
+            cluster
+                .start_time
+                .map_or_else(dash, |ts| theme::clock(ts, &app.tz, &app.date_format)),
+        ),
     ];
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }

@@ -77,6 +77,11 @@ async fn main() -> Result<()> {
         tx.clone(),
         app.max_jobs,
     ));
+    tokio::spawn(fetch_clusters(
+        Arc::clone(&client),
+        tx.clone(),
+        app.max_jobs,
+    ));
     tokio::spawn(fetch_me(Arc::clone(&client), tx.clone()));
     spawn_input(tx.clone());
     // `ratatui::init` enters the alternate screen and raw mode and installs a panic hook that
@@ -112,6 +117,19 @@ async fn run(
                 }
                 Command::FetchPipelines { max } => {
                     tokio::spawn(fetch_pipelines(Arc::clone(&client), tx.clone(), max));
+                }
+                Command::FetchClusters { max } => {
+                    tokio::spawn(fetch_clusters(Arc::clone(&client), tx.clone(), max));
+                }
+                Command::StartCluster { cluster_id } => {
+                    tokio::spawn(start_cluster(Arc::clone(&client), tx.clone(), cluster_id));
+                }
+                Command::TerminateCluster { cluster_id } => {
+                    tokio::spawn(terminate_cluster(
+                        Arc::clone(&client),
+                        tx.clone(),
+                        cluster_id,
+                    ));
                 }
                 Command::FetchRuns { job_id } => {
                     tokio::spawn(fetch_runs(Arc::clone(&client), tx.clone(), job_id));
@@ -213,6 +231,34 @@ async fn fetch_pipelines(client: Arc<api::Client>, tx: mpsc::Sender<Message>, ma
     let message = match client.list_pipelines(max).await {
         Ok(pipelines) => Message::PipelinesLoaded(pipelines),
         Err(error) => Message::PipelinesFailed(error),
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn fetch_clusters(client: Arc<api::Client>, tx: mpsc::Sender<Message>, max: usize) {
+    let message = match client.list_clusters(max).await {
+        Ok(clusters) => Message::ClustersLoaded(clusters),
+        Err(error) => Message::ClustersFailed(error),
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn start_cluster(client: Arc<api::Client>, tx: mpsc::Sender<Message>, cluster_id: String) {
+    let message = match client.start_cluster(&cluster_id).await {
+        Ok(()) => Message::ClusterStarted { cluster_id },
+        Err(error) => Message::ActionFailed(error),
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn terminate_cluster(
+    client: Arc<api::Client>,
+    tx: mpsc::Sender<Message>,
+    cluster_id: String,
+) {
+    let message = match client.terminate_cluster(&cluster_id).await {
+        Ok(()) => Message::ClusterTerminated { cluster_id },
+        Err(error) => Message::ActionFailed(error),
     };
     let _ = tx.send(message).await;
 }

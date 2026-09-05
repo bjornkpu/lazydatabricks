@@ -31,14 +31,14 @@ pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap, viewing_run: bool) 
     }
     match focus {
         Panel::Status => format!(
-            " Focus: 0-3/{} │ Screen: {} │ Log: {} │ Quit: {} │ Keys: {}",
+            " Focus: 0-4/{} │ Screen: {} │ Log: {} │ Quit: {} │ Keys: {}",
             k(Action::NextPanel),
             k(Action::ScreenMode),
             k(Action::ToggleLog),
             k(Action::Quit),
             k(Action::Help)
         ),
-        Panel::Jobs | Panel::Pipelines => format!(
+        Panel::Jobs | Panel::Pipelines | Panel::Clusters => format!(
             " Move: {}/{} │ Filter: {} │ Mine: {} │ Status: {} │ Actions: {} │ Quit: {} │ Keys: {}",
             k(Action::Down),
             k(Action::Up),
