@@ -116,6 +116,8 @@ pub enum Message {
     /// The draw found the main panel's text this many lines taller than its viewport. The
     /// scroll clamps to it; `update` cannot know the terminal size on its own.
     ScrollLimit(usize),
+    /// The lines of the main panel's text that match the search, from the draw, for `n`/`N`.
+    Matches(Vec<usize>),
     /// Who the token belongs to, as an email.
     MeLoaded(String),
     MeFailed(AppError),

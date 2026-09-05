@@ -8,19 +8,28 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState};
 
 use super::theme::Palette;
-use super::{chrome, theme};
+use super::{Drawn, chrome, theme};
 use crate::api::models::{ComputeKind, Run};
-use crate::app::{App, Load, Panel, Tab};
+use crate::app::{App, InputMode, Load, Panel, Tab};
 
 /// Inner width below which the runs table drops its Run ID column: ids plus dates plus a
 /// result word need about this much.
 const NARROW_RUNS_TABLE: u16 = 50;
 
-/// Returns how many lines the text view can still scroll; tables report zero.
-pub fn draw(app: &App, area: Rect, frame: &mut Frame) -> usize {
+/// Returns what the text view learned: how far it can scroll and which lines match the search.
+/// Tables report nothing.
+pub fn draw(app: &App, area: Rect, frame: &mut Frame) -> Drawn {
     let mut title = tabs_title(app);
     if let Some(run_id) = app.viewing_run {
         title.push_span(Span::raw(format!(" › run {run_id}")));
+    }
+    let searching = app.input == InputMode::Search;
+    if searching || !app.search.is_empty() {
+        let cursor = if searching { "▌" } else { "" };
+        title.push_span(Span::styled(
+            format!(" /{}{cursor}", app.search),
+            theme::tint(app, ratatui::style::Color::Yellow),
+        ));
     }
     if app.runs_busy() || app.run_detail == Load::Loading {
         title.push_span(Span::raw(format!(" {}", app.spinner_glyph())));
@@ -43,13 +52,13 @@ pub fn draw(app: &App, area: Rect, frame: &mut Frame) -> usize {
         Some(Tab::Config) => config(app, block, area, frame),
         None => {
             frame.render_widget(block, area);
-            0
+            Drawn::default()
         }
     }
 }
 
 /// Every task's output for the viewed run; task headers bold, the rest as printed.
-fn output(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
+fn output(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> Drawn {
     let lines = app
         .output_lines()
         .into_iter()
@@ -65,11 +74,11 @@ fn output(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> us
 }
 
 /// The selection's settings as Databricks sent them, once fetched.
-fn json(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
+fn json(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> Drawn {
     match app.json_view() {
         Load::Idle => {
             frame.render_widget(block, area);
-            0
+            Drawn::default()
         }
         Load::Loading => text_view(
             app,
@@ -83,7 +92,7 @@ fn json(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usiz
         ),
         Load::Failed(error) => {
             frame.render_widget(chrome::error(&error, block, &theme::palette(app)), area);
-            0
+            Drawn::default()
         }
         Load::Loaded(text) => text_view(
             app,
@@ -97,20 +106,32 @@ fn json(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usiz
     }
 }
 
-/// Renders lines with the main panel's scroll applied and returns how far it can scroll: the
-/// lines that do not fit. `App` learns that limit through `Message::ScrollLimit`.
+/// Renders lines with the main panel's scroll applied and the search's matches highlighted.
+/// Returns how far it can scroll (the lines that do not fit) and which lines matched; `App`
+/// learns both through messages, since it cannot see the terminal.
 fn text_view(
     app: &App,
-    lines: Vec<Line<'static>>,
+    mut lines: Vec<Line<'static>>,
     block: Block<'static>,
     area: Rect,
     frame: &mut Frame,
-) -> usize {
+) -> Drawn {
     let height = usize::from(block.inner(area).height);
     let limit = lines.len().saturating_sub(height);
     let scroll = u16::try_from(app.main_scroll.min(limit)).unwrap_or(u16::MAX);
+    let mut matches = Vec::new();
+    if !app.search.is_empty() {
+        let needle = app.search.to_lowercase();
+        let mark = theme::palette(app).highlight_unfocused;
+        for (index, line) in lines.iter_mut().enumerate() {
+            if line.to_string().to_lowercase().contains(&needle) {
+                matches.push(index);
+                *line = std::mem::take(line).style(mark);
+            }
+        }
+    }
     frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
-    limit
+    Drawn { limit, matches }
 }
 
 /// Splits text into rows of at most `width` characters, so the line count the scroll clamps
@@ -145,7 +166,7 @@ fn tabs_title(app: &App) -> Line<'static> {
     Line::from(spans)
 }
 
-fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
+fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> Drawn {
     if app.viewing_run.is_some() {
         return run_detail(app, block, area, frame);
     }
@@ -153,12 +174,12 @@ fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usiz
     let runs = match &app.runs {
         Load::Failed(error) => {
             frame.render_widget(chrome::error(error, block, &palette), area);
-            return 0;
+            return Drawn::default();
         }
         Load::Loaded(runs) => runs,
         Load::Idle | Load::Loading => {
             frame.render_widget(block, area);
-            return 0;
+            return Drawn::default();
         }
     };
     // Too narrow for every column: the run id goes, never truncated, and Result stays.
@@ -209,16 +230,16 @@ fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usiz
     // Local widget state built from `App`: the render stays a pure function of the app.
     let mut state = TableState::default().with_selected(runs.selected_index());
     frame.render_stateful_widget(table, area, &mut state);
-    0
+    Drawn::default()
 }
 
 /// One run in full: its fields, its tasks, then why the failed ones failed. One scrolling text.
-fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
+fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> Drawn {
     let palette = theme::palette(app);
     let run = match &app.run_detail {
         Load::Failed(error) => {
             frame.render_widget(chrome::error(error, block, &palette), area);
-            return 0;
+            return Drawn::default();
         }
         Load::Loaded(run) => run,
         Load::Idle | Load::Loading => {
@@ -226,7 +247,7 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -
                 .viewing_run
                 .map_or_else(String::new, |id| format!("Loading run {id}…"));
             frame.render_widget(Paragraph::new(text).block(block), area);
-            return 0;
+            return Drawn::default();
         }
     };
     let width = usize::from(block.inner(area).width);
@@ -359,10 +380,10 @@ fn task_errors(app: &App, run: &Run, palette: &Palette, width: usize) -> Vec<Lin
 }
 
 /// The latest updates Databricks lists with the pipeline. No extra call; a handful of rows.
-fn updates(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
+fn updates(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> Drawn {
     let Some(pipeline) = app.pipelines.selected() else {
         frame.render_widget(block, area);
-        return 0;
+        return Drawn::default();
     };
     let header =
         Row::new(["Update", "Created", "State"]).style(Style::new().add_modifier(Modifier::BOLD));
@@ -395,13 +416,13 @@ fn updates(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> u
         Constraint::Fill(1),
     ];
     frame.render_widget(Table::new(rows, widths).header(header).block(block), area);
-    0
+    Drawn::default()
 }
 
-fn pipeline_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
+fn pipeline_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> Drawn {
     let Some(pipeline) = app.pipelines.selected() else {
         frame.render_widget(block, area);
-        return 0;
+        return Drawn::default();
     };
     let lines = vec![
         field(app, "Name", pipeline.name.clone()),
@@ -413,10 +434,10 @@ fn pipeline_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Fra
     text_view(app, lines, block, area, frame)
 }
 
-fn cluster_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
+fn cluster_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> Drawn {
     let Some(cluster) = app.compute.selected() else {
         frame.render_widget(block, area);
-        return 0;
+        return Drawn::default();
     };
     let dash = || "-".to_owned();
     let (glyph, color) = theme::cluster_glyph(cluster);
@@ -469,10 +490,10 @@ fn cluster_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Fram
     text_view(app, lines, block, area, frame)
 }
 
-fn detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
+fn detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> Drawn {
     let Some(job) = app.jobs.selected() else {
         frame.render_widget(block, area);
-        return 0;
+        return Drawn::default();
     };
     let settings = &job.settings;
     let dash = || "-".to_owned();
@@ -564,7 +585,7 @@ fn detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> us
     text_view(app, lines, block, area, frame)
 }
 
-fn profile(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
+fn profile(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> Drawn {
     let lines = vec![
         field(app, "Profile", app.profile.clone()),
         field(app, "Host", app.host.clone()),
@@ -575,7 +596,7 @@ fn profile(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> u
 }
 
 /// The effective configuration: where it came from, then the TOML this run is using.
-fn config(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
+fn config(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> Drawn {
     let mut lines = vec![
         Line::styled(format!("# {}", app.config_note), theme::dim(app)),
         Line::default(),

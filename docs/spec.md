@@ -1048,6 +1048,18 @@ version so that the map is all there is.
 *Done when:* an on-call person cancels every active run of six jobs with `v`, five `j`, `x`, Enter,
 `y`.
 
+### M52 — Search in `[0]`
+lazygit distinguishes filter (hide what does not match) from search (highlight, keep the
+context). Side lists filter; `[0]` now searches. `/` with the main panel focused types a search,
+every text view highlights the lines holding it, and `n`/`N` scroll to the next or previous one,
+wrapping. The draw already reported the scroll limit back (M33); it now reports the matching line
+indexes too, as one `Drawn` struct, so `n` lands on a row the renderer actually highlighted rather
+than one `App` guessed at. The runs table is not searched: the side filter already narrows jobs,
+and a run is found by scrolling three rows.
+
+*Teaches:* when the renderer must be the source of truth, widen the report it already sends.
+*Done when:* `/Traceback` in a failed run and `n` lands on each trace in turn.
+
 ---
 
 ## 9. Testing

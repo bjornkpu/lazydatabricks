@@ -36,6 +36,9 @@ pub fn hints(
         InputMode::Filter => {
             return " Type to filter │ Keep: Enter │ Clear: Esc │ Select: ↑/↓".to_owned();
         }
+        InputMode::Search => {
+            return " Type to search │ Keep: Enter │ Clear: Esc │ then n/N jump".to_owned();
+        }
         InputMode::Menu { .. } => return " Choose: j/k │ Confirm: Enter │ Close: Esc".to_owned(),
         InputMode::Confirm(_) => return " Send: y │ Back: any other key".to_owned(),
         InputMode::ConfirmActions => return " Enable: y │ Back: any other key".to_owned(),

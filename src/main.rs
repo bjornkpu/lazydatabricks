@@ -262,10 +262,13 @@ async fn run(
         let Some(workspace) = workspaces.get_mut(active) else {
             bail!("no workspace {active}");
         };
-        let mut limit = 0;
-        terminal.draw(|frame| limit = ui::draw(&workspace.app, frame))?;
-        if workspace.app.main_scroll > limit {
-            pending.push_back(Message::ScrollLimit(limit));
+        let mut drawn = ui::Drawn::default();
+        terminal.draw(|frame| drawn = ui::draw(&workspace.app, frame))?;
+        if workspace.app.main_scroll > drawn.limit {
+            pending.push_back(Message::ScrollLimit(drawn.limit));
+        }
+        if workspace.app.matches != drawn.matches {
+            pending.push_back(Message::Matches(drawn.matches));
         }
         let message = if let Some(message) = pending.pop_front() {
             Some(message)

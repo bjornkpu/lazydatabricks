@@ -74,94 +74,10 @@ pub fn draw(app: &App, frame: &mut Frame) {
 fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
     let k = |action| keys.labels(action);
     let mut rows = match focus {
-        Panel::Jobs => vec![
-            (k(Action::Down), "next job"),
-            (k(Action::Up), "previous job"),
-            (k(Action::PageDown), "ten jobs down"),
-            (k(Action::PageUp), "ten jobs up"),
-            (k(Action::First), "first job"),
-            (k(Action::Last), "last job"),
-            (k(Action::Filter), "filter by name"),
-            (k(Action::MineOnly), "toggle mine only"),
-            (k(Action::StatusFilter), "cycle status: all, failed, active"),
-            (
-                k(Action::FilterMenu),
-                "filter menu: status, mine only, clear text",
-            ),
-            (
-                k(Action::RangeSelect),
-                "start or end a range; x then acts on every row",
-            ),
-            (k(Action::Open), "focus the main panel"),
-            (
-                k(Action::Menu),
-                "actions menu: run, pause schedule, repair, cancel",
-            ),
-            (k(Action::Refresh), "refresh jobs"),
-            (k(Action::Browse), "open job in browser"),
-            (k(Action::Copy), "copy: URL, job ID, name, JSON"),
-            (k(Action::CopyTable), "copy the job list as text"),
-            (k(Action::Sort), "cycle sort: activity, name, created"),
-        ],
-        Panel::Main => vec![
-            (k(Action::Down), "next run, or scroll a line"),
-            (k(Action::Up), "previous run, or scroll a line"),
-            (k(Action::PageDown), "ten runs or lines down"),
-            (k(Action::PageUp), "ten runs or lines up"),
-            (
-                k(Action::Open),
-                "open the run; on JSON and Output, page the text",
-            ),
-            (k(Action::NextTab), "next tab"),
-            (k(Action::PrevTab), "previous tab"),
-            (k(Action::Back), "back: close the run, then the panel"),
-            (k(Action::Menu), "actions menu"),
-            (k(Action::Refresh), "refresh runs"),
-            (k(Action::Browse), "open job in browser"),
-            (k(Action::Copy), "copy: URL, run ID, job ID, name, JSON"),
-            (k(Action::CopyTable), "copy the runs table as text"),
-        ],
-        Panel::Pipelines => vec![
-            (k(Action::Down), "next pipeline"),
-            (k(Action::Up), "previous pipeline"),
-            (k(Action::PageDown), "ten pipelines down"),
-            (k(Action::PageUp), "ten pipelines up"),
-            (k(Action::Filter), "filter by name"),
-            (k(Action::MineOnly), "toggle mine only"),
-            (k(Action::StatusFilter), "cycle status: all, failed, active"),
-            (
-                k(Action::FilterMenu),
-                "filter menu: status, mine only, clear text",
-            ),
-            (
-                k(Action::RangeSelect),
-                "start or end a range; x then acts on every row",
-            ),
-            (k(Action::Open), "focus the main panel"),
-            (k(Action::Menu), "actions menu"),
-            (k(Action::Refresh), "refresh pipelines"),
-            (k(Action::Browse), "open pipeline in browser"),
-            (k(Action::Copy), "copy: URL, pipeline ID, name, JSON"),
-            (k(Action::CopyTable), "copy the pipeline list as text"),
-            (k(Action::Sort), "cycle sort: activity, name"),
-        ],
-        Panel::Compute => vec![
-            (k(Action::Down), "next cluster or warehouse"),
-            (k(Action::Up), "previous cluster or warehouse"),
-            (k(Action::Filter), "filter by name or creator"),
-            (k(Action::MineOnly), "toggle mine only"),
-            (k(Action::StatusFilter), "cycle status: all, error, active"),
-            (
-                k(Action::RangeSelect),
-                "start or end a range; x then acts on every row",
-            ),
-            (k(Action::Open), "focus the main panel"),
-            (k(Action::Menu), "actions menu: start, terminate or stop"),
-            (k(Action::Refresh), "refresh compute"),
-            (k(Action::Browse), "open in browser"),
-            (k(Action::Copy), "copy: URL, ID, name"),
-            (k(Action::CopyTable), "copy the compute list as text"),
-        ],
+        Panel::Jobs => jobs_rows(keys),
+        Panel::Main => main_rows(keys),
+        Panel::Pipelines => pipelines_rows(keys),
+        Panel::Compute => compute_rows(keys),
         Panel::Status => vec![
             (k(Action::Refresh), "refresh jobs, pipelines and compute"),
             (
@@ -198,5 +114,119 @@ fn everywhere(keys: &Keymap) -> Vec<(String, &'static str)> {
         (k(Action::EditConfig), "open the config file in $EDITOR"),
         (k(Action::Help), "this list"),
         (k(Action::Quit), "quit"),
+    ]
+}
+
+/// `[2]`.
+fn jobs_rows(keys: &Keymap) -> Vec<(String, &'static str)> {
+    let k = |action| keys.labels(action);
+    vec![
+        (k(Action::Down), "next job"),
+        (k(Action::Up), "previous job"),
+        (k(Action::PageDown), "ten jobs down"),
+        (k(Action::PageUp), "ten jobs up"),
+        (k(Action::First), "first job"),
+        (k(Action::Last), "last job"),
+        (k(Action::Filter), "filter by name"),
+        (k(Action::MineOnly), "toggle mine only"),
+        (k(Action::StatusFilter), "cycle status: all, failed, active"),
+        (
+            k(Action::FilterMenu),
+            "filter menu: status, mine only, clear text",
+        ),
+        (
+            k(Action::RangeSelect),
+            "start or end a range; x then acts on every row",
+        ),
+        (k(Action::Open), "focus the main panel"),
+        (
+            k(Action::Menu),
+            "actions menu: run, pause schedule, repair, cancel",
+        ),
+        (k(Action::Refresh), "refresh jobs"),
+        (k(Action::Browse), "open job in browser"),
+        (k(Action::Copy), "copy: URL, job ID, name, JSON"),
+        (k(Action::CopyTable), "copy the job list as text"),
+        (k(Action::Sort), "cycle sort: activity, name, created"),
+    ]
+}
+
+/// `[0]`.
+fn main_rows(keys: &Keymap) -> Vec<(String, &'static str)> {
+    let k = |action| keys.labels(action);
+    vec![
+        (k(Action::Down), "next run, or scroll a line"),
+        (k(Action::Up), "previous run, or scroll a line"),
+        (k(Action::PageDown), "ten runs or lines down"),
+        (k(Action::PageUp), "ten runs or lines up"),
+        (
+            k(Action::Open),
+            "open the run; on JSON and Output, page the text",
+        ),
+        (
+            k(Action::Filter),
+            "search the text: highlights, hides nothing",
+        ),
+        (k(Action::NextMatch), "next match"),
+        (k(Action::PrevMatch), "previous match"),
+        (k(Action::NextTab), "next tab"),
+        (k(Action::PrevTab), "previous tab"),
+        (k(Action::Back), "back: close the run, then the panel"),
+        (k(Action::Menu), "actions menu"),
+        (k(Action::Refresh), "refresh runs"),
+        (k(Action::Browse), "open job in browser"),
+        (k(Action::Copy), "copy: URL, run ID, job ID, name, JSON"),
+        (k(Action::CopyTable), "copy the runs table as text"),
+    ]
+}
+
+/// `[3]`.
+fn pipelines_rows(keys: &Keymap) -> Vec<(String, &'static str)> {
+    let k = |action| keys.labels(action);
+    vec![
+        (k(Action::Down), "next pipeline"),
+        (k(Action::Up), "previous pipeline"),
+        (k(Action::PageDown), "ten pipelines down"),
+        (k(Action::PageUp), "ten pipelines up"),
+        (k(Action::Filter), "filter by name"),
+        (k(Action::MineOnly), "toggle mine only"),
+        (k(Action::StatusFilter), "cycle status: all, failed, active"),
+        (
+            k(Action::FilterMenu),
+            "filter menu: status, mine only, clear text",
+        ),
+        (
+            k(Action::RangeSelect),
+            "start or end a range; x then acts on every row",
+        ),
+        (k(Action::Open), "focus the main panel"),
+        (k(Action::Menu), "actions menu"),
+        (k(Action::Refresh), "refresh pipelines"),
+        (k(Action::Browse), "open pipeline in browser"),
+        (k(Action::Copy), "copy: URL, pipeline ID, name, JSON"),
+        (k(Action::CopyTable), "copy the pipeline list as text"),
+        (k(Action::Sort), "cycle sort: activity, name"),
+    ]
+}
+
+/// `[4]`.
+fn compute_rows(keys: &Keymap) -> Vec<(String, &'static str)> {
+    let k = |action| keys.labels(action);
+    vec![
+        (k(Action::Down), "next cluster or warehouse"),
+        (k(Action::Up), "previous cluster or warehouse"),
+        (k(Action::Filter), "filter by name or creator"),
+        (k(Action::MineOnly), "toggle mine only"),
+        (k(Action::StatusFilter), "cycle status: all, error, active"),
+        (
+            k(Action::RangeSelect),
+            "start or end a range; x then acts on every row",
+        ),
+        (k(Action::Open), "focus the main panel"),
+        (k(Action::Menu), "actions menu: start, terminate or stop"),
+        (k(Action::Refresh), "refresh compute"),
+        (k(Action::Browse), "open in browser"),
+        (k(Action::Copy), "copy: URL, ID, name"),
+        (k(Action::CopyTable), "copy the compute list as text"),
     ]
 }

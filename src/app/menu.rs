@@ -247,8 +247,10 @@ pub fn parse_params(text: &str) -> Result<BTreeMap<String, String>, String> {
 pub enum InputMode {
     #[default]
     Normal,
-    /// `/` pressed: letters edit the filter.
+    /// `/` pressed on a side list: letters edit the filter.
     Filter,
+    /// `/` pressed in `[0]`: letters edit the search, which highlights rather than hides.
+    Search,
     /// `x` pressed: the menu is open over the selected item.
     Menu {
         items: Vec<MenuItem>,

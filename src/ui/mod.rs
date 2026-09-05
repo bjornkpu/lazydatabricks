@@ -98,9 +98,16 @@ pub fn visible_text(app: &App) -> String {
     lines.join("\n")
 }
 
-/// Draws the whole screen for the current state. Returns how far the main panel's text can
-/// scroll, for `Message::ScrollLimit`.
-pub fn draw(app: &App, frame: &mut Frame) -> usize {
+/// What the draw learned that `App` cannot know without a terminal: how far the main panel's
+/// text can scroll, and which of its lines match the search.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Drawn {
+    pub limit: usize,
+    pub matches: Vec<usize>,
+}
+
+/// Draws the whole screen for the current state.
+pub fn draw(app: &App, frame: &mut Frame) -> Drawn {
     let [body, hint_bar] =
         Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(frame.area());
     let limit = if app.mode == ScreenMode::Full {
@@ -171,8 +178,8 @@ fn side_constraint(app: &App, panel: Panel, collapse_unfocused: bool) -> Constra
     }
 }
 
-/// Side panels never scroll as text, so only the main panel reports a limit.
-fn draw_panel(app: &App, panel: Panel, area: Rect, frame: &mut Frame) -> usize {
+/// Side panels never scroll as text, so only the main panel reports anything.
+fn draw_panel(app: &App, panel: Panel, area: Rect, frame: &mut Frame) -> Drawn {
     match panel {
         Panel::Status => side::status(app, area, frame),
         Panel::Jobs => side::jobs(app, area, frame),
@@ -180,7 +187,7 @@ fn draw_panel(app: &App, panel: Panel, area: Rect, frame: &mut Frame) -> usize {
         Panel::Compute => side::compute(app, area, frame),
         Panel::Main => return main_panel::draw(app, area, frame),
     }
-    0
+    Drawn::default()
 }
 
 #[cfg(test)]
@@ -462,6 +469,25 @@ mod tests {
                     .to_owned(),
             ),
         });
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn search_80x24() {
+        let mut app = with_runs();
+        let full: crate::api::models::Job =
+            serde_json::from_str(include_str!("../../tests/fixtures/job_get.json")).unwrap();
+        let mut full = full;
+        full.id = 1;
+        app.update(Message::JobLoaded(full));
+        press(&mut app, "0ll/cron");
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        let mut drawn = Drawn::default();
+        terminal.draw(|frame| drawn = draw(&app, frame)).unwrap();
+        assert!(!drawn.matches.is_empty(), "the JSON has a cron line");
+        app.update(Message::Matches(drawn.matches));
+        app.update(Message::Key(Key::Enter));
+        press(&mut app, "n");
         insta::assert_snapshot!(render(&app));
     }
 
@@ -806,11 +832,11 @@ mod tests {
         });
         press(&mut app, "G");
         let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
-        let mut limit = 0;
-        terminal.draw(|frame| limit = draw(&app, frame)).unwrap();
-        assert!(limit > 0, "the trace does not fit");
-        app.update(Message::ScrollLimit(limit));
-        assert_eq!(app.main_scroll, limit);
+        let mut drawn = Drawn::default();
+        terminal.draw(|frame| drawn = draw(&app, frame)).unwrap();
+        assert!(drawn.limit > 0, "the trace does not fit");
+        app.update(Message::ScrollLimit(drawn.limit));
+        assert_eq!(app.main_scroll, drawn.limit);
         insta::assert_snapshot!(render(&app));
     }
 

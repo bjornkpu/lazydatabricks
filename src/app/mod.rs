@@ -169,6 +169,11 @@ pub struct App {
     /// Lines scrolled off the top of a text view in the main panel. Unbounded here; the draw
     /// clamps it and reports the limit back as `Message::ScrollLimit`.
     pub main_scroll: usize,
+    /// lazygit's search, as opposed to its filter: text views in `[0]` highlight lines holding
+    /// this and `n`/`N` jump between them. Nothing is hidden.
+    pub search: String,
+    /// Line indexes the draw found matching `search`, newest frame first.
+    pub matches: Vec<usize>,
     pub mode: ScreenMode,
     /// Runs of the selected job, with the main panel's cursor.
     pub runs: Load<Selectable<Run>>,
@@ -268,6 +273,8 @@ impl App {
             context: Panel::Jobs,
             tab: 0,
             main_scroll: 0,
+            search: String::new(),
+            matches: Vec::new(),
             mode: ScreenMode::Normal,
             runs: Load::Idle,
             viewing_run: None,
@@ -338,6 +345,7 @@ impl App {
             Message::RunsFailed { job_id, error } => self.on_runs_failed(job_id, error),
             Message::RunDetailLoaded(run) => self.on_run_detail_loaded(run, &mut commands),
             Message::ScrollLimit(limit) => self.main_scroll = self.main_scroll.min(limit),
+            Message::Matches(matches) => self.matches = matches,
             Message::ShellFinished { name, output } => self.on_shell_finished(name, output),
             Message::ShellExited { name, detail } => {
                 self.notice = Some(format!("{name}: {detail}"));
@@ -392,6 +400,7 @@ impl App {
         match self.input {
             InputMode::Normal => self.key(key, commands),
             InputMode::Filter => self.filter_key(key, commands),
+            InputMode::Search => self.search_key(key, commands),
             InputMode::Menu { .. } => self.menu_key(key, commands),
             InputMode::Output { .. } => self.output_key(key, commands),
             InputMode::Confirm(_) => self.confirm_key(key, commands),
@@ -1104,6 +1113,7 @@ impl App {
             Action::Quit => commands.push(Command::Quit),
             Action::ScreenMode => self.mode = self.mode.next(),
             Action::ToggleLog => self.show_api_log = !self.show_api_log,
+            Action::Filter if self.focus == Panel::Main => self.input = InputMode::Search,
             Action::Filter => {
                 // The filter edits from whichever list is in context; jobs when neither is.
                 let target = if self.context == Panel::Pipelines {
@@ -1126,6 +1136,8 @@ impl App {
             Action::EditConfig => commands.push(Command::EditConfig),
             Action::FilterMenu => self.open_filter_menu(),
             Action::RangeSelect => self.toggle_range(),
+            Action::NextMatch => self.jump_match(true),
+            Action::PrevMatch => self.jump_match(false),
             Action::Sort => {
                 self.sort = self.sort.next();
                 self.apply_filter();
@@ -1297,6 +1309,50 @@ impl App {
         match text {
             Some(text) => commands.push(Command::Page(text)),
             None => self.notice = Some("Nothing to page yet".to_owned()),
+        }
+    }
+
+    /// Keys while the `[0]` search is being typed. Letters edit it; Enter keeps it; Esc clears.
+    fn search_key(&mut self, key: Key, commands: &mut Vec<Command>) {
+        match key {
+            Key::Ctrl('c') => commands.push(Command::Quit),
+            Key::Enter => self.input = InputMode::Normal,
+            Key::Esc => {
+                self.input = InputMode::Normal;
+                self.search.clear();
+                self.matches.clear();
+            }
+            Key::Backspace => {
+                self.search.pop();
+            }
+            Key::Char(c) => self.search.push(c),
+            Key::Tab | Key::Up | Key::Down | Key::Left | Key::Right | Key::Ctrl(_) => {}
+        }
+    }
+
+    /// `n`/`N`: scroll to the next or previous matching line, wrapping. The match list is the
+    /// draw's, so a jump lands exactly on a highlighted row.
+    fn jump_match(&mut self, forward: bool) {
+        if self.focus != Panel::Main || self.matches.is_empty() {
+            return;
+        }
+        let current = self.main_scroll;
+        let next = if forward {
+            self.matches
+                .iter()
+                .copied()
+                .find(|line| *line > current)
+                .or_else(|| self.matches.first().copied())
+        } else {
+            self.matches
+                .iter()
+                .rev()
+                .copied()
+                .find(|line| *line < current)
+                .or_else(|| self.matches.last().copied())
+        };
+        if let Some(line) = next {
+            self.main_scroll = line;
         }
     }
 
@@ -3193,6 +3249,40 @@ pub mod tests {
             matches!(items.first(), Some(MenuItem::RunNow { .. })),
             "one row anchored: the single-row menu"
         );
+    }
+
+    #[test]
+    fn slash_in_the_main_panel_searches_and_n_jumps() {
+        let mut app = loaded();
+        press(&mut app, "0l/sched");
+        assert_eq!(app.input, InputMode::Search);
+        assert_eq!(app.search, "sched");
+        assert_eq!(app.jobs.items().len(), 3, "a search hides nothing");
+        app.update(key(Key::Enter));
+        assert_eq!(app.input, InputMode::Normal);
+        assert_eq!(app.search, "sched", "Enter keeps it");
+        app.update(Message::Matches(vec![3, 9]));
+        press(&mut app, "n");
+        assert_eq!(app.main_scroll, 3);
+        press(&mut app, "n");
+        assert_eq!(app.main_scroll, 9);
+        press(&mut app, "n");
+        assert_eq!(app.main_scroll, 3, "wraps");
+        press(&mut app, "N");
+        assert_eq!(app.main_scroll, 9, "backwards wraps too");
+        press(&mut app, "2n");
+        assert_eq!(app.main_scroll, 9, "n outside [0] does nothing");
+        press(&mut app, "0/");
+        app.update(key(Key::Esc));
+        assert_eq!(app.search, "", "Esc clears");
+        assert!(app.matches.is_empty());
+        press(&mut app, "2/a");
+        assert_eq!(
+            app.input,
+            InputMode::Filter,
+            "on a side list / still filters"
+        );
+        assert_eq!(app.filter.text, "a");
     }
 
     #[test]

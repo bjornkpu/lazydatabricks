@@ -58,6 +58,9 @@ pub enum Action {
     FilterMenu,
     /// Start or end a range in the focused list, lazygit's `v`.
     RangeSelect,
+    /// Next line matching the `[0]` search.
+    NextMatch,
+    PrevMatch,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -104,6 +107,8 @@ impl Default for Keymap {
             (Action::EditConfig, vec![Key::Char('e')]),
             (Action::FilterMenu, vec![Key::Char('F')]),
             (Action::RangeSelect, vec![Key::Char('v')]),
+            (Action::NextMatch, vec![Key::Char('n')]),
+            (Action::PrevMatch, vec![Key::Char('N')]),
         ]))
     }
 }

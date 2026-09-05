@@ -5,7 +5,7 @@ Conventions follow https://www.namtao.com/rust/.
 
 ## Commands
 
-Work order is `docs/spec.md` milestones M0..M51. Tests are written per milestone, not at the end.
+Work order is `docs/spec.md` milestones M0..M52. Tests are written per milestone, not at the end.
 
 - `cargo nextest run` — tests (use this, not `cargo test`)
 - `cargo clippy --all-targets` — must be clean; lints are `deny`, so this is the compile gate

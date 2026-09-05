@@ -21,6 +21,7 @@ pub fn draw(app: &App, frame: &mut Frame) {
         InputMode::Prompt { text } => prompt(app, text, frame),
         InputMode::Normal
         | InputMode::Filter
+        | InputMode::Search
         | InputMode::Help { .. }
         | InputMode::Output { .. } => {}
     }
