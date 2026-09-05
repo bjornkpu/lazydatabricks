@@ -434,6 +434,17 @@ mod tests {
     }
 
     #[test]
+    fn stale_after_failed_refresh_80x24() {
+        let mut app = with_runs();
+        app.update(Message::JobsFailed(AppError::Timeout {
+            path: "/api/2.2/jobs/list?limit=25".to_owned(),
+        }));
+        // The notice carries the full text until the next key; the border keeps the kind.
+        app.update(Message::Key(Key::Char('k')));
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn error_80x24() {
         let mut app = app();
         app.update(Message::JobsFailed(AppError::Unauthorized {

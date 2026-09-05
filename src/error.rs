@@ -62,6 +62,28 @@ struct ErrorBody {
 }
 
 impl AppError {
+    /// A few words for a border or a column: the kind of failure, not the story.
+    #[must_use]
+    pub fn short(&self) -> String {
+        match self {
+            Self::Unauthorized { .. } => "token rejected".to_owned(),
+            Self::Http { status, .. } => format!("HTTP {status}"),
+            Self::Timeout { .. } => "timed out".to_owned(),
+            Self::Network { .. } => "network error".to_owned(),
+            Self::Json { .. } => "bad JSON".to_owned(),
+            Self::CliMissing
+            | Self::CliFailed { .. }
+            | Self::CliOutput { .. }
+            | Self::HomeDir
+            | Self::ConfigDir
+            | Self::FileRead { .. }
+            | Self::ConfigParse { .. }
+            | Self::NoHost { .. }
+            | Self::Shell { .. }
+            | Self::Internal(_) => self.to_string(),
+        }
+    }
+
     /// Classifies a transport-level reqwest failure for `path`.
     #[must_use]
     pub fn from_reqwest(error: &reqwest::Error, path: &str) -> Self {
@@ -131,6 +153,25 @@ mod tests {
             "dev",
         );
         assert!(matches!(error, AppError::Unauthorized { status: 403, .. }));
+    }
+
+    #[test]
+    fn short_names_the_kind() {
+        assert_eq!(
+            AppError::Timeout {
+                path: "/x".to_owned()
+            }
+            .short(),
+            "timed out"
+        );
+        assert_eq!(
+            AppError::from_status(429, "/x", "", "dev").short(),
+            "HTTP 429"
+        );
+        assert_eq!(
+            AppError::Internal("boom".to_owned()).short(),
+            "internal error: boom"
+        );
     }
 
     #[test]

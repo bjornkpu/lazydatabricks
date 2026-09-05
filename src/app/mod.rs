@@ -110,7 +110,8 @@ pub struct App {
     /// A jobs fetch is in flight. True from launch until the first `JobsLoaded` or `JobsFailed`,
     /// then again during refreshes; the old list stays on screen meanwhile.
     pub loading: bool,
-    /// Tick the current `all_jobs` arrived on.
+    /// Tick the last jobs fetch finished on, success or not. A failure counts, so the next
+    /// attempt waits a whole TTL instead of firing on the next tick.
     jobs_fetched_at: Option<u64>,
     /// Index into `SPINNER`.
     pub spinner: usize,
@@ -219,6 +220,11 @@ impl App {
             }
             Message::JobsFailed(error) => {
                 self.loading = false;
+                self.jobs_fetched_at = Some(self.ticks);
+                // The border only has room for the kind; the full text shows once, here.
+                if !self.all_jobs.is_empty() {
+                    self.notice = Some(error.to_string());
+                }
                 self.error = Some(error);
             }
             Message::PipelinesLoaded(pipelines) => {
@@ -230,6 +236,10 @@ impl App {
             }
             Message::PipelinesFailed(error) => {
                 self.pipelines_inflight = None;
+                self.pipelines_fetched_at = Some(self.ticks);
+                if !self.all_pipelines.is_empty() {
+                    self.notice = Some(error.to_string());
+                }
                 self.pipelines_error = Some(error);
             }
             Message::UpdateStarted {
@@ -253,14 +263,7 @@ impl App {
                 self.apply_filter();
             }
             Message::RunsLoaded { job_id, runs } => self.on_runs_loaded(job_id, runs),
-            Message::RunsFailed { job_id, error } => {
-                if self.runs_inflight == Some(job_id) {
-                    self.runs_inflight = None;
-                }
-                if self.runs_job == Some(job_id) {
-                    self.show_runs(Load::Failed(error));
-                }
-            }
+            Message::RunsFailed { job_id, error } => self.on_runs_failed(job_id, error),
             Message::RunDetailLoaded(run) => self.on_run_detail_loaded(run, &mut commands),
             Message::RunOutputLoaded { run_id, output } => {
                 // Only a slot opened by the viewed run takes the reply; late ones are dropped.
@@ -393,6 +396,22 @@ impl App {
         );
         // Activity order may have changed for this job.
         self.apply_filter();
+    }
+
+    /// A runs fetch failed. Cached runs stay on screen and count as fresh again, so the retry
+    /// waits a TTL; the error is only the whole view when there was nothing to show.
+    fn on_runs_failed(&mut self, job_id: i64, error: AppError) {
+        if self.runs_inflight == Some(job_id) {
+            self.runs_inflight = None;
+        }
+        if let Some(cached) = self.runs_cache.get_mut(&job_id) {
+            cached.at = self.ticks;
+            if self.runs_job == Some(job_id) {
+                self.notice = Some(error.to_string());
+            }
+        } else if self.runs_job == Some(job_id) {
+            self.show_runs(Load::Failed(error));
+        }
     }
 
     /// The viewed run arrived: show it and fetch the output of every failed task not seen yet.
@@ -1193,6 +1212,75 @@ pub mod tests {
         app.update(Message::JobsFailed(boom()));
         assert!(!app.loading);
         assert_eq!(app.error, Some(boom()));
+    }
+
+    #[test]
+    fn failed_refresh_keeps_the_list_and_waits_a_ttl() {
+        let mut app = loaded();
+        let ttl = app.jobs_ttl_ticks;
+        ticks(&mut app, 3); // the debounced runs fetch
+        assert_eq!(
+            ticks(&mut app, ttl - 3),
+            vec![
+                Command::FetchJobs { max: 200 },
+                Command::FetchRecentRuns { max: 200 }
+            ]
+        );
+        app.update(Message::JobsFailed(boom()));
+        assert_eq!(names(&app).len(), 3, "the old list stays");
+        assert_eq!(app.error, Some(boom()));
+        assert_eq!(app.notice, Some("internal error: boom".to_owned()));
+        assert_eq!(
+            ticks(&mut app, ttl - 1),
+            vec![],
+            "no retry storm: nothing until a whole TTL has passed"
+        );
+        assert_eq!(
+            ticks(&mut app, 1).first(),
+            Some(&Command::FetchJobs { max: 200 })
+        );
+
+        app.update(Message::PipelinesFailed(boom()));
+        assert_eq!(ticks(&mut app, ttl - 1), vec![]);
+        assert_eq!(
+            ticks(&mut app, 1),
+            vec![Command::FetchPipelines { max: 200 }]
+        );
+    }
+
+    #[test]
+    fn failed_runs_refresh_keeps_cached_runs() {
+        let mut app = with_active_run();
+        let shown = app.runs.clone();
+        let runs_ttl = app.runs_ttl_ticks;
+        ticks(&mut app, runs_ttl);
+        assert_eq!(
+            app.update(Message::Tick),
+            vec![],
+            "refetch already in flight"
+        );
+        app.update(Message::RunsFailed {
+            job_id: 1,
+            error: boom(),
+        });
+        assert_eq!(app.runs, shown, "stale beats blank");
+        assert_eq!(app.notice, Some("internal error: boom".to_owned()));
+        assert_eq!(
+            ticks(&mut app, 5),
+            vec![],
+            "the cache counts as fresh again"
+        );
+        let mut app = loaded();
+        ticks(&mut app, 3);
+        app.update(Message::RunsFailed {
+            job_id: 1,
+            error: boom(),
+        });
+        assert_eq!(
+            app.runs,
+            Load::Failed(boom()),
+            "nothing cached: the error is the view"
+        );
     }
 
     #[test]

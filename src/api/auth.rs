@@ -32,6 +32,11 @@ impl Token {
     pub fn expires_within(&self, margin: Duration) -> bool {
         self.expires_at.saturating_duration_since(Instant::now()) <= margin
     }
+
+    /// Marks the token unusable now, for when Databricks rejects it before its time.
+    pub fn expire(&mut self) {
+        self.expires_at = Instant::now();
+    }
 }
 
 /// Mints a bearer token for `profile` by shelling out to the Databricks CLI.
@@ -128,6 +133,18 @@ auth_type = databricks-cli
             token(0).expires_within(margin),
             "already expired counts too"
         );
+    }
+
+    #[test]
+    fn expired_token_is_due_for_refresh() {
+        let mut token = Token {
+            access_token: "abc".to_owned(),
+            expires_at: Instant::now()
+                .checked_add(Duration::from_secs(3600))
+                .unwrap(),
+        };
+        token.expire();
+        assert!(token.expires_within(Duration::ZERO));
     }
 
     #[test]

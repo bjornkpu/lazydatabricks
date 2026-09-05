@@ -258,6 +258,10 @@ impl Client {
         })?;
         let status = response.status();
         if !status.is_success() {
+            if status == reqwest::StatusCode::UNAUTHORIZED {
+                // Revoked, not expired: forget it so the next call mints a fresh one.
+                self.token.lock().await.expire();
+            }
             let body = response.text().await.unwrap_or_default();
             tracing::warn!(path = %logged_path, %status, body = %body, "error response");
             return Err(AppError::from_status(

@@ -4,10 +4,11 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListState, Paragraph};
+use ratatui::widgets::{Block, List, ListState, Paragraph};
 
 use super::{chrome, theme};
 use crate::app::{App, InputMode, Panel};
+use crate::error::AppError;
 
 pub fn status(app: &App, area: Rect, frame: &mut Frame) {
     let block = chrome::panel(
@@ -63,10 +64,13 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
     }
     let counter = app.jobs.counter();
     let palette = theme::palette(app);
-    let block = chrome::panel(Panel::Jobs, focused, suffix, Some(&counter), &palette);
+    let mut block = chrome::panel(Panel::Jobs, focused, suffix, Some(&counter), &palette);
     if let Some(error) = &app.error {
-        frame.render_widget(chrome::error(error, block, &palette), area);
-        return;
+        if app.all_jobs.is_empty() {
+            frame.render_widget(chrome::error(error, block, &palette), area);
+            return;
+        }
+        block = stale(block, error, &counter, area, &palette);
     }
     // `2m ✓ name`: age of the latest run, its result, then the name. Blank age and a dot when
     // no run is known yet.
@@ -107,10 +111,13 @@ pub fn pipelines(app: &App, area: Rect, frame: &mut Frame) {
     ));
     let counter = app.pipelines.counter();
     let palette = theme::palette(app);
-    let block = chrome::panel(Panel::Pipelines, focused, spinner, Some(&counter), &palette);
+    let mut block = chrome::panel(Panel::Pipelines, focused, spinner, Some(&counter), &palette);
     if let Some(error) = &app.pipelines_error {
-        frame.render_widget(chrome::error(error, block, &palette), area);
-        return;
+        if app.all_pipelines.is_empty() {
+            frame.render_widget(chrome::error(error, block, &palette), area);
+            return;
+        }
+        block = stale(block, error, &counter, area, &palette);
     }
     let rows = app.pipelines.items().iter().map(|pipeline| {
         let (glyph, color) = theme::pipeline_glyph(pipeline);
@@ -124,4 +131,26 @@ pub fn pipelines(app: &App, area: Rect, frame: &mut Frame) {
         .highlight_style(chrome::highlight(focused, &palette));
     let mut state = ListState::default().with_selected(app.pipelines.selected_index());
     frame.render_stateful_widget(list, area, &mut state);
+}
+
+/// The last refresh failed but there is a list to show: the error goes in the bottom border,
+/// left of the counter, and the list stays. Stale beats blank.
+fn stale(
+    block: Block<'static>,
+    error: &AppError,
+    counter: &str,
+    area: Rect,
+    palette: &theme::Palette,
+) -> Block<'static> {
+    // Borders, a space each side, and the counter with its own gap.
+    let width = usize::from(area.width)
+        .saturating_sub(4)
+        .saturating_sub(counter.chars().count())
+        .saturating_sub(1);
+    block.title_bottom(Line::styled(
+        chrome::fit(&format!("✗ {}", error.short()), width)
+            .trim_end()
+            .to_owned(),
+        Style::new().fg(palette.error),
+    ))
 }
