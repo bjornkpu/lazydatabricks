@@ -719,6 +719,104 @@ Small things every persona tripped on:
 *Done when:* a Norwegian reads the dates right, half mode still shows `✗ FAILED`, and `ctrl+d`
 moves ten rows.
 
+M22 to M31 finish the persona list. Everything the eight reviewers asked for is either here or
+named in §10 with the reason it stays out.
+
+### M22 — Live runs
+A running run shows its elapsed time (`now - start_time`, ticking) instead of `-`, and while any
+run on screen is active the runs table refetches every 5 s regardless of `runs_ttl_secs`, then
+drops back to the TTL once everything is terminal. Pipeline rows get the same one-unit age as
+jobs, from the latest update. Queued, pending, blocked and waiting runs get `◌` so a list can tell
+"waiting for a cluster" from "running" without opening the job.
+
+*Teaches:* the poll rate is state, derived from what is on screen.
+*Done when:* a 40 s job goes `◌` to `◐` to `✓` in the table without a key press.
+
+### M23 — Alerts
+Every refresh diffs the newest run per job and the latest update per pipeline against what was
+known. A transition into a failed state rings the terminal bell (`Command::Bell`) and puts
+`✗ <name> failed` in the hint bar until the next key. The recent-runs sweep also asks for
+`active_only=true`, so a structured-streaming run started three weeks ago still shows `◐` after
+two hundred newer batch runs.
+
+*Teaches:* change detection is a fold over two maps; the bell is one more `Command`.
+*Done when:* leaving it open on a second monitor and a job dies, you hear it.
+
+### M24 — Actions at runtime
+`A` asks "Enable actions for this session?" and `y` flips `allow_actions` without a restart; `A`
+again turns it off silently. On-call means the read-only session is the one that needs to cancel
+something at 03:10.
+
+*Teaches:* a confirmation is an `InputMode`, not a widget.
+*Done when:* a read-only session can cancel a run after one `A` and one `y`.
+
+### M25 — Ownership
+The `/` filter also matches the creator and run-as names, so `/olav` is the leaver audit. Mine
+matches, in order: the `dev` tag, a `[<tag>]` prefix on the name (what asset bundles write in
+development mode), the creator, and any of `me_aliases` in config as creator or run-as, for jobs
+deployed by a service principal. Pipelines use the same rule minus the tag.
+
+*Teaches:* "mine" is a predicate with a config hook, not a hard-coded convention.
+*Done when:* a bundle-deployed prod job with a service-principal creator shows under `m`.
+
+### M26 — Copy the table
+`Y` copies the focused panel's visible rows as plain text, one line per row, the same text the
+screen shows. Paste it into Teams and standup is done.
+
+*Teaches:* the render already produced the text; reuse it.
+*Done when:* `Y` on the Jobs panel puts `1d ✗ nightly_bronze_ingest` lines on the clipboard.
+
+### M27 — Platform polish
+Small things that make the tool feel native on each desk:
+
+- `o` honours `$BROWSER`; `y` uses `wl-copy` under Wayland (`WAYLAND_DISPLAY` set), else `xclip`.
+- `NO_COLOR` or `theme = "mono"`: no colours, no `DIM`; focus is a double border, the cursor is
+  reverse video. Glyphs already carry the state.
+- Two actions bound to one key is a config error at load, not a coin toss at runtime.
+- `?` scrolls with `j`/`k` when the list is taller than the terminal.
+- The hint bar inside a run says `Back: Esc │ Browser: o`, not `Open: Enter`.
+- No `~/.databrickscfg` or no such profile prints the exact `databricks auth login --host …`
+  to run, not "file not found".
+- `--config <path>` and `LAZYDATABRICKS_CONFIG` pick the config file, for a team-shared one.
+- When `max_jobs` truncates, the status line says `200+ jobs (truncated)` instead of lying.
+
+*Done when:* a Wayland user, a Windows analyst and a colour-blind reviewer all get past minute one.
+
+### M28 — `--json`
+`lazydatabricks jobs`, `lazydatabricks runs <job_id>` and `lazydatabricks pipelines` print the
+same models the TUI holds as JSON and exit, for `fzf`, `jq` and scripts. Same auth, same
+filters from config, no terminal taken over.
+
+*Teaches:* the API layer was already separate from the UI; this proves it.
+*Done when:* `lazydatabricks jobs | jq '.[].settings.name'` works.
+
+### M29 — Job detail and clusters
+The Detail tab fetches `GET /api/2.2/jobs/get` for the selected job (debounced like runs) and
+adds Schedule, Deployment (bundle path when `deployment.kind` is `BUNDLE`), Edit mode, and one
+line per task with its type and notebook or file path, plus which cluster it runs on: `job
+cluster` or `all-purpose <id>`. A fourth side panel `[4] Clusters` lists `GET
+/api/2.1/clusters/list` with state and source, and `x` offers start and terminate behind the same
+gate.
+
+*Teaches:* the fourth panel is the third panel again, which is the point of the shape.
+*Done when:* the ML engineer can start their interactive cluster and see which notebook a job
+runs without the browser.
+
+### M30 — Multi-profile
+`-p dev,prod` or `profiles = [...]` in config opens every profile in one process; `p` cycles
+them. Each profile keeps its own `App` and client; `main` tags every message with the profile it
+came from, so a late reply for `dev` never lands in `prod`. Only the active profile receives keys
+and ticks.
+
+*Teaches:* `App` needed no change; the shell owns the plurality.
+*Done when:* the platform admin watches four workspaces from one pane.
+
+### M31 — Release
+A GitHub Actions workflow builds Windows, macOS and Linux binaries on a tag and attaches them to
+a release. The README's install section starts with the download, not with `cargo`.
+
+*Done when:* an analyst with no Rust toolchain runs it.
+
 ---
 
 ## 9. Testing
@@ -743,14 +841,15 @@ No test should require network or a live workspace.
 
 ## 10. Deferred
 
-Deliberately out of the first twenty-one milestones. Revisit only if you actually want them:
+Deliberately out of the first thirty-one milestones. Revisit only if you actually want them:
 
-- Cluster and warehouse panes (endpoints verified, just more of the same)
-- Log tailing for a run
-- Multi-profile switching without restart
+- Warehouse and model-serving panes (more of the same as clusters)
+- Log tailing for a run: `o` opens the run page, which streams logs better than a TUI can
 - Mouse support
-- Billing / usage views
+- Billing / usage views: need a SQL warehouse and `system.billing.usage`
 - Notebook or SQL browsing
+- Editing job JSON in `$EDITOR` and lazygit-style custom commands
+- Dependency graph between jobs and duration sparklines: the browser draws these already
 
 ---
 
