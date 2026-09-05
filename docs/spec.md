@@ -1145,6 +1145,16 @@ line.
 *Teaches:* a launch flag is a message that arrives before the first key.
 *Done when:* `lazydatabricks --job aktorer` opens with its runs on screen.
 
+### M61 — Open a task's page
+lazygit's `G` opens the pull request behind a branch. A task run has a page of its own on
+Databricks, with the notebook output rendered, and no row of its own here since M33 folded the
+task table into the run's text. So the `x` menu of an open run ends with "Open task *key* in
+browser" for each task, a `Browse` entry that carries its URL and needs no actions opt-in: a
+browser tab is not a write. `o` keeps opening the run.
+
+*Teaches:* when a thing has no row, give it a menu entry rather than a cursor.
+*Done when:* the failed task's notebook opens in the browser from two keys and Enter.
+
 ---
 
 ## 9. Testing

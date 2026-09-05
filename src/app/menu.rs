@@ -73,6 +73,11 @@ pub enum MenuItem {
         label: String,
         text: String,
     },
+    /// A page to open in the browser: a task run, which has no row of its own.
+    Browse {
+        label: String,
+        url: String,
+    },
     /// One setting from the `F` menu. Applied in `update`; no command leaves the program.
     Filter(FilterChoice),
     /// `q` with `confirm_on_quit`: the question before leaving.
@@ -114,7 +119,7 @@ impl MenuItem {
             Self::SwitchProfile { name } => format!("Switch to {name}"),
             Self::CopyText { label, .. } => format!("Copy {label}"),
             Self::Filter(choice) => choice.label(),
-            Self::Bulk { label, .. } => label.clone(),
+            Self::Browse { label, .. } | Self::Bulk { label, .. } => label.clone(),
             Self::Quit => "Quit".to_owned(),
         }
     }
@@ -128,6 +133,7 @@ impl MenuItem {
             Self::Shell { .. }
                 | Self::SwitchProfile { .. }
                 | Self::CopyText { .. }
+                | Self::Browse { .. }
                 | Self::Filter(_)
                 | Self::Quit
         )
@@ -155,6 +161,7 @@ impl MenuItem {
             Self::Shell { command, .. } => format!("Run `{command}`?"),
             Self::SwitchProfile { name } => format!("Switch to {name}?"),
             Self::CopyText { label, .. } => format!("Copy {label}?"),
+            Self::Browse { label, .. } => format!("{label}?"),
             Self::Filter(choice) => format!("{}?", choice.label()),
             Self::Bulk { confirmation, .. } => confirmation.clone(),
             Self::Quit => "Quit lazydatabricks?".to_owned(),
@@ -221,6 +228,7 @@ impl MenuItem {
             },
             Self::SwitchProfile { name } => Command::SwitchProfile(name.clone()),
             Self::CopyText { text, .. } => Command::Copy(text.clone()),
+            Self::Browse { url, .. } => Command::OpenUrl(url.clone()),
         };
         vec![command]
     }

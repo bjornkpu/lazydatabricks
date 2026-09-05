@@ -1924,6 +1924,15 @@ impl App {
                     items.push(cancel(run));
                 }
             }
+            // An open run: each task's own page, since tasks have no row to press `o` on.
+            if let Load::Loaded(run) = &self.run_detail
+                && self.viewing_run == Some(run.id)
+            {
+                items.extend(run.tasks.iter().map(|task| MenuItem::Browse {
+                    label: format!("Open task {} in browser", task.task_key),
+                    url: format!("{}/jobs/{}/runs/{}", self.host, job.id, task.run_id),
+                }));
+            }
         } else if let Load::Loaded(runs) = &self.runs {
             // From the side panel: repair the newest run if it failed, cancel every active one.
             if let Some(newest) = runs.items().first()
@@ -2025,7 +2034,9 @@ impl App {
                         self.notice = Some(format!("Copied {label}"));
                         commands.push(Command::Copy(text));
                     }
-                    MenuItem::Shell { confirm: false, .. } | MenuItem::SwitchProfile { .. } => {
+                    MenuItem::Shell { confirm: false, .. }
+                    | MenuItem::SwitchProfile { .. }
+                    | MenuItem::Browse { .. } => {
                         self.fire(&item, commands);
                     }
                     MenuItem::Shell { .. } => self.input = InputMode::Confirm(item),
@@ -3660,6 +3671,43 @@ pub mod tests {
         assert_eq!(Panel::from_name("Pipelines"), Some(Panel::Pipelines));
         assert_eq!(Panel::from_name(" compute "), Some(Panel::Compute));
         assert_eq!(Panel::from_name("main"), None);
+    }
+
+    #[test]
+    fn an_open_run_offers_each_task_page() {
+        let mut app = with_active_run();
+        press(&mut app, "0j");
+        app.update(key(Key::Enter));
+        let mut detail = run(9, 1000, 2000, Some(ResultState::Success));
+        detail.tasks = vec![
+            task(91, "extract", Some(ResultState::Success)),
+            task(92, "load", Some(ResultState::Success)),
+        ];
+        app.update(Message::RunDetailLoaded(detail));
+        press(&mut app, "x");
+        let InputMode::Menu { items, .. } = &app.input else {
+            panic!("{:?}", app.input);
+        };
+        let labels: Vec<String> = items.iter().map(MenuItem::label).collect();
+        assert!(
+            labels.contains(&"Open task extract in browser".to_owned()),
+            "{labels:?}"
+        );
+        let index = labels
+            .iter()
+            .position(|label| label == "Open task load in browser")
+            .unwrap();
+        for _ in 0..index {
+            press(&mut app, "j");
+        }
+        assert_eq!(
+            app.update(key(Key::Enter)),
+            vec![Command::OpenUrl(
+                "https://adb-1.azuredatabricks.net/jobs/1/runs/92".to_owned()
+            )],
+            "no actions opt-in for a browser tab"
+        );
+        assert_eq!(app.notice.as_deref(), Some("Open task load in browser…"));
     }
 
     #[test]
