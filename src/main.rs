@@ -62,6 +62,9 @@ async fn main() -> Result<()> {
     // Auth before the terminal is taken over: the CLI may print or open a browser, and its
     // errors should land in a normal shell.
     let client = Arc::new(api::Client::from_profile(&profile, tx.clone())?);
+    if let Some(command) = cli.command {
+        return print_json(&client, command, loaded.config.max_jobs).await;
+    }
     let app = App::new(&profile, client.host(), TimeZone::system(), &loaded);
     tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone(), app.max_jobs));
     tokio::spawn(fetch_recent_runs(
@@ -148,6 +151,20 @@ async fn run(
             }
         }
     }
+}
+
+/// A subcommand: one listing as pretty JSON on stdout, then exit. The terminal is never taken
+/// over, so this pipes into `jq` and `fzf`.
+async fn print_json(client: &api::Client, command: cli::Sub, max: usize) -> Result<()> {
+    let json = match command {
+        cli::Sub::Jobs => serde_json::to_string_pretty(&client.list_jobs(max).await?)?,
+        cli::Sub::Runs { job_id } => {
+            serde_json::to_string_pretty(&client.list_runs(job_id).await?)?
+        }
+        cli::Sub::Pipelines => serde_json::to_string_pretty(&client.list_pipelines(max).await?)?,
+    };
+    println!("{json}");
+    Ok(())
 }
 
 /// Logs to a file next to the config when `LAZYDATABRICKS_LOG` is set (`debug`, `info`, or a

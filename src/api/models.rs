@@ -4,10 +4,10 @@
 use std::collections::BTreeMap;
 
 use jiff::Timestamp;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// `GET /api/2.2/jobs/list` response.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct JobsList {
     #[serde(default)]
     pub jobs: Vec<Job>,
@@ -16,7 +16,7 @@ pub struct JobsList {
 }
 
 /// One job. Ids are `i64` end to end and are never used as indices.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Job {
     #[serde(rename = "job_id")]
     pub id: i64,
@@ -30,7 +30,7 @@ pub struct Job {
     pub settings: JobSettings,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct JobSettings {
     #[serde(default)]
     pub name: String,
@@ -45,7 +45,7 @@ pub struct JobSettings {
 }
 
 /// `GET /api/2.2/jobs/runs/list` response.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RunsList {
     #[serde(default)]
     pub runs: Vec<Run>,
@@ -53,7 +53,7 @@ pub struct RunsList {
     pub next_page_token: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Run {
     #[serde(rename = "run_id")]
     pub id: i64,
@@ -74,7 +74,7 @@ pub struct Run {
 }
 
 /// One task inside a run, from `runs/get`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TaskRun {
     /// The task's own run id, the one `runs/get-output` wants.
     #[serde(default)]
@@ -111,7 +111,7 @@ impl Run {
 
 /// `GET /api/2.2/jobs/runs/get-output` response, the parts that explain a failure. Notebook
 /// output and logs are left out: the browser is the place to read a 1 MB stdout.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RunOutput {
     #[serde(default)]
     pub error: Option<String>,
@@ -120,12 +120,12 @@ pub struct RunOutput {
 }
 
 /// `POST /api/2.2/jobs/run-now` response.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RunNowResponse {
     pub run_id: i64,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RunState {
     #[serde(default)]
     pub life_cycle_state: LifeCycleState,
@@ -145,7 +145,7 @@ impl RunState {
 
 /// Closed set in practice, open in the API: anything new lands in `Unknown` instead of
 /// breaking the parse.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum LifeCycleState {
     Queued,
@@ -194,7 +194,7 @@ impl LifeCycleState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ResultState {
     Success,
@@ -231,7 +231,7 @@ impl ResultState {
 }
 
 /// `GET /api/2.0/pipelines` response.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PipelinesList {
     #[serde(default)]
     pub statuses: Vec<Pipeline>,
@@ -240,7 +240,7 @@ pub struct PipelinesList {
 }
 
 /// One Lakeflow / Delta Live Tables pipeline. Ids are UUID strings here, not integers.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Pipeline {
     #[serde(rename = "pipeline_id")]
     pub id: String,
@@ -255,7 +255,7 @@ pub struct Pipeline {
     pub latest_updates: Vec<PipelineUpdate>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PipelineUpdate {
     #[serde(rename = "update_id")]
     pub id: String,
@@ -266,7 +266,7 @@ pub struct PipelineUpdate {
     pub creation_time: Option<Timestamp>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum PipelineState {
     Deploying,
@@ -315,7 +315,7 @@ impl PipelineState {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum UpdateState {
     Queued,
@@ -361,13 +361,13 @@ impl UpdateState {
 }
 
 /// `POST /api/2.0/pipelines/{id}/updates` response.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct UpdateStartResponse {
     pub update_id: String,
 }
 
 /// `GET /api/2.0/preview/scim/v2/Me`: who the token belongs to.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ScimMe {
     #[serde(rename = "userName")]
     pub user_name: String,

@@ -88,6 +88,11 @@ Actions: `quit`, `screen_mode`, `toggle_log`, `filter`, `mine_only`, `status_fil
 one character, `ctrl+` and a character, or `tab`, `up`, `down`, `left`, `right`, `enter`,
 `esc`, `backspace`.
 
+## Scripting
+
+`lazydatabricks jobs`, `lazydatabricks runs <job_id>` and `lazydatabricks pipelines` print the
+listing as JSON and exit, so `lazydatabricks -p prod jobs | jq '.[].settings.name'` works.
+
 ## Debugging
 
 `LAZYDATABRICKS_LOG=debug lazydatabricks` writes every request, response status and executed

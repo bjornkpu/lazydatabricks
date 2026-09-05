@@ -784,8 +784,8 @@ Small things that make the tool feel native on each desk:
 
 ### M28 — `--json`
 `lazydatabricks jobs`, `lazydatabricks runs <job_id>` and `lazydatabricks pipelines` print the
-same models the TUI holds as JSON and exit, for `fzf`, `jq` and scripts. Same auth, same
-filters from config, no terminal taken over.
+same models the TUI holds as JSON and exit, for `fzf`, `jq` and scripts. Same auth and
+`max_jobs`; no filters, `jq` is the filter; no terminal taken over.
 
 *Teaches:* the API layer was already separate from the UI; this proves it.
 *Done when:* `lazydatabricks jobs | jq '.[].settings.name'` works.
