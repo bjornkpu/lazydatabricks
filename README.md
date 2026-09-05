@@ -76,6 +76,7 @@ profiles = ["dev", "prod"] # open several; wins over profile
 mine_only = true
 filter = "gold"
 status = "all"             # or "failed", "active"; f cycles it
+compute = true             # false hides [4] Compute and never fetches clusters or warehouses
 dev_tag = "bjorn_punsvik"  # tag value that marks a job as mine; derived from the email if unset
 me_aliases = ["sp-1234"]   # service principals whose jobs count as mine
 allow_actions = false

@@ -124,11 +124,13 @@ impl Workspace {
             self.tx.clone(),
             max,
         ));
-        tokio::spawn(fetch_compute(
-            Arc::clone(&self.client),
-            self.tx.clone(),
-            max,
-        ));
+        if self.app.compute_panel.is_enabled() {
+            tokio::spawn(fetch_compute(
+                Arc::clone(&self.client),
+                self.tx.clone(),
+                max,
+            ));
+        }
         tokio::spawn(fetch_me(Arc::clone(&self.client), self.tx.clone()));
     }
 

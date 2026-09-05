@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Duration;
 
 pub use filter::{Filter, Me, Status};
-pub use focus::{Panel, ScreenMode, Tab};
+pub use focus::{ComputePanel, Panel, ScreenMode, Tab};
 use jiff::tz::TimeZone;
 pub use keys::{Action, Keymap};
 pub use list::{Move, Selectable};
@@ -104,6 +104,8 @@ pub struct App {
     pipelines_inflight: Option<u64>,
     pipelines_fetched_at: Option<u64>,
     pub pipelines_error: Option<AppError>,
+    /// Config: fetch and show `[4] Compute` at all.
+    pub compute_panel: ComputePanel,
     /// Every cluster fetched. `compute` is the filtered view of this.
     pub all_compute: Vec<Cluster>,
     pub compute: Selectable<Cluster>,
@@ -196,7 +198,9 @@ impl App {
             pipelines_error: None,
             all_compute: Vec::new(),
             compute: Selectable::default(),
-            compute_inflight: Some(0),
+            compute_panel: ComputePanel::from_config(config.compute),
+            // The launch fetch is in flight, unless config turned the panel off.
+            compute_inflight: config.compute.then_some(0),
             compute_fetched_at: None,
             compute_error: None,
             jobs: Selectable::default(),
@@ -667,7 +671,7 @@ impl App {
 
     /// One compute fetch at a time, same TTL as jobs.
     fn refresh_compute(&mut self, commands: &mut Vec<Command>) {
-        if self.compute_inflight.is_none() {
+        if self.compute_panel.is_enabled() && self.compute_inflight.is_none() {
             self.compute_inflight = Some(self.ticks);
             commands.push(Command::FetchCompute { max: self.max_jobs });
         }
@@ -1343,9 +1347,10 @@ impl App {
     /// serverless workspace with no warehouses loads an empty list and the panel folds away.
     #[must_use]
     pub const fn show_compute(&self) -> bool {
-        self.compute_fetched_at.is_none()
-            || !self.all_compute.is_empty()
-            || self.compute_error.is_some()
+        self.compute_panel.is_enabled()
+            && (self.compute_fetched_at.is_none()
+                || !self.all_compute.is_empty()
+                || self.compute_error.is_some())
     }
 
     /// The side panel after `panel`, skipping a hidden compute panel.
@@ -2621,6 +2626,29 @@ pub mod tests {
         assert_eq!(app.filter_summary(), "failed only · 0 of 2 compute");
         press(&mut app, "f");
         assert_eq!(app.filter_summary(), "active only · 2 of 2 compute");
+    }
+
+    #[test]
+    fn compute_false_in_config_never_shows_or_fetches() {
+        let mut loaded = defaults();
+        loaded.config.compute = false;
+        let mut app = App::new(
+            "dev",
+            "https://adb-1.azuredatabricks.net",
+            TimeZone::UTC,
+            &loaded,
+        );
+        assert!(!app.show_compute());
+        assert!(!app.compute_loading(), "no launch fetch, so no spinner");
+        app.update(Message::JobsLoaded(vec![job(1, "a")]));
+        press(&mut app, "4");
+        assert_eq!(app.focus, Panel::Jobs);
+        let commands = app.update(key(Key::Char('R')));
+        assert!(commands.contains(&Command::FetchJobs { max: 200 }));
+        assert!(
+            !commands.contains(&Command::FetchCompute { max: 200 }),
+            "refresh everything leaves compute alone"
+        );
     }
 
     #[test]

@@ -79,6 +79,30 @@ impl Panel {
     }
 }
 
+/// Whether config allows the `[4] Compute` panel at all. An enum rather than a bool so the
+/// state struct stays readable; `App` already carries three flags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComputePanel {
+    Enabled,
+    Disabled,
+}
+
+impl ComputePanel {
+    #[must_use]
+    pub const fn from_config(enabled: bool) -> Self {
+        if enabled {
+            Self::Enabled
+        } else {
+            Self::Disabled
+        }
+    }
+
+    #[must_use]
+    pub const fn is_enabled(self) -> bool {
+        matches!(self, Self::Enabled)
+    }
+}
+
 /// A view in the main panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
