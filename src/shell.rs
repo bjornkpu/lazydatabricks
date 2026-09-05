@@ -83,26 +83,13 @@ pub fn interactive(line: &str) -> Result<String, AppError> {
     Ok(status.to_string())
 }
 
-pub fn open_url(url: &str) -> Result<(), AppError> {
-    let browser = std::env::var("BROWSER").unwrap_or_default();
-    let mut command = if !browser.is_empty() {
-        let mut command = Command::new(browser);
-        command.arg(url);
-        command
-    } else if cfg!(target_os = "windows") {
-        let mut command = Command::new("cmd");
-        // The empty string is the window title `start` insists on when the next arg is quoted.
-        command.args(["/c", "start", "", url]);
-        command
-    } else if cfg!(target_os = "macos") {
-        let mut command = Command::new("open");
-        command.arg(url);
-        command
-    } else {
-        let mut command = Command::new("xdg-open");
-        command.arg(url);
-        command
-    };
+/// Hands `url` to `open_command` from config when set, else `$BROWSER`, else the platform's
+/// opener. The URL is appended as one single-quoted argument; a URL never contains a quote.
+pub fn open_url(url: &str, open_command: Option<&str>) -> Result<(), AppError> {
+    let mut command = open_command.map_or_else(
+        || default_opener(url),
+        |line| sh(&format!("{line} '{url}'")),
+    );
     let status = command
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -115,18 +102,9 @@ pub fn open_url(url: &str) -> Result<(), AppError> {
     }
 }
 
-pub fn copy(text: &str) -> Result<(), AppError> {
-    let mut command = if cfg!(target_os = "windows") {
-        Command::new("clip")
-    } else if cfg!(target_os = "macos") {
-        Command::new("pbcopy")
-    } else if std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty()) {
-        Command::new("wl-copy")
-    } else {
-        let mut command = Command::new("xclip");
-        command.args(["-selection", "clipboard"]);
-        command
-    };
+/// Pipes `text` into `copy_command` from config when set, else the platform's clipboard tool.
+pub fn copy(text: &str, copy_command: Option<&str>) -> Result<(), AppError> {
+    let mut command = copy_command.map_or_else(default_copier, sh);
     let failed =
         |error: &dyn std::fmt::Display| shell_error("copy to the clipboard", &error.to_string());
     let mut child = command
@@ -149,6 +127,44 @@ pub fn copy(text: &str) -> Result<(), AppError> {
         Ok(())
     } else {
         Err(failed(&status))
+    }
+}
+
+/// `$BROWSER`, else the platform opener, with `url` as its argument.
+fn default_opener(url: &str) -> Command {
+    let browser = std::env::var("BROWSER").unwrap_or_default();
+    if !browser.is_empty() {
+        let mut command = Command::new(browser);
+        command.arg(url);
+        command
+    } else if cfg!(target_os = "windows") {
+        let mut command = Command::new("cmd");
+        // The empty string is the window title `start` insists on when the next arg is quoted.
+        command.args(["/c", "start", "", url]);
+        command
+    } else if cfg!(target_os = "macos") {
+        let mut command = Command::new("open");
+        command.arg(url);
+        command
+    } else {
+        let mut command = Command::new("xdg-open");
+        command.arg(url);
+        command
+    }
+}
+
+/// The platform's clipboard tool, reading stdin.
+fn default_copier() -> Command {
+    if cfg!(target_os = "windows") {
+        Command::new("clip")
+    } else if cfg!(target_os = "macos") {
+        Command::new("pbcopy")
+    } else if std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty()) {
+        Command::new("wl-copy")
+    } else {
+        let mut command = Command::new("xclip");
+        command.args(["-selection", "clipboard"]);
+        command
     }
 }
 

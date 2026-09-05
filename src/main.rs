@@ -110,6 +110,9 @@ struct Workspace {
     client: Arc<api::Client>,
     tx: mpsc::Sender<Message>,
     rx: mpsc::Receiver<Message>,
+    /// Config overrides for the two desktop hand-offs; `None` means the platform default.
+    open_command: Option<String>,
+    copy_command: Option<String>,
 }
 
 impl Workspace {
@@ -123,6 +126,8 @@ impl Workspace {
             client,
             tx,
             rx,
+            open_command: loaded.config.open_command.clone(),
+            copy_command: loaded.config.copy_command.clone(),
         })
     }
 
@@ -231,14 +236,19 @@ impl Workspace {
                 tokio::spawn(stop_pipeline(client(), tx(), pipeline_id));
             }
             Command::OpenUrl(url) => {
-                tokio::spawn(desktop(tx(), move || shell::open_url(&url)));
+                let opener = self.open_command.clone();
+                tokio::spawn(desktop(tx(), move || {
+                    shell::open_url(&url, opener.as_deref())
+                }));
             }
             Command::Copy(text) => {
-                tokio::spawn(desktop(tx(), move || shell::copy(&text)));
+                let copier = self.copy_command.clone();
+                tokio::spawn(desktop(tx(), move || shell::copy(&text, copier.as_deref())));
             }
             Command::CopyVisible => {
                 let text = ui::visible_text(&self.app);
-                tokio::spawn(desktop(tx(), move || shell::copy(&text)));
+                let copier = self.copy_command.clone();
+                tokio::spawn(desktop(tx(), move || shell::copy(&text, copier.as_deref())));
             }
             Command::Bell => {
                 // BEL goes straight to the terminal; the next draw is unaffected.

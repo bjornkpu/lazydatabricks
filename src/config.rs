@@ -40,6 +40,12 @@ pub struct Config {
     pub confirm_on_quit: bool,
     /// `Esc` with nothing left to back out of quits (lazygit's `quitOnTopLevelReturn`).
     pub quit_on_top_level_return: bool,
+    /// Shell line that opens a URL, the URL appended as one quoted argument. Default: `$BROWSER`,
+    /// else the platform opener (lazygit's `os.openLink`).
+    pub open_command: Option<String>,
+    /// Shell line that reads the clipboard text from stdin. Default: the platform's clipboard
+    /// tool (lazygit's `os.copyToClipboardCmd`).
+    pub copy_command: Option<String>,
     /// Enable run-now and cancel in the `x` menu. Read-only without it (or `--allow-actions`).
     pub allow_actions: bool,
     /// Value of the `dev` tag that marks a job as mine. Derived from the email when unset.
@@ -81,6 +87,8 @@ impl Default for Config {
             check_updates: false,
             confirm_on_quit: false,
             quit_on_top_level_return: false,
+            open_command: None,
+            copy_command: None,
             allow_actions: false,
             dev_tag: None,
             me_aliases: Vec::new(),

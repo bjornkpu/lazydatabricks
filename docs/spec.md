@@ -1106,6 +1106,16 @@ second tab.
 *Teaches:* the last five percent of a port is settings, and each one is a test.
 *Done when:* `q` asks, `Esc` `Esc` from `[0]` quits, and `End` lands on the last job.
 
+### M57 — Open and copy commands
+lazygit's `os.openLink` and `os.copyToClipboardCmd`. `open_command` is a shell line the URL is
+appended to; `copy_command` a shell line that reads the text on stdin. Both go through the same
+`sh -c` / `cmd /C` as custom commands. `$BROWSER` and the platform tools remain the defaults, so
+this is for the WSL user whose clipboard is `clip.exe`, the tmux user with an OSC 52 script, and
+nobody else, which is why the README shows them commented out.
+
+*Teaches:* an override is `Option<String>` threaded to the one place the default lives.
+*Done when:* `copy_command = "clip.exe"` under WSL puts a URL on the Windows clipboard.
+
 ---
 
 ## 9. Testing
