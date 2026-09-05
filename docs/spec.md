@@ -964,6 +964,16 @@ choosing never looks anything up again. No actions gate: a clipboard is not a wr
 *Teaches:* the third use of the menu cost nothing; the entry carries its payload.
 *Done when:* `y j Enter` on a run puts its id on the clipboard for a support ticket.
 
+### M44 — The log as something you can run
+The API log was put there to teach the API (§3). The copy menu now ends with the newest call as
+`databricks api get '/api/2.2/jobs/runs/list?…' -p dev` and as a `curl` line with a
+`$DATABRICKS_TOKEN` placeholder, so what the TUI just did can be pasted into a shell, a script or
+a bug report. The log itself is not a focusable panel; the newest call is the one you just caused,
+and that is the one worth copying. On the Status panel, with nothing selected, it is all `y` offers.
+
+*Teaches:* an observability panel earns its space when its rows can leave the program.
+*Done when:* `1 y Enter` after a refresh pastes a CLI line that returns the same JSON.
+
 ---
 
 ## 9. Testing

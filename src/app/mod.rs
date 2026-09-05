@@ -1216,6 +1216,30 @@ impl App {
         if let Load::Loaded(json) = self.json_view() {
             copy("JSON", Some(json));
         }
+        // The API log exists to teach the API; the newest call as something you can run.
+        if let Some(call) = self.api_log.back() {
+            copy(
+                "last request as databricks api",
+                Some(format!(
+                    "databricks api {} '{}' -p {}",
+                    call.method.to_ascii_lowercase(),
+                    call.path,
+                    self.profile
+                )),
+            );
+            let verb = if call.method == "GET" {
+                String::new()
+            } else {
+                format!(" -X {}", call.method)
+            };
+            copy(
+                "last request as curl",
+                Some(format!(
+                    "curl{verb} -H \"Authorization: Bearer $DATABRICKS_TOKEN\" '{}{}'",
+                    self.host, call.path
+                )),
+            );
+        }
         if items.is_empty() {
             self.notice = Some("Nothing selected to copy".to_owned());
             return;
@@ -2644,6 +2668,33 @@ pub mod tests {
         press(&mut app, "1y");
         assert_eq!(app.input, InputMode::Normal);
         assert_eq!(app.notice.as_deref(), Some("Nothing selected to copy"));
+        app.update(Message::ApiCalled(api_call(
+            "/api/2.2/jobs/list?limit=25",
+            Some(200),
+            84,
+        )));
+        press(&mut app, "y");
+        assert_eq!(
+            labels(&app),
+            [
+                "Copy last request as databricks api",
+                "Copy last request as curl"
+            ],
+            "Status has no selection, but the log has a call"
+        );
+        assert_eq!(
+            app.update(key(Key::Enter)),
+            vec![Command::Copy(
+                "databricks api get '/api/2.2/jobs/list?limit=25' -p dev".to_owned()
+            )]
+        );
+        press(&mut app, "yj");
+        assert_eq!(
+            app.update(key(Key::Enter)),
+            vec![Command::Copy(
+                "curl -H \"Authorization: Bearer $DATABRICKS_TOKEN\" 'https://adb-1.azuredatabricks.net/api/2.2/jobs/list?limit=25'".to_owned()
+            )]
+        );
     }
 
     #[test]

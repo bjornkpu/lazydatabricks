@@ -142,7 +142,13 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             (k(Action::Copy), "copy: URL, ID, name"),
             (k(Action::CopyTable), "copy the compute list as text"),
         ],
-        Panel::Status => vec![(k(Action::Refresh), "refresh jobs, pipelines and compute")],
+        Panel::Status => vec![
+            (k(Action::Refresh), "refresh jobs, pipelines and compute"),
+            (
+                k(Action::Copy),
+                "copy the last request as databricks api or curl",
+            ),
+        ],
     };
     rows.extend([
         ("0-4".to_owned(), "focus panel by number"),
