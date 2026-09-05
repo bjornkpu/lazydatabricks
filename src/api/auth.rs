@@ -78,9 +78,19 @@ pub fn host(profile: &str) -> Result<String, AppError> {
     let path = std::env::home_dir()
         .ok_or(AppError::HomeDir)?
         .join(".databrickscfg");
-    let cfg = std::fs::read_to_string(&path).map_err(|error| AppError::FileRead {
-        path: path.display().to_string(),
-        detail: error.to_string(),
+    let cfg = std::fs::read_to_string(&path).map_err(|error| {
+        if error.kind() == ErrorKind::NotFound {
+            // First run: the login command is the answer, not "file not found".
+            AppError::NoCfg {
+                profile: profile.to_owned(),
+                path: path.display().to_string(),
+            }
+        } else {
+            AppError::FileRead {
+                path: path.display().to_string(),
+                detail: error.to_string(),
+            }
+        }
     })?;
     host_from_cfg(&cfg, profile).ok_or_else(|| AppError::NoHost {
         profile: profile.to_owned(),

@@ -3,6 +3,7 @@
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp};
 use ratatui::style::{Color, Modifier, Style};
+use ratatui::widgets::BorderType;
 
 use crate::api::models::{
     LifeCycleState, Pipeline, PipelineState, ResultState, Run, RunState, UpdateState,
@@ -24,6 +25,10 @@ pub struct Palette {
     pub notice: Color,
     /// The confirmation box.
     pub danger: Color,
+    /// Secondary text: hints, labels, unfocused titles. Empty in mono, where DIM is invisible.
+    pub dim: Style,
+    /// Border of the focused panel; mono uses the shape since it has no colour.
+    pub border: BorderType,
 }
 
 #[must_use]
@@ -39,6 +44,8 @@ pub const fn palette(app: &App) -> Palette {
             error: Color::Red,
             notice: Color::Yellow,
             danger: Color::Red,
+            dim: Style::new().add_modifier(Modifier::DIM),
+            border: BorderType::Plain,
         },
         Theme::Light => Palette {
             accent: Color::Blue,
@@ -47,10 +54,37 @@ pub const fn palette(app: &App) -> Palette {
                 .fg(Color::Black)
                 .add_modifier(Modifier::BOLD),
             highlight_unfocused: Style::new().bg(Color::Gray).fg(Color::Black),
-            error: Color::LightRed,
+            error: Color::Red,
             notice: Color::Magenta,
-            danger: Color::LightRed,
+            danger: Color::Red,
+            dim: Style::new().add_modifier(Modifier::DIM),
+            border: BorderType::Plain,
         },
+        Theme::Mono => Palette {
+            accent: Color::Reset,
+            highlight: Style::new().add_modifier(Modifier::REVERSED),
+            highlight_unfocused: Style::new().add_modifier(Modifier::UNDERLINED),
+            error: Color::Reset,
+            notice: Color::Reset,
+            danger: Color::Reset,
+            dim: Style::new(),
+            border: BorderType::Double,
+        },
+    }
+}
+
+/// Secondary-text style for the app's theme.
+#[must_use]
+pub const fn dim(app: &App) -> Style {
+    palette(app).dim
+}
+
+/// A status colour, or nothing in mono: the glyph shape carries the state there.
+#[must_use]
+pub const fn tint(app: &App, color: Color) -> Style {
+    match app.theme {
+        Theme::Mono => Style::new(),
+        Theme::Dark | Theme::Light => Style::new().fg(color),
     }
 }
 

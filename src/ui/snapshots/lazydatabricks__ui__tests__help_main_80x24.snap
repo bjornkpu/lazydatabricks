@@ -25,4 +25,4 @@ expression: render(&app)
 "│               │    ?  this list                               │              │"
 "│               │ q/^C  quit                                    │              │"
 "└───────────────└──────────────────Esc: close───────────────────┘──────────────┘"
-" Close: Esc                                                               v0.1.0"
+" Scroll: j/k │ Close: Esc                                                 v0.1.0"

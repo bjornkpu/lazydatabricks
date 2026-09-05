@@ -37,7 +37,14 @@ const CHANNEL_CAPACITY: usize = 64;
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = cli::Cli::parse();
-    let mut loaded = config::load()?;
+    let config_path = cli
+        .config
+        .or_else(|| std::env::var_os("LAZYDATABRICKS_CONFIG").map(Into::into));
+    let mut loaded = config::load(config_path)?;
+    // https://no-color.org: any non-empty value turns colours off.
+    if std::env::var_os("NO_COLOR").is_some_and(|value| !value.is_empty()) {
+        loaded.config.theme = config::Theme::Mono;
+    }
     // Kept alive until exit so the last log lines are flushed.
     let _log_guard = init_tracing(loaded.path.parent().unwrap_or_else(|| Path::new(".")))?;
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "starting");

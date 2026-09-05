@@ -25,4 +25,4 @@ expression: render(&app)
 "│               │    @  toggle the API log                      │              │"
 "│               │    A  enable or disable actions this session  │              │"
 "└───────────────│    ?  this list                               │──────────────┘"
-" Close: Esc     └──────────────────Esc: close───────────────────┘         v0.1.0"
+" Scroll: j/k │ C└───────────j/k: scroll │ Esc: close────────────┘         v0.1.0"

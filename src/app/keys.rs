@@ -92,16 +92,26 @@ impl Default for Keymap {
 
 impl Keymap {
     /// Defaults with each listed action's bindings replaced. Empty lists are ignored so an
-    /// action can never end up unreachable by accident.
-    #[must_use]
-    pub fn with_overrides(overrides: &BTreeMap<Action, Vec<Key>>) -> Self {
+    /// action can never end up unreachable by accident. One key on two actions is an error:
+    /// which one won would otherwise depend on enum order.
+    pub fn with_overrides(overrides: &BTreeMap<Action, Vec<Key>>) -> Result<Self, String> {
         let mut keymap = Self::default();
         for (action, keys) in overrides {
             if !keys.is_empty() {
                 keymap.0.insert(*action, keys.clone());
             }
         }
-        keymap
+        let mut seen: BTreeMap<String, Action> = BTreeMap::new();
+        for (action, keys) in &keymap.0 {
+            for key in keys {
+                if let Some(other) = seen.insert(key.to_string(), *action) {
+                    return Err(format!(
+                        "key {key} is bound to both {other:?} and {action:?}"
+                    ));
+                }
+            }
+        }
+        Ok(keymap)
     }
 
     #[must_use]
@@ -221,7 +231,7 @@ mod tests {
             (Action::NextTab, vec![Key::Char('ø')]),
             (Action::Quit, vec![]),
         ]);
-        let keys = Keymap::with_overrides(&overrides);
+        let keys = Keymap::with_overrides(&overrides).unwrap();
         assert_eq!(keys.action(Key::Char('ø')), Some(Action::NextTab));
         assert_eq!(keys.action(Key::Char(']')), None, "old binding gone");
         assert_eq!(
@@ -230,6 +240,16 @@ mod tests {
             "empty list ignored"
         );
         assert_eq!(keys.label(Action::NextTab), "ø");
+    }
+
+    #[test]
+    fn one_key_two_actions_is_an_error() {
+        let overrides = BTreeMap::from([(Action::Sort, vec![Key::Char('m')])]);
+        let error = Keymap::with_overrides(&overrides).unwrap_err();
+        assert!(
+            error.contains("MineOnly") && error.contains("Sort"),
+            "{error}"
+        );
     }
 
     #[test]

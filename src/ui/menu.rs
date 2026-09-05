@@ -18,7 +18,7 @@ pub fn draw(app: &App, frame: &mut Frame) {
             frame,
         ),
         InputMode::Params { name, text, .. } => params(app, name, text, frame),
-        InputMode::Normal | InputMode::Filter | InputMode::Help => {}
+        InputMode::Normal | InputMode::Filter | InputMode::Help { .. } => {}
     }
 }
 

@@ -24,8 +24,14 @@ pub enum AppError {
     FileRead { path: String, detail: String },
     #[error("invalid config {path}: {detail}")]
     ConfigParse { path: String, detail: String },
-    #[error("no host for profile [{profile}] in {path}")]
+    #[error(
+        "no profile [{profile}] in {path}. Run `databricks auth login --host https://<workspace-url> -p {profile}`"
+    )]
     NoHost { profile: String, path: String },
+    #[error(
+        "no {path} yet. Run `databricks auth login --host https://<workspace-url> -p {profile}` once; it creates the file"
+    )]
+    NoCfg { profile: String, path: String },
     #[error(
         "HTTP {status} for {path}: token rejected. Run `databricks auth login -p {profile}`, then press r"
     )]
@@ -79,6 +85,7 @@ impl AppError {
             | Self::FileRead { .. }
             | Self::ConfigParse { .. }
             | Self::NoHost { .. }
+            | Self::NoCfg { .. }
             | Self::Shell { .. }
             | Self::Internal(_) => self.to_string(),
         }

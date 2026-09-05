@@ -2,18 +2,18 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::Color;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 
-use super::chrome;
+use super::{chrome, theme};
 use crate::app::App;
 
 /// Columns other than the path: `GET ` + ` ` + path + ` ` + `200` + ` ` + `12345ms`.
 const FIXED_WIDTH: usize = 4 + 1 + 1 + 3 + 1 + 7;
 
 pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
-    let dim = Style::new().add_modifier(Modifier::DIM);
+    let dim = theme::dim(app);
     let block = Block::bordered().title(Line::styled("─API log", dim));
     let inner = block.inner(area);
     let rows = usize::from(inner.height);
@@ -36,7 +36,7 @@ pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
                     call.method,
                     chrome::fit(&call.path, path_width)
                 )),
-                Span::styled(format!("{status:>3}"), Style::new().fg(color)),
+                Span::styled(format!("{status:>3}"), theme::tint(app, color)),
                 Span::raw(format!(" {:>5}ms", call.duration.as_millis())),
             ])
         })

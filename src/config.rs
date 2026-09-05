@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use directories::ProjectDirs;
 use serde::Deserialize;
 
-use crate::app::{Action, Key, Status};
+use crate::app::{Action, Key, Keymap, Status};
 use crate::error::AppError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -105,6 +105,9 @@ pub enum Theme {
     #[default]
     Dark,
     Light,
+    /// No colours, no dim text: focus is a double border, the cursor is reverse video. Also
+    /// what `NO_COLOR` selects.
+    Mono,
 }
 
 /// The config that was loaded and where it came from, for the Profile tab.
@@ -116,16 +119,20 @@ pub struct Loaded {
     pub found: bool,
 }
 
-/// Reads the config file if present. A missing file is defaults; an unreadable or invalid one
-/// is an error, since silently ignoring a typo would be worse.
-pub fn load() -> Result<Loaded, AppError> {
-    let path = ProjectDirs::from("", "", "lazydatabricks")
-        .ok_or(AppError::ConfigDir)?
-        .config_dir()
-        .join("config.toml");
+/// Reads the config file if present. A missing default file is defaults; a missing `explicit`
+/// one is an error, as is an unreadable or invalid file, since silently ignoring a typo would
+/// be worse.
+pub fn load(explicit: Option<PathBuf>) -> Result<Loaded, AppError> {
+    let path = match explicit {
+        Some(path) => path,
+        None => ProjectDirs::from("", "", "lazydatabricks")
+            .ok_or(AppError::ConfigDir)?
+            .config_dir()
+            .join("config.toml"),
+    };
     let text = match std::fs::read_to_string(&path) {
         Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && !explicit_given(&path) => {
             return Ok(Loaded {
                 config: Config::default(),
                 path,
@@ -150,10 +157,18 @@ pub fn load() -> Result<Loaded, AppError> {
     })
 }
 
+/// `load` treats a path it did not derive itself as required. Derived paths end in the platform
+/// config dir; a user path is whatever they typed.
+fn explicit_given(path: &std::path::Path) -> bool {
+    ProjectDirs::from("", "", "lazydatabricks")
+        .is_none_or(|dirs| !path.starts_with(dirs.config_dir()))
+}
+
 /// Parses the file and checks the values `toml` cannot: a `date_format` that would fail on
 /// every render is rejected here, once, instead of there, sixty times a second.
 fn parse(text: &str) -> Result<Config, String> {
     let config: Config = toml::from_str(text).map_err(|error| error.to_string())?;
+    Keymap::with_overrides(&config.keys)?;
     let sample = jiff::Zoned::new(jiff::Timestamp::UNIX_EPOCH, jiff::tz::TimeZone::UTC);
     jiff::fmt::strtime::format(&config.date_format, &sample)
         .map_err(|error| format!("date_format {:?}: {error}", config.date_format))?;
@@ -222,5 +237,7 @@ mod tests {
         let error = parse("[keys]\nnext_tab = [\"alt+x\"]").unwrap_err();
         assert!(error.contains("alt+x"), "{error}");
         assert!(parse("[keys]\nfly = [\"f\"]").is_err());
+        let error = parse("[keys]\nsort = [\"m\"]").unwrap_err();
+        assert!(error.contains("bound to both"), "{error}");
     }
 }

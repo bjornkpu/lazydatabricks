@@ -9,9 +9,9 @@ use super::{chrome, theme};
 use crate::app::{Action, App, InputMode, Keymap, Panel};
 
 pub fn draw(app: &App, frame: &mut Frame) {
-    if app.input != InputMode::Help {
+    let InputMode::Help { scroll } = app.input else {
         return;
-    }
+    };
     let palette = theme::palette(app);
     let rows = bindings(app.focus, &app.keys);
     let key_width = rows
@@ -49,12 +49,25 @@ pub fn draw(app: &App, frame: &mut Frame) {
         Panel::Main => "Main",
         other => other.name(),
     };
+    // Rows that do not fit scroll with j/k; the scroll stops at the last row.
+    let hidden = chrome::rows(rows.len()).saturating_sub(area.height);
+    let footer = if hidden > 0 {
+        "j/k: scroll │ Esc: close"
+    } else {
+        "Esc: close"
+    };
     let block = Block::bordered()
+        .border_type(palette.border)
         .border_style(Style::new().fg(palette.accent))
         .title(format!(" Keybindings ─ {panel_name} "))
-        .title_bottom(Line::from("Esc: close").centered());
+        .title_bottom(Line::from(footer).centered());
     frame.render_widget(Clear, area);
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .scroll((scroll.min(hidden), 0))
+            .block(block),
+        area,
+    );
 }
 
 /// The focused panel's bindings first, then the ones that work everywhere.

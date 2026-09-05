@@ -164,7 +164,8 @@ impl App {
             tz,
             now: None,
             latest_runs: HashMap::new(),
-            keys: Keymap::with_overrides(&config.keys),
+            // Conflicts were rejected at config load; a stray one falls back to the defaults.
+            keys: Keymap::with_overrides(&config.keys).unwrap_or_default(),
             config_note,
             dev_tag: config.dev_tag.clone(),
             me_aliases: config.me_aliases.clone(),
@@ -336,11 +337,20 @@ impl App {
                     self.notice = Some("Actions enabled for this session".to_owned());
                 }
             }
-            InputMode::Help => {
-                if matches!(key, Key::Esc | Key::Char('?' | 'q')) {
-                    self.input = InputMode::Normal;
+            InputMode::Help { scroll } => match key {
+                Key::Esc | Key::Char('?' | 'q') => self.input = InputMode::Normal,
+                Key::Char('j') | Key::Down => {
+                    self.input = InputMode::Help {
+                        scroll: scroll.saturating_add(1),
+                    };
                 }
-            }
+                Key::Char('k') | Key::Up => {
+                    self.input = InputMode::Help {
+                        scroll: scroll.saturating_sub(1),
+                    };
+                }
+                _ => {}
+            },
         }
     }
 
@@ -721,7 +731,9 @@ impl App {
         } else {
             (self.jobs.items().len(), self.all_jobs.len(), "jobs")
         };
-        parts.push(format!("{visible} of {total} {what}"));
+        // The fetch stops at `max_jobs`; a full list means "at least this many", so say so.
+        let plus = if total >= self.max_jobs { "+" } else { "" };
+        parts.push(format!("{visible} of {total}{plus} {what}"));
         parts.join(" · ")
     }
 
@@ -750,7 +762,7 @@ impl App {
                 self.input = InputMode::Filter;
             }
             Action::Menu => self.open_menu(),
-            Action::Help => self.input = InputMode::Help,
+            Action::Help => self.input = InputMode::Help { scroll: 0 },
             Action::ToggleActions => self.toggle_actions(),
             Action::Sort => {
                 self.sort = self.sort.next();
@@ -1593,6 +1605,14 @@ pub mod tests {
     }
 
     #[test]
+    fn a_full_list_says_plus() {
+        let mut app = loaded();
+        assert_eq!(app.filter_summary(), "3 of 3 jobs");
+        app.max_jobs = 3;
+        assert_eq!(app.filter_summary(), "3 of 3+ jobs");
+    }
+
+    #[test]
     fn f_cycles_the_status_filter_over_the_newest_runs() {
         let mut app = loaded();
         let mut failed = run(20, 1000, 2000, Some(ResultState::Failed));
@@ -2204,19 +2224,24 @@ pub mod tests {
     fn question_mark_opens_help_and_esc_closes_it() {
         let mut app = loaded();
         press(&mut app, "?");
-        assert_eq!(app.input, InputMode::Help);
+        assert_eq!(app.input, InputMode::Help { scroll: 0 });
         assert_eq!(
             app.update(key(Key::Char('q'))),
             vec![],
             "q closes help, not the app"
         );
         assert_eq!(app.input, InputMode::Normal);
-        press(&mut app, "?");
-        app.update(key(Key::Char('j')));
+        press(&mut app, "?jjk");
         assert_eq!(
             app.input,
-            InputMode::Help,
-            "other keys are ignored while help is up"
+            InputMode::Help { scroll: 1 },
+            "j and k scroll the list"
+        );
+        press(&mut app, "kkx");
+        assert_eq!(
+            app.input,
+            InputMode::Help { scroll: 0 },
+            "clamped at the top; other keys are ignored"
         );
         app.update(key(Key::Esc));
         assert_eq!(app.input, InputMode::Normal);

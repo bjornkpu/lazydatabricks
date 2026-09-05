@@ -121,8 +121,8 @@ pub enum InputMode {
         name: String,
         text: String,
     },
-    /// `?` pressed: the keybindings overlay is up.
-    Help,
+    /// `?` pressed: the keybindings overlay is up, scrolled this many rows.
+    Help { scroll: u16 },
 }
 
 #[cfg(test)]

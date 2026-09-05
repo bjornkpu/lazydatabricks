@@ -315,6 +315,13 @@ mod tests {
     }
 
     #[test]
+    fn mono_theme_80x24() {
+        let mut app = with_runs();
+        app.theme = Theme::Mono;
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn confirm_actions_80x24() {
         let mut app = with_runs();
         press(&mut app, "A");

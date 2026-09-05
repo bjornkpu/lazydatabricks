@@ -2,7 +2,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListState, Paragraph};
 
@@ -26,7 +26,7 @@ pub fn status(app: &App, area: Rect, frame: &mut Frame) {
     };
     let host = app.host.trim_start_matches("https://");
     let identity = Line::from(vec![
-        Span::styled(glyph.to_string(), Style::new().fg(color)),
+        Span::styled(glyph.to_string(), theme::tint(app, color)),
         Span::raw(format!(" {} → {host}", app.profile)),
     ]);
     let mut summary = app.filter_summary();
@@ -52,14 +52,14 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
     }
     suffix.push_span(Span::styled(
         format!(" by {}", app.sort.as_str()),
-        Style::new().add_modifier(Modifier::DIM),
+        theme::dim(app),
     ));
     let filtering = app.input == InputMode::Filter;
     if filtering || !app.filter.text.is_empty() {
         let cursor = if filtering { "▌" } else { "" };
         suffix.push_span(Span::styled(
             format!(" /{}{cursor}", app.filter.text),
-            Style::new().fg(Color::Yellow),
+            theme::tint(app, Color::Yellow),
         ));
     }
     let counter = app.jobs.counter();
@@ -83,11 +83,8 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
         };
         let (glyph, color) = latest.map_or(('·', Color::DarkGray), theme::run_glyph);
         Line::from(vec![
-            Span::styled(
-                format!("{age:>3} "),
-                Style::new().add_modifier(Modifier::DIM),
-            ),
-            Span::styled(glyph.to_string(), Style::new().fg(color)),
+            Span::styled(format!("{age:>3} "), theme::dim(app)),
+            Span::styled(glyph.to_string(), theme::tint(app, color)),
             Span::raw(format!(" {}", chrome::fit(&job.settings.name, name_width))),
         ])
     });
@@ -108,7 +105,7 @@ pub fn pipelines(app: &App, area: Rect, frame: &mut Frame) {
     };
     spinner.push_span(Span::styled(
         format!(" by {}", app.sort.as_str()),
-        Style::new().add_modifier(Modifier::DIM),
+        theme::dim(app),
     ));
     let counter = app.pipelines.counter();
     let palette = theme::palette(app);
@@ -133,11 +130,8 @@ pub fn pipelines(app: &App, area: Rect, frame: &mut Frame) {
             _ => String::new(),
         };
         Line::from(vec![
-            Span::styled(
-                format!("{age:>3} "),
-                Style::new().add_modifier(Modifier::DIM),
-            ),
-            Span::styled(glyph.to_string(), Style::new().fg(color)),
+            Span::styled(format!("{age:>3} "), theme::dim(app)),
+            Span::styled(glyph.to_string(), theme::tint(app, color)),
             Span::raw(format!(" {}", chrome::fit(&pipeline.name, name_width))),
         ])
     });

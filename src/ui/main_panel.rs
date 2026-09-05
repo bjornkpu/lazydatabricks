@@ -48,7 +48,7 @@ fn tabs_title(app: &App) -> Line<'static> {
         let style = if index == app.tab {
             Style::new().add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
         } else {
-            Style::new().add_modifier(Modifier::DIM)
+            theme::dim(app)
         };
         spans.push(Span::styled(tab.name(), style));
     }
@@ -89,7 +89,7 @@ fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
         let duration =
             theme::run_duration(run, app.now).map_or_else(|| "-".to_owned(), theme::duration);
         let result = Line::from(vec![
-            Span::styled(glyph.to_string(), Style::new().fg(color)),
+            Span::styled(glyph.to_string(), theme::tint(app, color)),
             Span::raw(format!(" {}", theme::run_result(run))),
         ]);
         Row::new(
@@ -158,26 +158,26 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
     let dash = || "-".to_owned();
     let (glyph, color) = theme::run_glyph(run);
     let result = Line::from(vec![
-        Span::styled(
-            format!("{:<15}", "Result"),
-            Style::new().add_modifier(Modifier::DIM),
-        ),
-        Span::styled(glyph.to_string(), Style::new().fg(color)),
+        Span::styled(format!("{:<15}", "Result"), theme::dim(app)),
+        Span::styled(glyph.to_string(), theme::tint(app, color)),
         Span::raw(format!(" {}", theme::run_result(run))),
     ]);
     let fields = vec![
-        field("Run ID", run.id.to_string()),
+        field(app, "Run ID", run.id.to_string()),
         field(
+            app,
             "Started",
             run.start_time
                 .map_or_else(dash, |ts| theme::clock(ts, &app.tz, &app.date_format)),
         ),
         field(
+            app,
             "Duration",
             theme::run_duration(run, app.now).map_or_else(dash, theme::duration),
         ),
         result,
         field(
+            app,
             "Message",
             if run.state.state_message.is_empty() {
                 dash()
@@ -186,6 +186,7 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
             },
         ),
         field(
+            app,
             "URL",
             if run.page_url.is_empty() {
                 dash()
@@ -209,7 +210,7 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
             Cell::from(started),
             Cell::from(duration),
             Cell::from(Line::from(vec![
-                Span::styled(glyph.to_string(), Style::new().fg(color)),
+                Span::styled(glyph.to_string(), theme::tint(app, color)),
                 Span::raw(format!(" {}", theme::state_result(&task.state))),
             ])),
         ])
@@ -234,15 +235,12 @@ fn task_errors(app: &App, run: &Run, palette: &Palette) -> Vec<Line<'static>> {
                 task.task_key.clone(),
                 Style::new().add_modifier(Modifier::BOLD),
             ),
-            Span::styled(
-                format!("  {}", task.state.state_message),
-                Style::new().add_modifier(Modifier::DIM),
-            ),
+            Span::styled(format!("  {}", task.state.state_message), theme::dim(app)),
         ]));
         match app.run_outputs.get(&task.run_id) {
             Some(Load::Loaded(output)) => {
                 let error = Style::new().fg(palette.error);
-                let dim = Style::new().add_modifier(Modifier::DIM);
+                let dim = theme::dim(app);
                 let text = |s: &Option<String>, style| {
                     s.iter()
                         .flat_map(|s| s.lines())
@@ -300,7 +298,7 @@ fn updates(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
             Cell::from(short_id),
             Cell::from(created),
             Cell::from(Line::from(vec![
-                Span::styled(glyph.to_string(), Style::new().fg(color)),
+                Span::styled(glyph.to_string(), theme::tint(app, color)),
                 Span::raw(format!(" {}", update.state.as_str())),
             ])),
         ])
@@ -319,11 +317,11 @@ fn pipeline_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Fra
         return;
     };
     let lines = vec![
-        field("Name", pipeline.name.clone()),
-        field("Pipeline ID", pipeline.id.clone()),
-        field("State", pipeline.state.as_str().to_owned()),
-        field("Creator", pipeline.creator_user_name.clone()),
-        field("Updates", pipeline.latest_updates.len().to_string()),
+        field(app, "Name", pipeline.name.clone()),
+        field(app, "Pipeline ID", pipeline.id.clone()),
+        field(app, "State", pipeline.state.as_str().to_owned()),
+        field(app, "Creator", pipeline.creator_user_name.clone()),
+        field(app, "Updates", pipeline.latest_updates.len().to_string()),
     ];
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
@@ -346,45 +344,44 @@ fn detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
             .join(" ")
     };
     let lines = vec![
-        field("Name", settings.name.clone()),
-        field("Job ID", job.id.to_string()),
-        field("Creator", job.creator_user_name.clone()),
-        field("Run as", job.run_as_user_name.clone()),
-        field("Format", settings.format.clone().unwrap_or_else(dash)),
+        field(app, "Name", settings.name.clone()),
+        field(app, "Job ID", job.id.to_string()),
+        field(app, "Creator", job.creator_user_name.clone()),
+        field(app, "Run as", job.run_as_user_name.clone()),
+        field(app, "Format", settings.format.clone().unwrap_or_else(dash)),
         field(
+            app,
             "Max concurrent",
             settings
                 .max_concurrent_runs
                 .map_or_else(dash, |n| n.to_string()),
         ),
         field(
+            app,
             "Timeout",
             settings.timeout_seconds.map_or_else(dash, |secs| {
                 theme::duration(SignedDuration::from_secs(secs))
             }),
         ),
-        field("Tags", tags),
+        field(app, "Tags", tags),
     ];
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 fn profile(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
     let lines = vec![
-        field("Profile", app.profile.clone()),
-        field("Host", app.host.clone()),
-        field("Jobs", app.jobs.items().len().to_string()),
-        field("Config", app.config_note.clone()),
+        field(app, "Profile", app.profile.clone()),
+        field(app, "Host", app.host.clone()),
+        field(app, "Jobs", app.jobs.items().len().to_string()),
+        field(app, "Config", app.config_note.clone()),
     ];
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 /// One `Label   value` line. Values are owned because the frame outlives no borrow of `App`.
-fn field(label: &str, value: String) -> Line<'static> {
+fn field(app: &App, label: &str, value: String) -> Line<'static> {
     Line::from(vec![
-        Span::styled(
-            format!("{label:<15}"),
-            Style::new().add_modifier(Modifier::DIM),
-        ),
+        Span::styled(format!("{label:<15}"), theme::dim(app)),
         Span::raw(value),
     ])
 }

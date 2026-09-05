@@ -3,7 +3,7 @@
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, Paragraph, Wrap};
 
 use super::theme::Palette;
 use crate::app::Panel;
@@ -18,20 +18,24 @@ pub fn panel(
     counter: Option<&str>,
     palette: &Palette,
 ) -> Block<'static> {
-    let (border, title_style) = if focused {
+    let (border, border_type, title_style) = if focused {
         (
             Style::new().fg(palette.accent),
+            palette.border,
             Style::new().fg(palette.accent).add_modifier(Modifier::BOLD),
         )
     } else {
-        (Style::new(), Style::new().add_modifier(Modifier::DIM))
+        (Style::new(), BorderType::Plain, palette.dim)
     };
     let mut title = Line::from(Span::styled(
         format!("─[{}]─{}", panel.number(), panel.name()),
         title_style,
     ));
     title.extend(suffix);
-    let mut block = Block::bordered().border_style(border).title(title);
+    let mut block = Block::bordered()
+        .border_type(border_type)
+        .border_style(border)
+        .title(title);
     if let Some(counter) = counter {
         block = block.title_bottom(Line::from(counter.to_owned()).right_aligned());
     }

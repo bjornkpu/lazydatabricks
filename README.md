@@ -51,7 +51,7 @@ the target. Opening a failed run shows the failing task's error and traceback.
 | `x` | actions menu for the selected job |
 | `r` / `R` | refresh the focused panel / everything |
 | `s` | cycle sort: activity, name, created |
-| `o` / `y` | open in browser / copy URL |
+| `o` / `y` | open in browser (`$BROWSER` if set) / copy URL (`wl-copy` on Wayland) |
 | `+` | cycle screen mode: normal, half, full |
 | `@` | toggle the API log |
 | `q` | quit |
@@ -60,6 +60,7 @@ the target. Opening a failed run shows the failing task's error and traceback.
 
 Optional, every field has a default. The Profile tab shows the path; on Windows it is
 `%APPDATA%\lazydatabricks\config\config.toml`, elsewhere `~/.config/lazydatabricks/config.toml`.
+`--config <path>` or `LAZYDATABRICKS_CONFIG` points at a shared one instead.
 
 ```toml
 profile = "dev"            # env DATABRICKS_CONFIG_PROFILE and --profile win over this
@@ -69,7 +70,7 @@ status = "all"             # or "failed", "active"; f cycles it
 dev_tag = "bjorn_punsvik"  # tag value that marks a job as mine; derived from the email if unset
 me_aliases = ["sp-1234"]   # service principals whose jobs count as mine
 allow_actions = false
-theme = "dark"             # or "light"
+theme = "dark"             # or "light", "mono"; NO_COLOR in the environment also picks mono
 sort = "activity"          # or "name", "created"; newest first, ties by name
 date_format = "%d.%m %H:%M" # strftime, checked at startup
 max_jobs = 200

@@ -4,7 +4,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::widgets::Paragraph;
 
 use super::theme;
@@ -13,7 +13,7 @@ use crate::app::{Action, App, InputMode, Keymap, Panel};
 const VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"));
 
 #[must_use]
-pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap) -> String {
+pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap, viewing_run: bool) -> String {
     let k = |action| keys.label(action);
     match input {
         InputMode::Filter => {
@@ -26,7 +26,7 @@ pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap) -> String {
             return " Type key=value pairs, space separated │ Start: Enter │ Cancel: Esc"
                 .to_owned();
         }
-        InputMode::Help => return " Close: Esc".to_owned(),
+        InputMode::Help { .. } => return " Scroll: j/k │ Close: Esc".to_owned(),
         InputMode::Normal => {}
     }
     match focus {
@@ -49,6 +49,15 @@ pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap) -> String {
             k(Action::Quit),
             k(Action::Help)
         ),
+        Panel::Main if viewing_run => format!(
+            " Back: {} │ Browser: {} │ Copy URL: {} │ Actions: {} │ Quit: {} │ Keys: {}",
+            k(Action::Back),
+            k(Action::Browse),
+            k(Action::Copy),
+            k(Action::Menu),
+            k(Action::Quit),
+            k(Action::Help)
+        ),
         Panel::Main => format!(
             " Move: {}/{} │ Open: {} │ Back: {} │ Actions: {} │ Quit: {} │ Keys: {}",
             k(Action::Down),
@@ -63,13 +72,13 @@ pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap) -> String {
 }
 
 pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
-    let dim = Style::new().add_modifier(Modifier::DIM);
+    let dim = theme::dim(app);
     if let Some(notice) = &app.notice {
         let style = Style::new().fg(theme::palette(app).notice);
         frame.render_widget(Paragraph::new(format!(" {notice}")).style(style), area);
         return;
     }
-    let text = hints(app.focus, &app.input, &app.keys);
+    let text = hints(app.focus, &app.input, &app.keys, app.viewing_run.is_some());
     // The version stamp yields to the hints on narrow terminals.
     let fits = text
         .chars()
