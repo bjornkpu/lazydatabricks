@@ -148,6 +148,10 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             k(Action::ToggleActions),
             "enable or disable actions this session",
         ),
+        (
+            k(Action::NextProfile),
+            "next profile, when several are open",
+        ),
         (k(Action::Help), "this list"),
         (k(Action::Quit), "quit"),
     ]);

@@ -29,6 +29,7 @@ PATs and keyring storage all work without configuration here.
 databricks auth login -p dev
 cargo install --path .
 lazydatabricks -p dev
+lazydatabricks -p dev,prod    # several workspaces in one window; p cycles them
 ```
 
 Read-only by default. `--allow-actions` (or `allow_actions = true` in config) enables run-now,
@@ -66,6 +67,7 @@ Optional, every field has a default. The Profile tab shows the path; on Windows 
 
 ```toml
 profile = "dev"            # env DATABRICKS_CONFIG_PROFILE and --profile win over this
+profiles = ["dev", "prod"] # open several; wins over profile
 mine_only = true
 filter = "gold"
 status = "all"             # or "failed", "active"; f cycles it

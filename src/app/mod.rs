@@ -898,6 +898,7 @@ impl App {
             Action::Menu => self.open_menu(),
             Action::Help => self.input = InputMode::Help { scroll: 0 },
             Action::ToggleActions => self.toggle_actions(),
+            Action::NextProfile => commands.push(Command::NextProfile),
             Action::Sort => {
                 self.sort = self.sort.next();
                 self.apply_filter();
@@ -1850,6 +1851,12 @@ pub mod tests {
         assert_eq!(ticks(&mut app, 3), vec![], "runs tab asks for nothing");
         app.update(Message::JobsLoaded(vec![job(1, "a")]));
         assert!(app.detailed.is_empty(), "a refresh brings list shapes back");
+    }
+
+    #[test]
+    fn p_asks_the_shell_for_the_next_profile() {
+        let mut app = loaded();
+        assert_eq!(app.update(key(Key::Char('p'))), vec![Command::NextProfile]);
     }
 
     #[test]

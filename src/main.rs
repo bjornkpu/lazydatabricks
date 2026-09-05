@@ -48,131 +48,190 @@ async fn main() -> Result<()> {
     // Kept alive until exit so the last log lines are flushed.
     let _log_guard = init_tracing(loaded.path.parent().unwrap_or_else(|| Path::new(".")))?;
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "starting");
-    // Flags beat environment beat config beat the CLI's own default profile name.
-    let profile = cli
+    // Flags beat environment beat config beat the CLI's own default profile name. Commas
+    // separate several profiles; each gets its own workspace.
+    let profiles: Vec<String> = cli
         .profile
         .or_else(|| std::env::var("DATABRICKS_CONFIG_PROFILE").ok())
-        .or_else(|| loaded.config.profile.clone())
-        .unwrap_or_else(|| "DEFAULT".to_owned());
+        .map(|list| {
+            list.split(',')
+                .map(|profile| profile.trim().to_owned())
+                .filter(|profile| !profile.is_empty())
+                .collect()
+        })
+        .or_else(|| (!loaded.config.profiles.is_empty()).then(|| loaded.config.profiles.clone()))
+        .or_else(|| loaded.config.profile.clone().map(|profile| vec![profile]))
+        .unwrap_or_else(|| vec!["DEFAULT".to_owned()]);
     loaded.config.allow_actions |= cli.allow_actions;
     if cli.filter.is_some() {
         loaded.config.filter = cli.filter;
     }
-    let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
     // Auth before the terminal is taken over: the CLI may print or open a browser, and its
     // errors should land in a normal shell.
-    let client = Arc::new(api::Client::from_profile(&profile, tx.clone())?);
-    if let Some(command) = cli.command {
-        return print_json(&client, command, loaded.config.max_jobs).await;
+    let mut workspaces = Vec::new();
+    for profile in &profiles {
+        let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
+        let client = Arc::new(api::Client::from_profile(profile, tx.clone())?);
+        let app = App::new(profile, client.host(), TimeZone::system(), &loaded);
+        workspaces.push(Workspace {
+            app,
+            client,
+            tx,
+            rx,
+        });
     }
-    let app = App::new(&profile, client.host(), TimeZone::system(), &loaded);
-    tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone(), app.max_jobs));
-    tokio::spawn(fetch_recent_runs(
-        Arc::clone(&client),
-        tx.clone(),
-        app.max_jobs,
-    ));
-    tokio::spawn(fetch_pipelines(
-        Arc::clone(&client),
-        tx.clone(),
-        app.max_jobs,
-    ));
-    tokio::spawn(fetch_clusters(
-        Arc::clone(&client),
-        tx.clone(),
-        app.max_jobs,
-    ));
-    tokio::spawn(fetch_me(Arc::clone(&client), tx.clone()));
-    spawn_input(tx.clone());
+    if let Some(command) = cli.command {
+        let Some(first) = workspaces.first() else {
+            bail!("no profile to query");
+        };
+        return print_json(&first.client, command, loaded.config.max_jobs).await;
+    }
+    for workspace in &workspaces {
+        workspace.start();
+    }
+    let (input_tx, input_rx) = mpsc::channel(CHANNEL_CAPACITY);
+    spawn_input(input_tx);
     // `ratatui::init` enters the alternate screen and raw mode and installs a panic hook that
     // restores both. `clippy::exit` is denied, so the loop returns instead of exiting; that is
     // what lets `restore` run on the error path too.
     let mut terminal = ratatui::init();
-    let result = run(&mut terminal, app, rx, client, tx).await;
+    let result = run(&mut terminal, workspaces, input_rx).await;
     ratatui::restore();
     result
 }
 
-async fn run(
-    terminal: &mut DefaultTerminal,
-    mut app: App,
-    mut rx: mpsc::Receiver<Message>,
+/// One profile: its state, its client and the channel its fetches report on. Messages never
+/// cross workspaces, so a late reply for `dev` cannot land in `prod`.
+struct Workspace {
+    app: App,
     client: Arc<api::Client>,
     tx: mpsc::Sender<Message>,
+    rx: mpsc::Receiver<Message>,
+}
+
+impl Workspace {
+    /// The fetches every workspace starts with.
+    fn start(&self) {
+        let max = self.app.max_jobs;
+        tokio::spawn(fetch_jobs(Arc::clone(&self.client), self.tx.clone(), max));
+        tokio::spawn(fetch_recent_runs(
+            Arc::clone(&self.client),
+            self.tx.clone(),
+            max,
+        ));
+        tokio::spawn(fetch_pipelines(
+            Arc::clone(&self.client),
+            self.tx.clone(),
+            max,
+        ));
+        tokio::spawn(fetch_clusters(
+            Arc::clone(&self.client),
+            self.tx.clone(),
+            max,
+        ));
+        tokio::spawn(fetch_me(Arc::clone(&self.client), self.tx.clone()));
+    }
+
+    /// Runs one side effect. `Quit` and `NextProfile` belong to the shell, so they come back.
+    fn execute(&self, command: Command) -> Option<Command> {
+        let client = || Arc::clone(&self.client);
+        let tx = || self.tx.clone();
+        match command {
+            Command::Quit | Command::NextProfile => return Some(command),
+            Command::FetchJobs { max } => {
+                tokio::spawn(fetch_jobs(client(), tx(), max));
+            }
+            Command::FetchRecentRuns { max } => {
+                tokio::spawn(fetch_recent_runs(client(), tx(), max));
+            }
+            Command::FetchPipelines { max } => {
+                tokio::spawn(fetch_pipelines(client(), tx(), max));
+            }
+            Command::FetchClusters { max } => {
+                tokio::spawn(fetch_clusters(client(), tx(), max));
+            }
+            Command::StartCluster { cluster_id } => {
+                tokio::spawn(start_cluster(client(), tx(), cluster_id));
+            }
+            Command::TerminateCluster { cluster_id } => {
+                tokio::spawn(terminate_cluster(client(), tx(), cluster_id));
+            }
+            Command::FetchRuns { job_id } => {
+                tokio::spawn(fetch_runs(client(), tx(), job_id));
+            }
+            Command::FetchRunDetail { run_id } => {
+                tokio::spawn(fetch_run_detail(client(), tx(), run_id));
+            }
+            Command::FetchJob { job_id } => {
+                tokio::spawn(fetch_job(client(), tx(), job_id));
+            }
+            Command::FetchRunOutput { run_id } => {
+                tokio::spawn(fetch_run_output(client(), tx(), run_id));
+            }
+            Command::RunNow { job_id, params } => {
+                tokio::spawn(run_now(client(), tx(), job_id, params));
+            }
+            Command::RepairRun { job_id, run_id } => {
+                tokio::spawn(repair_run(client(), tx(), job_id, run_id));
+            }
+            Command::CancelRun { job_id, run_id } => {
+                tokio::spawn(cancel_run(client(), tx(), job_id, run_id));
+            }
+            Command::StartUpdate { pipeline_id } => {
+                tokio::spawn(start_update(client(), tx(), pipeline_id));
+            }
+            Command::StopPipeline { pipeline_id } => {
+                tokio::spawn(stop_pipeline(client(), tx(), pipeline_id));
+            }
+            Command::OpenUrl(url) => {
+                tokio::spawn(desktop(tx(), move || shell::open_url(&url)));
+            }
+            Command::Copy(text) => {
+                tokio::spawn(desktop(tx(), move || shell::copy(&text)));
+            }
+            Command::CopyVisible => {
+                let text = ui::visible_text(&self.app);
+                tokio::spawn(desktop(tx(), move || shell::copy(&text)));
+            }
+            Command::Bell => {
+                // BEL goes straight to the terminal; the next draw is unaffected.
+                let mut out = std::io::stdout();
+                let _ = out.write_all(b"\x07").and_then(|()| out.flush());
+            }
+        }
+        None
+    }
+}
+
+/// The draw/update loop over the active workspace. Keys and ticks go to the active one only;
+/// an inactive workspace's fetches wait in its channel until it is shown again.
+async fn run(
+    terminal: &mut DefaultTerminal,
+    mut workspaces: Vec<Workspace>,
+    mut input: mpsc::Receiver<Message>,
 ) -> Result<()> {
+    let count = workspaces.len();
+    let mut active = 0;
     loop {
-        terminal.draw(|frame| ui::draw(&app, frame))?;
-        let Some(message) = rx.recv().await else {
+        let Some(workspace) = workspaces.get_mut(active) else {
+            bail!("no workspace {active}");
+        };
+        terminal.draw(|frame| ui::draw(&workspace.app, frame))?;
+        let message = tokio::select! {
+            message = input.recv() => message,
+            message = workspace.rx.recv() => message,
+        };
+        let Some(message) = message else {
             bail!("all message producers stopped");
         };
-        for command in app.update(message) {
+        for command in workspace.app.update(message) {
             tracing::debug!(?command);
-            match command {
-                Command::Quit => return Ok(()),
-                Command::FetchJobs { max } => {
-                    tokio::spawn(fetch_jobs(Arc::clone(&client), tx.clone(), max));
+            match workspace.execute(command) {
+                Some(Command::Quit) => return Ok(()),
+                Some(Command::NextProfile) => {
+                    active = active.saturating_add(1).checked_rem(count).unwrap_or(0);
                 }
-                Command::FetchRecentRuns { max } => {
-                    tokio::spawn(fetch_recent_runs(Arc::clone(&client), tx.clone(), max));
-                }
-                Command::FetchPipelines { max } => {
-                    tokio::spawn(fetch_pipelines(Arc::clone(&client), tx.clone(), max));
-                }
-                Command::FetchClusters { max } => {
-                    tokio::spawn(fetch_clusters(Arc::clone(&client), tx.clone(), max));
-                }
-                Command::StartCluster { cluster_id } => {
-                    tokio::spawn(start_cluster(Arc::clone(&client), tx.clone(), cluster_id));
-                }
-                Command::TerminateCluster { cluster_id } => {
-                    tokio::spawn(terminate_cluster(
-                        Arc::clone(&client),
-                        tx.clone(),
-                        cluster_id,
-                    ));
-                }
-                Command::FetchRuns { job_id } => {
-                    tokio::spawn(fetch_runs(Arc::clone(&client), tx.clone(), job_id));
-                }
-                Command::FetchRunDetail { run_id } => {
-                    tokio::spawn(fetch_run_detail(Arc::clone(&client), tx.clone(), run_id));
-                }
-                Command::FetchJob { job_id } => {
-                    tokio::spawn(fetch_job(Arc::clone(&client), tx.clone(), job_id));
-                }
-                Command::FetchRunOutput { run_id } => {
-                    tokio::spawn(fetch_run_output(Arc::clone(&client), tx.clone(), run_id));
-                }
-                Command::RunNow { job_id, params } => {
-                    tokio::spawn(run_now(Arc::clone(&client), tx.clone(), job_id, params));
-                }
-                Command::RepairRun { job_id, run_id } => {
-                    tokio::spawn(repair_run(Arc::clone(&client), tx.clone(), job_id, run_id));
-                }
-                Command::CancelRun { job_id, run_id } => {
-                    tokio::spawn(cancel_run(Arc::clone(&client), tx.clone(), job_id, run_id));
-                }
-                Command::StartUpdate { pipeline_id } => {
-                    tokio::spawn(start_update(Arc::clone(&client), tx.clone(), pipeline_id));
-                }
-                Command::StopPipeline { pipeline_id } => {
-                    tokio::spawn(stop_pipeline(Arc::clone(&client), tx.clone(), pipeline_id));
-                }
-                Command::OpenUrl(url) => {
-                    tokio::spawn(desktop(tx.clone(), move || shell::open_url(&url)));
-                }
-                Command::Copy(text) => {
-                    tokio::spawn(desktop(tx.clone(), move || shell::copy(&text)));
-                }
-                Command::CopyVisible => {
-                    let text = ui::visible_text(&app);
-                    tokio::spawn(desktop(tx.clone(), move || shell::copy(&text)));
-                }
-                Command::Bell => {
-                    // BEL goes straight to the terminal; the next draw is unaffected.
-                    let mut out = std::io::stdout();
-                    let _ = out.write_all(b"\x07").and_then(|()| out.flush());
-                }
+                Some(_) | None => {}
             }
         }
     }

@@ -182,4 +182,6 @@ pub enum Command {
     CopyVisible,
     /// Ring the terminal bell: something on screen just failed.
     Bell,
+    /// Show the next profile's workspace. `main` owns the list; `App` only asks.
+    NextProfile,
 }

@@ -8,7 +8,7 @@ pub struct Cli {
     /// Print JSON instead of opening the TUI.
     #[command(subcommand)]
     pub command: Option<Sub>,
-    /// Databricks CLI profile from ~/.databrickscfg.
+    /// Databricks CLI profile from ~/.databrickscfg. Comma-separated opens several; p cycles.
     #[arg(short, long)]
     pub profile: Option<String>,
     /// Start with this name filter applied.

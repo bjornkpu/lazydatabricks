@@ -15,6 +15,9 @@ use crate::error::AppError;
 pub struct Config {
     /// Databricks CLI profile. `DATABRICKS_CONFIG_PROFILE` wins over this; `DEFAULT` otherwise.
     pub profile: Option<String>,
+    /// Several profiles to open at once, one workspace each; `p` cycles them. Wins over
+    /// `profile` when not empty.
+    pub profiles: Vec<String>,
     /// Upper bound on jobs fetched across pages.
     pub max_jobs: usize,
     /// Start with the "mine only" filter on.
@@ -49,6 +52,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             profile: None,
+            profiles: Vec::new(),
             max_jobs: 200,
             mine_only: false,
             filter: None,
@@ -199,6 +203,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(config.profile.as_deref(), Some("dev"));
+        assert_eq!(
+            parse("profiles = [\"dev\", \"prod\"]").unwrap().profiles,
+            vec!["dev".to_owned(), "prod".to_owned()]
+        );
         assert!(config.mine_only);
         assert_eq!(config.dev_tag.as_deref(), Some("bk"));
         assert_eq!(
