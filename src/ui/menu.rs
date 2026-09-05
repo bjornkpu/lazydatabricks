@@ -18,6 +18,7 @@ pub fn draw(app: &App, frame: &mut Frame) {
             frame,
         ),
         InputMode::Params { name, text, .. } => params(app, name, text, frame),
+        InputMode::Prompt { text } => prompt(app, text, frame),
         InputMode::Normal
         | InputMode::Filter
         | InputMode::Help { .. }
@@ -72,6 +73,25 @@ fn confirm(app: &App, question: &str, frame: &mut Frame) {
         .title(" Confirm ")
         .title_bottom(Line::from(footer).centered());
     frame.render_widget(Paragraph::new(question).centered().block(block), area);
+}
+
+/// The `:` prompt: one `databricks` CLI line, the profile added on Enter.
+fn prompt(app: &App, text: &str, frame: &mut Frame) {
+    let title = " databricks … ";
+    let footer = "{{job_id}} {{run_id}} {{name}} {{host}} expand │ Enter: run │ Esc: cancel";
+    let shown = format!(" databricks {text}▌");
+    let width = footer
+        .chars()
+        .count()
+        .max(title.chars().count())
+        .max(shown.chars().count().saturating_add(1));
+    let area = chrome::centered(chrome::columns(width), chrome::rows(1), frame.area());
+    frame.render_widget(Clear, area);
+    let block = Block::bordered()
+        .border_style(Style::new().fg(theme::palette(app).notice))
+        .title(title)
+        .title_bottom(Line::from(footer).centered());
+    frame.render_widget(Paragraph::new(shown).block(block), area);
 }
 
 /// One line of `key=value` pairs for *Run with parameters*. Enter sends, so no second prompt.

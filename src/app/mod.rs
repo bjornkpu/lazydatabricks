@@ -386,6 +386,7 @@ impl App {
             InputMode::Output { .. } => self.output_key(key, commands),
             InputMode::Confirm(_) => self.confirm_key(key, commands),
             InputMode::Params { .. } => self.params_key(key, commands),
+            InputMode::Prompt { .. } => self.prompt_key(key, commands),
             InputMode::ConfirmActions => {
                 self.input = InputMode::Normal;
                 if key == Key::Char('y') {
@@ -1098,6 +1099,11 @@ impl App {
             Action::Help => self.input = InputMode::Help { scroll: 0 },
             Action::ToggleActions => self.toggle_actions(),
             Action::SwitchProfile => self.open_profiles(),
+            Action::Prompt => {
+                self.input = InputMode::Prompt {
+                    text: String::new(),
+                }
+            }
             Action::Sort => {
                 self.sort = self.sort.next();
                 self.apply_filter();
@@ -1737,6 +1743,48 @@ impl App {
             }
             Key::Tab | Key::Up | Key::Down | Key::Left | Key::Right | Key::Ctrl(_) => {
                 self.input = InputMode::Params { job_id, name, text };
+            }
+        }
+    }
+
+    /// Keys in the `:` prompt. Enter runs `databricks <text> -p <profile>` with the same
+    /// placeholders custom commands take, output in a popup; a placeholder with nothing to fill
+    /// it keeps the prompt open and says so.
+    fn prompt_key(&mut self, key: Key, commands: &mut Vec<Command>) {
+        let InputMode::Prompt { mut text } = std::mem::take(&mut self.input) else {
+            return;
+        };
+        match key {
+            Key::Ctrl('c') => commands.push(Command::Quit),
+            Key::Esc => {}
+            Key::Enter if text.trim().is_empty() => {}
+            Key::Enter => {
+                let line = format!("databricks {} -p {{{{profile}}}}", text.trim());
+                match expand(&line, &self.template_vars()) {
+                    Ok(command) => {
+                        self.notice = Some(format!("{command}…"));
+                        commands.push(Command::Shell {
+                            name: command.clone(),
+                            command,
+                            output: CommandOutput::Popup,
+                        });
+                    }
+                    Err(error) => {
+                        self.notice = Some(error);
+                        self.input = InputMode::Prompt { text };
+                    }
+                }
+            }
+            Key::Backspace => {
+                text.pop();
+                self.input = InputMode::Prompt { text };
+            }
+            Key::Char(c) => {
+                text.push(c);
+                self.input = InputMode::Prompt { text };
+            }
+            Key::Tab | Key::Up | Key::Down | Key::Left | Key::Right | Key::Ctrl(_) => {
+                self.input = InputMode::Prompt { text };
             }
         }
     }
@@ -2695,6 +2743,47 @@ pub mod tests {
                 "curl -H \"Authorization: Bearer $DATABRICKS_TOKEN\" 'https://adb-1.azuredatabricks.net/api/2.2/jobs/list?limit=25'".to_owned()
             )]
         );
+    }
+
+    #[test]
+    fn colon_runs_a_databricks_line_with_the_selection_filled_in() {
+        let mut app = loaded();
+        press(&mut app, ":");
+        assert_eq!(
+            app.input,
+            InputMode::Prompt {
+                text: String::new()
+            }
+        );
+        press(&mut app, "jobs get {{job_id}}");
+        assert_eq!(
+            app.update(key(Key::Enter)),
+            vec![Command::Shell {
+                name: "databricks jobs get 1 -p dev".to_owned(),
+                command: "databricks jobs get 1 -p dev".to_owned(),
+                output: CommandOutput::Popup,
+            }]
+        );
+        assert_eq!(app.input, InputMode::Normal);
+        press(&mut app, ":runs get {{run_id}}");
+        assert_eq!(app.update(key(Key::Enter)), vec![]);
+        assert_eq!(app.notice.as_deref(), Some("no {{run_id}} here"));
+        assert!(
+            matches!(&app.input, InputMode::Prompt { text } if text == "runs get {{run_id}}"),
+            "the prompt keeps the text: {:?}",
+            app.input
+        );
+        app.update(key(Key::Backspace));
+        assert!(matches!(&app.input, InputMode::Prompt { text } if text == "runs get {{run_id}"));
+        app.update(key(Key::Esc));
+        assert_eq!(app.input, InputMode::Normal);
+        press(&mut app, ":  ");
+        assert_eq!(
+            app.update(key(Key::Enter)),
+            vec![],
+            "blank line: nothing runs"
+        );
+        assert_eq!(app.input, InputMode::Normal);
     }
 
     #[test]

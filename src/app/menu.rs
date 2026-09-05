@@ -224,6 +224,8 @@ pub enum InputMode {
     },
     /// `?` pressed: the keybindings overlay is up, scrolled this many rows.
     Help { scroll: u16 },
+    /// `:` pressed: arguments for one `databricks` CLI call are being typed.
+    Prompt { text: String },
     /// A popup custom command finished: its output, scrolled this many rows.
     Output {
         title: String,

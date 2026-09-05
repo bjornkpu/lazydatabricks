@@ -26,6 +26,10 @@ pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap, viewing_run: bool) 
             return " Type key=value pairs, space separated │ Start: Enter │ Cancel: Esc"
                 .to_owned();
         }
+        InputMode::Prompt { .. } => {
+            return " Type databricks CLI arguments; {{job_id}} and friends expand │ Run: Enter │ Cancel: Esc"
+                .to_owned();
+        }
         InputMode::Help { .. } => return " Scroll: j/k │ Close: Esc".to_owned(),
         InputMode::Output { .. } => return " Scroll: j/k │ Copy: y │ Close: Esc".to_owned(),
         InputMode::Normal => {}

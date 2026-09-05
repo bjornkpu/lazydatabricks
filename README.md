@@ -62,6 +62,7 @@ the target. Opening a failed run shows the failing task's error and traceback.
 | `Y` | copy the focused panel's rows as text, for Teams |
 | `A` | enable actions for this session (asks first); again to disable |
 | `p` | switch profile: every profile in `~/.databrickscfg`, opened on first use |
+| `:` | run one `databricks` CLI line: `:jobs get {{job_id}}` runs `databricks jobs get <id> -p <profile>` and shows the output |
 | `+` | cycle screen mode: normal, half, full |
 | `@` | toggle the API log |
 | `q` | quit |
@@ -105,7 +106,9 @@ confirm = false
 
 ## Custom commands
 
-Anything the Databricks CLI can do, one key away, lazygit style. Each `[[commands]]` entry
+Anything the Databricks CLI can do, one key away, lazygit style. For a one-off, `:` prompts for
+the arguments instead: `:jobs get {{job_id}}` runs the CLI with the profile added and shows the
+output in the same popup. Each `[[commands]]` entry
 shows up at the end of the `x` menu when its `context` applies, and fires directly on its `key`.
 Placeholders are filled from the selection: `{{host}}` and `{{profile}}` always; `{{job_id}}`,
 `{{name}}` and `{{url}}` for a job, plus `{{run_id}}` when a run is under the cursor in `[0]`;

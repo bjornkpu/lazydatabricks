@@ -974,6 +974,16 @@ and that is the one worth copying. On the Status panel, with nothing selected, i
 *Teaches:* an observability panel earns its space when its rows can leave the program.
 *Done when:* `1 y Enter` after a refresh pastes a CLI line that returns the same JSON.
 
+### M45 — The `:` prompt
+lazygit's `:` runs a shell command; ours runs one `databricks` CLI line, since that is the shell
+command anyone here wants. `:jobs get {{job_id}}` becomes `databricks jobs get 1 -p dev`, the
+same placeholders as M34 filled from the selection, the output in the same popup. A placeholder
+with nothing to fill it keeps the prompt open with the reason. Half the value of custom commands
+for no config, and the way to find out which lines are worth a `[[commands]]` entry.
+
+*Teaches:* a prompt is a custom command typed late; reuse the expansion, add one input mode.
+*Done when:* `:runs list --job-id {{job_id}}` shows the same runs the table does.
+
 ---
 
 ## 9. Testing

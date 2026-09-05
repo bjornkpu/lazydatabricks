@@ -164,6 +164,10 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             k(Action::SwitchProfile),
             "switch profile: any in ~/.databrickscfg",
         ),
+        (
+            k(Action::Prompt),
+            "run a databricks CLI line with the selection filled in",
+        ),
         (k(Action::Help), "this list"),
         (k(Action::Quit), "quit"),
     ]);

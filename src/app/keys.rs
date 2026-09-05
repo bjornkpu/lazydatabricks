@@ -50,6 +50,8 @@ pub enum Action {
     ToggleActions,
     /// Open the profile menu: every profile in `~/.databrickscfg`.
     SwitchProfile,
+    /// The `:` prompt: one ad-hoc `databricks` CLI line with the selection filled in.
+    Prompt,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -92,6 +94,7 @@ impl Default for Keymap {
             (Action::PageUp, vec![Key::Ctrl('u')]),
             (Action::ToggleActions, vec![Key::Char('A')]),
             (Action::SwitchProfile, vec![Key::Char('p')]),
+            (Action::Prompt, vec![Key::Char(':')]),
         ]))
     }
 }

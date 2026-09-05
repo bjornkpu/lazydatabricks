@@ -466,6 +466,13 @@ mod tests {
     }
 
     #[test]
+    fn prompt_80x24() {
+        let mut app = with_runs();
+        press(&mut app, ":jobs get {{job_id}} --output json");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn copy_menu_80x24() {
         let mut app = with_runs();
         press(&mut app, "0jy");
