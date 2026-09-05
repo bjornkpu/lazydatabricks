@@ -2,6 +2,13 @@
 name = "lazydatabricks"
 version = "0.1.0"
 edition = "2024"
+description = "Terminal UI for Databricks jobs, runs and SQL warehouses."
+license = "MIT"
+repository = "https://github.com/bjornkpu/lazydatabricks"
+homepage = "https://github.com/bjornkpu/lazydatabricks"
+readme = "README.md"
+keywords = ["databricks", "tui", "terminal", "ratatui"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 # Chosen crates for this project. Uncomment when the milestone needs it (see docs/spec.md).
@@ -54,3 +61,8 @@ panic_in_result_fn = "deny"
 panic = "deny"
 exit = "deny"
 as_conversions = "deny"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

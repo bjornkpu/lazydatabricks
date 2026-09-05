@@ -22,9 +22,27 @@ your twenty.
 
 ## Install
 
-Download the binary for your platform from the
-[releases page](https://github.com/bjornkpu/lazydatabricks/releases) and put it on your `PATH`,
-or build it with Rust stable: `cargo install --path .`.
+macOS and Linux, via Homebrew:
+
+```
+brew install bjornkpu/tap/lazydatabricks
+```
+
+macOS and Linux, without Homebrew:
+
+```
+curl -LsSf https://github.com/bjornkpu/lazydatabricks/releases/latest/download/lazydatabricks-installer.sh | sh
+```
+
+Windows, in PowerShell:
+
+```
+irm https://github.com/bjornkpu/lazydatabricks/releases/latest/download/lazydatabricks-installer.ps1 | iex
+```
+
+With a Rust toolchain: `cargo install lazydatabricks`, or `cargo binstall lazydatabricks` to
+fetch the prebuilt binary instead of compiling. Archives for every platform are also on the
+[releases page](https://github.com/bjornkpu/lazydatabricks/releases).
 
 You also need the [Databricks CLI](https://docs.databricks.com/dev-tools/cli/) logged in to a
 profile in `~/.databrickscfg`. Authentication is delegated to the CLI, so OAuth, Azure AD, PATs
