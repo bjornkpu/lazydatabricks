@@ -118,6 +118,8 @@ pub struct App {
     pipelines_inflight: Option<u64>,
     pipelines_fetched_at: Option<u64>,
     pub pipelines_error: Option<AppError>,
+    /// `pipelines/get` per pipeline, pretty-printed, for the JSON tab.
+    pub pipeline_specs: HashMap<String, Load<String>>,
     /// Config: fetch and show `[4] Compute` at all.
     pub compute_panel: ComputePanel,
     /// Config: whether the side panel in context is the tall one.
@@ -225,6 +227,7 @@ impl App {
             pipelines_inflight: Some(0),
             pipelines_fetched_at: None,
             pipelines_error: None,
+            pipeline_specs: HashMap::new(),
             all_compute: Vec::new(),
             compute: Selectable::default(),
             compute_panel: ComputePanel::from_config(config.compute),
@@ -300,6 +303,12 @@ impl App {
                 self.on_cluster_action(&cluster_id, ClusterState::Terminating, &mut commands);
             }
             Message::PipelinesFailed(error) => self.on_pipelines_failed(error),
+            Message::PipelineLoaded { pipeline_id, spec } => {
+                self.on_pipeline_spec(pipeline_id, Ok(spec));
+            }
+            Message::PipelineFailed { pipeline_id, error } => {
+                self.on_pipeline_spec(pipeline_id, Err(error));
+            }
             Message::UpdateStarted {
                 pipeline_id,
                 update_id,
@@ -329,11 +338,7 @@ impl App {
             Message::RunOutputFailed { run_id, error } => {
                 self.set_run_output(run_id, Load::Failed(error));
             }
-            Message::RunDetailFailed { run_id, error } => {
-                if self.viewing_run == Some(run_id) {
-                    self.run_detail = Load::Failed(error);
-                }
-            }
+            Message::RunDetailFailed { run_id, error } => self.on_run_detail_failed(run_id, error),
             Message::ApiCalled(call) => {
                 if self.api_log.len() >= API_LOG_CAPACITY {
                     self.api_log.pop_front();
@@ -427,9 +432,10 @@ impl App {
                 self.pending_runs = Some((job_id, left));
             }
         }
-        // The Detail tab wants the full job once the cursor has rested (no runs fetch pending).
+        // The Detail and JSON tabs want the full job once the cursor has rested (no runs fetch
+        // pending).
         if self.context == Panel::Jobs
-            && self.active_tab() == Some(Tab::Detail)
+            && matches!(self.active_tab(), Some(Tab::Detail | Tab::Json))
             && self.pending_runs.is_none()
             && let Some(job_id) = self.jobs.selected().map(|job| job.id)
             && !self.detailed.contains(&job_id)
@@ -437,6 +443,19 @@ impl App {
         {
             self.job_inflight = Some(job_id);
             commands.push(Command::FetchJob { job_id });
+        }
+        // A pipeline's JSON tab fetches its spec the first time it is opened.
+        if self.context == Panel::Pipelines
+            && self.active_tab() == Some(Tab::Json)
+            && let Some(pipeline_id) = self
+                .pipelines
+                .selected()
+                .map(|pipeline| pipeline.id.clone())
+            && !self.pipeline_specs.contains_key(&pipeline_id)
+        {
+            self.pipeline_specs
+                .insert(pipeline_id.clone(), Load::Loading);
+            commands.push(Command::FetchPipeline { pipeline_id });
         }
         // Background refresh of what is on screen, once it is older than its TTL.
         if self
@@ -616,6 +635,13 @@ impl App {
             }
         }
         self.run_detail = Load::Loaded(run);
+    }
+
+    /// Only the run still being viewed gets its failure shown; a stale reply is dropped.
+    fn on_run_detail_failed(&mut self, run_id: i64, error: AppError) {
+        if self.viewing_run == Some(run_id) {
+            self.run_detail = Load::Failed(error);
+        }
     }
 
     /// `run-now` accepted. Optimistic: show the new run at once, then reconcile with a refetch.
@@ -900,6 +926,40 @@ impl App {
         self.main_scroll = 0;
         self.run_detail = Load::Idle;
         self.run_outputs.clear();
+    }
+
+    /// What the JSON tab shows for the selection: the job's settings once `jobs/get` has been
+    /// seen, the pipeline's spec once fetched.
+    /// `pipelines/get` landed, or did not; either way the JSON tab has something to show.
+    fn on_pipeline_spec(&mut self, pipeline_id: String, spec: Result<serde_json::Value, AppError>) {
+        let load = match spec {
+            Ok(spec) => Load::Loaded(pretty_json(&spec)),
+            Err(error) => {
+                self.notice = Some(error.to_string());
+                Load::Failed(error)
+            }
+        };
+        self.pipeline_specs.insert(pipeline_id, load);
+    }
+
+    #[must_use]
+    pub fn json_view(&self) -> Load<String> {
+        match self.context {
+            Panel::Jobs => self.jobs.selected().map_or(Load::Idle, |job| {
+                if self.detailed.contains(&job.id) {
+                    Load::Loaded(pretty_json(&job.settings))
+                } else {
+                    Load::Loading
+                }
+            }),
+            Panel::Pipelines => self.pipelines.selected().map_or(Load::Idle, |pipeline| {
+                self.pipeline_specs
+                    .get(&pipeline.id)
+                    .cloned()
+                    .unwrap_or(Load::Loading)
+            }),
+            Panel::Status | Panel::Compute | Panel::Main => Load::Idle,
+        }
     }
 
     /// lazygit's status dashboard: what is running, what is red, what is billing.
@@ -1728,6 +1788,29 @@ impl App {
     }
 }
 
+/// Pretty JSON with `null` members left out: the model fills absent fields with `None`, and a
+/// page of `"schedule": null` says nothing.
+fn pretty_json(value: &impl serde::Serialize) -> String {
+    fn strip(value: serde_json::Value) -> serde_json::Value {
+        match value {
+            serde_json::Value::Object(map) => serde_json::Value::Object(
+                map.into_iter()
+                    .filter(|(_, member)| !member.is_null())
+                    .map(|(key, member)| (key, strip(member)))
+                    .collect(),
+            ),
+            serde_json::Value::Array(items) => {
+                serde_json::Value::Array(items.into_iter().map(strip).collect())
+            }
+            other => other,
+        }
+    }
+    serde_json::to_value(value)
+        .map(strip)
+        .and_then(|value| serde_json::to_string_pretty(&value))
+        .unwrap_or_else(|error| error.to_string())
+}
+
 /// A text view's scroll after one cursor movement. `Last` overshoots on purpose: the draw
 /// clamps it to the real end and reports back.
 const fn scrolled(scroll: usize, movement: Move) -> usize {
@@ -2231,6 +2314,65 @@ pub mod tests {
     }
 
     #[test]
+    fn json_tab_shows_settings_once_fetched() {
+        let mut app = loaded();
+        press(&mut app, "ll");
+        assert_eq!(app.active_tab(), Some(Tab::Json));
+        assert_eq!(app.json_view(), Load::Loading);
+        assert_eq!(
+            ticks(&mut app, 3),
+            vec![
+                Command::FetchRuns { job_id: 1 },
+                Command::FetchJob { job_id: 1 }
+            ]
+        );
+        let mut full = job(1, "a");
+        full.settings.schedule = Some(CronSchedule {
+            quartz_cron_expression: "0 0 4 * * ?".to_owned(),
+            timezone_id: "Europe/Oslo".to_owned(),
+            pause_status: None,
+        });
+        app.update(Message::JobLoaded(full));
+        let Load::Loaded(text) = app.json_view() else {
+            panic!("{:?}", app.json_view());
+        };
+        assert!(
+            text.contains("\"quartz_cron_expression\": \"0 0 4 * * ?\""),
+            "{text}"
+        );
+        assert!(!text.contains("null"), "absent fields are left out: {text}");
+        assert!(!text.contains("pause_status"), "{text}");
+    }
+
+    #[test]
+    fn pipeline_json_tab_fetches_the_spec_once() {
+        let mut app = with_pipelines();
+        ticks(&mut app, 3);
+        press(&mut app, "3ll");
+        assert_eq!(app.active_tab(), Some(Tab::Json));
+        let commands = ticks(&mut app, 1);
+        assert_eq!(commands.len(), 1, "{commands:?}");
+        let Command::FetchPipeline { pipeline_id } = &commands[0] else {
+            panic!("{commands:?}");
+        };
+        assert_eq!(app.json_view(), Load::Loading);
+        assert_eq!(ticks(&mut app, 2), vec![], "one fetch per pipeline");
+        app.update(Message::PipelineLoaded {
+            pipeline_id: pipeline_id.clone(),
+            spec: serde_json::json!({ "name": "felles", "serverless": true, "catalog": null }),
+        });
+        assert_eq!(
+            app.json_view(),
+            Load::Loaded("{\n  \"name\": \"felles\",\n  \"serverless\": true\n}".to_owned())
+        );
+        app.update(Message::PipelineFailed {
+            pipeline_id: "nope".to_owned(),
+            error: boom(),
+        });
+        assert_eq!(app.notice.as_deref(), Some("internal error: boom"));
+    }
+
+    #[test]
     fn other_keys_do_nothing() {
         assert_eq!(app().update(key(Key::Char('z'))), vec![]);
     }
@@ -2678,7 +2820,11 @@ pub mod tests {
         app.update(key(Key::Char('l')));
         assert_eq!(app.active_tab(), Some(Tab::Detail));
         app.update(key(Key::Char(']')));
+        assert_eq!(app.active_tab(), Some(Tab::Json));
+        app.update(key(Key::Char(']')));
         assert_eq!(app.active_tab(), Some(Tab::Runs));
+        app.update(key(Key::Char('h')));
+        assert_eq!(app.active_tab(), Some(Tab::Json));
         app.update(key(Key::Char('h')));
         assert_eq!(app.active_tab(), Some(Tab::Detail));
         app.update(key(Key::Char('0')));

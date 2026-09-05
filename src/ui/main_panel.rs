@@ -37,11 +37,45 @@ pub fn draw(app: &App, area: Rect, frame: &mut Frame) -> usize {
             cluster_detail(app, block, area, frame)
         }
         Some(Tab::Detail) => detail(app, block, area, frame),
+        Some(Tab::Json) => json(app, block, area, frame),
         Some(Tab::Profile) => profile(app, block, area, frame),
         None => {
             frame.render_widget(block, area);
             0
         }
+    }
+}
+
+/// The selection's settings as Databricks sent them, once fetched.
+fn json(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) -> usize {
+    match app.json_view() {
+        Load::Idle => {
+            frame.render_widget(block, area);
+            0
+        }
+        Load::Loading => text_view(
+            app,
+            vec![Line::styled(
+                format!("{} fetching…", app.spinner_glyph()),
+                theme::dim(app),
+            )],
+            block,
+            area,
+            frame,
+        ),
+        Load::Failed(error) => {
+            frame.render_widget(chrome::error(&error, block, &theme::palette(app)), area);
+            0
+        }
+        Load::Loaded(text) => text_view(
+            app,
+            text.lines()
+                .map(|line| Line::raw(line.to_owned()))
+                .collect(),
+            block,
+            area,
+            frame,
+        ),
     }
 }
 

@@ -921,6 +921,17 @@ profiles' state. The menu is the `x` machinery with a different title and no act
 variant was enough.
 *Done when:* a consultant with six workspaces reaches any of them in two keys without restarting.
 
+### M40 — JSON tab
+lazydocker's Config tab. Jobs and pipelines get a third tab, **JSON**: the job's settings once
+`jobs/get` has been seen (the Detail tab's fetch, shared), the pipeline's spec from
+`pipelines/get` the first time the tab opens. Pretty-printed with `null` members stripped, since
+the model fills every absent field with `None` and a page of nulls says nothing. It scrolls like
+every other text view. The pipeline spec stays untyped JSON: the tab shows what Databricks sent,
+and nothing else reads it.
+
+*Teaches:* when the view is "the raw thing", do not type the raw thing.
+*Done when:* the JSON tab of a bundle-deployed job shows its `deployment` block and no `null`.
+
 ---
 
 ## 9. Testing

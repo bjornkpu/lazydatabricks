@@ -198,6 +198,9 @@ impl Workspace {
             Command::FetchJob { job_id } => {
                 tokio::spawn(fetch_job(client(), tx(), job_id));
             }
+            Command::FetchPipeline { pipeline_id } => {
+                tokio::spawn(fetch_pipeline(client(), tx(), pipeline_id));
+            }
             Command::FetchRunOutput { run_id } => {
                 tokio::spawn(fetch_run_output(client(), tx(), run_id));
             }
@@ -477,6 +480,14 @@ async fn fetch_job(client: Arc<api::Client>, tx: mpsc::Sender<Message>, job_id: 
     let message = match client.get_job(job_id).await {
         Ok(job) => Message::JobLoaded(job),
         Err(error) => Message::JobFailed { job_id, error },
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn fetch_pipeline(client: Arc<api::Client>, tx: mpsc::Sender<Message>, pipeline_id: String) {
+    let message = match client.get_pipeline(&pipeline_id).await {
+        Ok(spec) => Message::PipelineLoaded { pipeline_id, spec },
+        Err(error) => Message::PipelineFailed { pipeline_id, error },
     };
     let _ = tx.send(message).await;
 }

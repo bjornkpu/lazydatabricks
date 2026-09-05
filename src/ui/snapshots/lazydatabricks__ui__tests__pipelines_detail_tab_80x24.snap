@@ -2,7 +2,7 @@
 source: src/ui/mod.rs
 expression: render(&app)
 ---
-"┌─[1]─Status──────────────┐┌─[0]─Updates - Detail ⠋────────────────────────────┐"
+"┌─[1]─Status──────────────┐┌─[0]─Updates - Detail - JSON ⠋─────────────────────┐"
 "│◐ dev → adb-1.azuredatabr││Name           [someone] felles_gold               │"
 "│1 of 1 pipelines · 0s ago││Pipeline ID    2b8e9c4d-3f2a-4e1b-9c7d-6a5b4c3d2e1f│"
 "│◐ 1 · ✗ 1 · ● 0          ││State          IDLE                                │"

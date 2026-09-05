@@ -2,7 +2,7 @@
 source: src/ui/mod.rs
 expression: render(&app)
 ---
-"┌─[1]─Status──────────────┐┌─[0]─Runs - Detail ⠋───────────────────────────────┐"
+"┌─[1]─Status──────────────┐┌─[0]─Runs - Detail - JSON ⠋────────────────────────┐"
 "│◐ dev → adb-1.azuredatabr││  Run ID           Started      Duration  Result   │"
 "│3 of 3 jobs · 0s ago     ││  50851892761075   01.09 10:08  2h00m     ◐ RUNNING│"
 "│◐ 1 · ✗ 1 · ● 0          ││  50851892761073   31.08 10:08  1m12s     ✓ SUCCESS│"

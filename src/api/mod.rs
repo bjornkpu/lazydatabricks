@@ -226,6 +226,12 @@ impl Client {
             .await
     }
 
+    /// One pipeline's full spec, untyped: the JSON tab shows it as Databricks sent it.
+    pub async fn get_pipeline(&self, pipeline_id: &str) -> Result<Value, AppError> {
+        self.get(&format!("/api/2.0/pipelines/{pipeline_id}"), &[])
+            .await
+    }
+
     /// One run in full: state message, page URL and its tasks.
     pub async fn get_run(&self, run_id: i64) -> Result<Run, AppError> {
         let run_id = run_id.to_string();

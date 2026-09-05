@@ -526,6 +526,18 @@ mod tests {
     }
 
     #[test]
+    fn json_tab_80x24() {
+        let mut app = with_runs();
+        let full: crate::api::models::Job =
+            serde_json::from_str(include_str!("../../tests/fixtures/job_get.json")).unwrap();
+        let mut full = full;
+        full.id = 1;
+        app.update(Message::JobLoaded(full));
+        press(&mut app, "ll");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn detail_tab_full_80x24() {
         let mut app = with_runs();
         press(&mut app, "l");

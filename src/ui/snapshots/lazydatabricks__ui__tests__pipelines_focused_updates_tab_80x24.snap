@@ -2,7 +2,7 @@
 source: src/ui/mod.rs
 expression: render(&app)
 ---
-"┌─[1]─Status──────────────┐┌─[0]─Updates - Detail ⠋────────────────────────────┐"
+"┌─[1]─Status──────────────┐┌─[0]─Updates - Detail - JSON ⠋─────────────────────┐"
 "│◐ dev → adb-1.azuredatabr││Update     Created      State                      │"
 "│2 of 2 pipelines · 0s ago││ac18068b   26.08 22:40  ✓ COMPLETED                │"
 "│◐ 1 · ✗ 1 · ● 0          ││                                                   │"

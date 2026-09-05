@@ -57,6 +57,15 @@ pub enum Message {
     },
     PipelinesLoaded(Vec<Pipeline>),
     PipelinesFailed(AppError),
+    /// `pipelines/get` for the pipeline whose JSON tab is open, as sent.
+    PipelineLoaded {
+        pipeline_id: String,
+        spec: serde_json::Value,
+    },
+    PipelineFailed {
+        pipeline_id: String,
+        error: AppError,
+    },
     ComputeLoaded(Vec<Cluster>),
     ComputeFailed(AppError),
     /// A cluster or warehouse start was accepted; `cluster_id` is the compute row's id.
@@ -177,9 +186,13 @@ pub enum Command {
     FetchRunOutput {
         run_id: i64,
     },
-    /// Full settings of one job, for the Detail tab.
+    /// Full settings of one job, for the Detail and JSON tabs.
     FetchJob {
         job_id: i64,
+    },
+    /// Full spec of one pipeline, for its JSON tab.
+    FetchPipeline {
+        pipeline_id: String,
     },
     /// Pause or resume a job's schedule via `jobs/update`.
     SetSchedulePaused {

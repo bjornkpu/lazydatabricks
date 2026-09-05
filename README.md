@@ -50,7 +50,7 @@ the target. Opening a failed run shows the failing task's error and traceback.
 | `0`–`4`, `Tab` | focus a panel |
 | `j`/`k`, `g`/`G` | move the cursor, or scroll a detail view in `[0]` |
 | `ctrl+d`/`ctrl+u` | ten rows or lines down / up |
-| `h`/`l`, `[`/`]` | switch main-panel tabs |
+| `h`/`l`, `[`/`]` | switch main-panel tabs: Runs, Detail, JSON |
 | `/` | filter by name or owner; `Enter` keeps it, `Esc` clears it |
 | `m` | toggle mine only (`dev` tag, `[tag]` name prefix, creator, or `me_aliases`) |
 | `f` | cycle status: all, failed only, active only |
