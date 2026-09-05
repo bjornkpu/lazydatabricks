@@ -1,6 +1,7 @@
 # lazydatabricks
 
-A lazygit-style terminal UI for Databricks jobs, pipelines and clusters. Numbered side panels, a tabbed
+A lazygit-style terminal UI for Databricks jobs, pipelines and compute (clusters and SQL
+warehouses; the panel hides itself in a workspace that has neither). Numbered side panels, a tabbed
 main panel, an API log, and a `mine only` filter that turns a shared workspace's ninety jobs into
 your twenty.
 
@@ -53,7 +54,7 @@ the target. Opening a failed run shows the failing task's error and traceback.
 | `/` | filter by name or owner; `Enter` keeps it, `Esc` clears it |
 | `m` | toggle mine only (`dev` tag, `[tag]` name prefix, creator, or `me_aliases`) |
 | `f` | cycle status: all, failed only, active only |
-| `x` | actions menu: run, run with parameters, repair, cancel; start/stop pipeline; start/terminate cluster |
+| `x` | actions menu: run, run with parameters, repair, cancel; start/stop pipeline; start/terminate cluster; start/stop warehouse |
 | `r` / `R` | refresh the focused panel / everything |
 | `s` | cycle sort: activity, name, created |
 | `o` / `y` | open in browser (`$BROWSER` if set) / copy URL (`wl-copy` on Wayland) |

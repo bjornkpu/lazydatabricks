@@ -56,11 +56,13 @@ pub enum Message {
     },
     PipelinesLoaded(Vec<Pipeline>),
     PipelinesFailed(AppError),
-    ClustersLoaded(Vec<Cluster>),
-    ClustersFailed(AppError),
+    ComputeLoaded(Vec<Cluster>),
+    ComputeFailed(AppError),
+    /// A cluster or warehouse start was accepted; `cluster_id` is the compute row's id.
     ClusterStarted {
         cluster_id: String,
     },
+    /// A cluster terminate or warehouse stop was accepted.
     ClusterTerminated {
         cluster_id: String,
     },
@@ -131,7 +133,7 @@ pub enum Command {
     FetchPipelines {
         max: usize,
     },
-    FetchClusters {
+    FetchCompute {
         max: usize,
     },
     StartCluster {
@@ -139,6 +141,12 @@ pub enum Command {
     },
     TerminateCluster {
         cluster_id: String,
+    },
+    StartWarehouse {
+        warehouse_id: String,
+    },
+    StopWarehouse {
+        warehouse_id: String,
     },
     FetchRuns {
         job_id: i64,

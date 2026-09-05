@@ -19,7 +19,7 @@ expression: render(&app)
 "│               │  0-4  focus panel by number                   │              │"
 "│               │  Tab  next side panel                         │──────────────┘"
 "└───────────────│    R  refresh everything                      │──────────────┐"
-"┌─[4]─Clusters ⠋│    +  cycle screen mode                       │   200    84ms│"
+"┌─[4]─Compute ⠋─│    +  cycle screen mode                       │   200    84ms│"
 "│               │    @  toggle the API log                      │&… 200   131ms│"
 "│               │    A  enable or disable actions this session  │              │"
 "│               │    p  next profile, when several are open     │              │"

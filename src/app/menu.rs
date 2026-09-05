@@ -42,6 +42,14 @@ pub enum MenuItem {
         cluster_id: String,
         name: String,
     },
+    StartWarehouse {
+        warehouse_id: String,
+        name: String,
+    },
+    StopWarehouse {
+        warehouse_id: String,
+        name: String,
+    },
 }
 
 impl MenuItem {
@@ -56,6 +64,8 @@ impl MenuItem {
             Self::StopPipeline { name, .. } => format!("Stop: {name}"),
             Self::StartCluster { name, .. } => format!("Start cluster: {name}"),
             Self::TerminateCluster { name, .. } => format!("Terminate cluster: {name}"),
+            Self::StartWarehouse { name, .. } => format!("Start warehouse: {name}"),
+            Self::StopWarehouse { name, .. } => format!("Stop warehouse: {name}"),
         }
     }
 
@@ -71,6 +81,8 @@ impl MenuItem {
             Self::StopPipeline { name, .. } => format!("Stop the running update of \"{name}\"?"),
             Self::StartCluster { name, .. } => format!("Start cluster \"{name}\"?"),
             Self::TerminateCluster { name, .. } => format!("Terminate cluster \"{name}\"?"),
+            Self::StartWarehouse { name, .. } => format!("Start warehouse \"{name}\"?"),
+            Self::StopWarehouse { name, .. } => format!("Stop warehouse \"{name}\"?"),
         }
     }
 
@@ -102,6 +114,12 @@ impl MenuItem {
             },
             Self::TerminateCluster { cluster_id, .. } => Command::TerminateCluster {
                 cluster_id: cluster_id.clone(),
+            },
+            Self::StartWarehouse { warehouse_id, .. } => Command::StartWarehouse {
+                warehouse_id: warehouse_id.clone(),
+            },
+            Self::StopWarehouse { warehouse_id, .. } => Command::StopWarehouse {
+                warehouse_id: warehouse_id.clone(),
             },
         }
     }

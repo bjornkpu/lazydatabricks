@@ -58,8 +58,8 @@ pub fn visible_text(app: &App) -> String {
                 )
             })
             .collect(),
-        Panel::Clusters => app
-            .clusters
+        Panel::Compute => app
+            .compute
             .items()
             .iter()
             .map(|cluster| format!("{} {}", cluster.state.as_str(), cluster.name))
@@ -99,11 +99,18 @@ pub fn draw(app: &App, frame: &mut Frame) {
         };
         let [side, main] = Layout::horizontal([side_width, Constraint::Fill(1)]).areas(body);
         let collapse_unfocused = app.mode == ScreenMode::Half && app.focus.is_side();
-        let constraints =
-            Panel::SIDE.map(|panel| side_constraint(panel, app.focus, collapse_unfocused));
-        let areas: [Rect; 4] = Layout::vertical(constraints).areas(side);
-        for (panel, area) in Panel::SIDE.into_iter().zip(areas) {
-            draw_panel(app, panel, area, frame);
+        // The compute panel folds away in a workspace that has none.
+        let panels: Vec<Panel> = Panel::SIDE
+            .into_iter()
+            .filter(|panel| *panel != Panel::Compute || app.show_compute())
+            .collect();
+        let constraints: Vec<Constraint> = panels
+            .iter()
+            .map(|panel| side_constraint(*panel, app.focus, collapse_unfocused))
+            .collect();
+        let areas = Layout::vertical(constraints).split(side);
+        for (panel, area) in panels.into_iter().zip(areas.iter()) {
+            draw_panel(app, panel, *area, frame);
         }
         if app.show_api_log {
             let [main, log] =
@@ -131,7 +138,7 @@ fn side_constraint(panel: Panel, focus: Panel, collapse_unfocused: bool) -> Cons
     }
     match panel {
         Panel::Status => Constraint::Length(4),
-        Panel::Jobs | Panel::Pipelines | Panel::Clusters | Panel::Main => Constraint::Fill(1),
+        Panel::Jobs | Panel::Pipelines | Panel::Compute | Panel::Main => Constraint::Fill(1),
     }
 }
 
@@ -140,7 +147,7 @@ fn draw_panel(app: &App, panel: Panel, area: Rect, frame: &mut Frame) {
         Panel::Status => side::status(app, area, frame),
         Panel::Jobs => side::jobs(app, area, frame),
         Panel::Pipelines => side::pipelines(app, area, frame),
-        Panel::Clusters => side::clusters(app, area, frame),
+        Panel::Compute => side::compute(app, area, frame),
         Panel::Main => main_panel::draw(app, area, frame),
     }
 }
@@ -386,10 +393,30 @@ mod tests {
         let mut app = with_runs();
         let page: crate::api::models::ClustersList =
             serde_json::from_str(include_str!("../../tests/fixtures/clusters_list.json")).unwrap();
-        app.update(Message::ClustersLoaded(page.clusters));
+        app.update(Message::ComputeLoaded(page.clusters));
         press(&mut app, "4j");
         insta::assert_snapshot!(render(&app));
         press(&mut app, "x");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn compute_warehouses_80x24() {
+        let mut app = with_runs();
+        let page: crate::api::models::WarehousesList =
+            serde_json::from_str(include_str!("../../tests/fixtures/warehouses_list.json"))
+                .unwrap();
+        app.update(Message::ComputeLoaded(
+            page.warehouses.into_iter().map(Into::into).collect(),
+        ));
+        press(&mut app, "4j");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
+    fn compute_hidden_80x24() {
+        let mut app = with_runs();
+        app.update(Message::ComputeLoaded(vec![]));
         insta::assert_snapshot!(render(&app));
     }
 

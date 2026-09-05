@@ -124,7 +124,7 @@ impl Workspace {
             self.tx.clone(),
             max,
         ));
-        tokio::spawn(fetch_clusters(
+        tokio::spawn(fetch_compute(
             Arc::clone(&self.client),
             self.tx.clone(),
             max,
@@ -147,14 +147,20 @@ impl Workspace {
             Command::FetchPipelines { max } => {
                 tokio::spawn(fetch_pipelines(client(), tx(), max));
             }
-            Command::FetchClusters { max } => {
-                tokio::spawn(fetch_clusters(client(), tx(), max));
+            Command::FetchCompute { max } => {
+                tokio::spawn(fetch_compute(client(), tx(), max));
             }
             Command::StartCluster { cluster_id } => {
                 tokio::spawn(start_cluster(client(), tx(), cluster_id));
             }
             Command::TerminateCluster { cluster_id } => {
                 tokio::spawn(terminate_cluster(client(), tx(), cluster_id));
+            }
+            Command::StartWarehouse { warehouse_id } => {
+                tokio::spawn(start_warehouse(client(), tx(), warehouse_id));
+            }
+            Command::StopWarehouse { warehouse_id } => {
+                tokio::spawn(stop_warehouse(client(), tx(), warehouse_id));
             }
             Command::FetchRuns { job_id } => {
                 tokio::spawn(fetch_runs(client(), tx(), job_id));
@@ -294,10 +300,34 @@ async fn fetch_pipelines(client: Arc<api::Client>, tx: mpsc::Sender<Message>, ma
     let _ = tx.send(message).await;
 }
 
-async fn fetch_clusters(client: Arc<api::Client>, tx: mpsc::Sender<Message>, max: usize) {
-    let message = match client.list_clusters(max).await {
-        Ok(clusters) => Message::ClustersLoaded(clusters),
-        Err(error) => Message::ClustersFailed(error),
+async fn fetch_compute(client: Arc<api::Client>, tx: mpsc::Sender<Message>, max: usize) {
+    let message = match client.list_compute(max).await {
+        Ok(compute) => Message::ComputeLoaded(compute),
+        Err(error) => Message::ComputeFailed(error),
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn start_warehouse(
+    client: Arc<api::Client>,
+    tx: mpsc::Sender<Message>,
+    warehouse_id: String,
+) {
+    let message = match client.start_warehouse(&warehouse_id).await {
+        Ok(()) => Message::ClusterStarted {
+            cluster_id: warehouse_id,
+        },
+        Err(error) => Message::ActionFailed(error),
+    };
+    let _ = tx.send(message).await;
+}
+
+async fn stop_warehouse(client: Arc<api::Client>, tx: mpsc::Sender<Message>, warehouse_id: String) {
+    let message = match client.stop_warehouse(&warehouse_id).await {
+        Ok(()) => Message::ClusterTerminated {
+            cluster_id: warehouse_id,
+        },
+        Err(error) => Message::ActionFailed(error),
     };
     let _ = tx.send(message).await;
 }

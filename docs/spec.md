@@ -817,6 +817,18 @@ a release. The README's install section starts with the download, not with `carg
 
 *Done when:* an analyst with no Rust toolchain runs it.
 
+### M32 — Compute
+A serverless workspace has no clusters, and Databricks exposes no "warm serverless" state for
+jobs or pipelines; the one serverless thing with a visible warm or cold state is a SQL warehouse.
+So `[4]` becomes **Compute**: `clusters/list` plus `GET /api/2.0/sql/warehouses`, folded into
+one row type, one glyph rule (`●` running, `◐` starting or stopping, `·` stopped, `✗` error),
+and `x` offering start and stop for warehouses like start and terminate for clusters. When both
+lists come back empty the panel folds away, `4` and `Tab` skip it, and no config is needed.
+
+*Teaches:* a fold to one shape beats a second panel; absence is a state the layout can react to.
+*Done when:* a serverless workspace shows its warehouses with their state and nothing else in
+`[4]`, and a workspace with neither shows three side panels.
+
 ---
 
 ## 9. Testing
@@ -841,9 +853,9 @@ No test should require network or a live workspace.
 
 ## 10. Deferred
 
-Deliberately out of the first thirty-one milestones. Revisit only if you actually want them:
+Deliberately out of the first thirty-two milestones. Revisit only if you actually want them:
 
-- Warehouse and model-serving panes (more of the same as clusters)
+- Model-serving pane (more of the same as compute)
 - Log tailing for a run: `o` opens the run page, which streams logs better than a TUI can
 - Mouse support
 - Billing / usage views: need a SQL warehouse and `system.billing.usage`

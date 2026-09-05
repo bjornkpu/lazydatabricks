@@ -16,7 +16,7 @@ use crate::error::AppError;
 use auth::Token;
 use models::{
     Cluster, ClustersList, Job, JobsList, Pipeline, PipelinesList, Run, RunNowResponse, RunOutput,
-    RunsList, ScimMe, UpdateStartResponse,
+    RunsList, ScimMe, UpdateStartResponse, WarehousesList,
 };
 
 /// Page size sent to Databricks. A page size, not a cap: `list_jobs` follows `next_page_token`.
@@ -97,6 +97,37 @@ impl Client {
         }
         clusters.truncate(max);
         Ok(clusters)
+    }
+
+    /// Clusters and SQL warehouses as one list. A serverless workspace has no clusters; its
+    /// warehouses are the compute it can see.
+    pub async fn list_compute(&self, max: usize) -> Result<Vec<Cluster>, AppError> {
+        let mut compute = self.list_clusters(max).await?;
+        let page: WarehousesList = self.get("/api/2.0/sql/warehouses", &[]).await?;
+        compute.extend(page.warehouses.into_iter().map(Cluster::from));
+        Ok(compute)
+    }
+
+    /// Starts a stopped SQL warehouse.
+    pub async fn start_warehouse(&self, warehouse_id: &str) -> Result<(), AppError> {
+        let _: Value = self
+            .post(
+                &format!("/api/2.0/sql/warehouses/{warehouse_id}/start"),
+                json!({}),
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Stops a running SQL warehouse.
+    pub async fn stop_warehouse(&self, warehouse_id: &str) -> Result<(), AppError> {
+        let _: Value = self
+            .post(
+                &format!("/api/2.0/sql/warehouses/{warehouse_id}/stop"),
+                json!({}),
+            )
+            .await?;
+        Ok(())
     }
 
     /// Starts a terminated cluster.

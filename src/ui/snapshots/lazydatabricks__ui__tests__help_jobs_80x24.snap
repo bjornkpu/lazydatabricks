@@ -19,7 +19,7 @@ expression: render(&app)
 "│               │    y  copy job URL                            │              │"
 "│               │    Y  copy the job list as text               │──────────────┘"
 "└───────────────│    s  cycle sort: activity, name, created     │──────────────┐"
-"┌─[4]─Clusters ⠋│  0-4  focus panel by number                   │   200    84ms│"
+"┌─[4]─Compute ⠋─│  0-4  focus panel by number                   │   200    84ms│"
 "│               │  Tab  next side panel                         │&… 200   131ms│"
 "│               │    R  refresh everything                      │              │"
 "│               │    +  cycle screen mode                       │              │"

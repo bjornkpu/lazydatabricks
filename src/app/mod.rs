@@ -20,8 +20,8 @@ pub use menu::{InputMode, MenuItem, parse_params};
 pub use message::{ApiCall, Command, Key, Message};
 
 use crate::api::models::{
-    Cluster, ClusterState, Job, LifeCycleState, Pipeline, PipelineState, PipelineUpdate, Run,
-    RunOutput, UpdateState,
+    Cluster, ClusterState, ComputeKind, Job, LifeCycleState, Pipeline, PipelineState,
+    PipelineUpdate, Run, RunOutput, UpdateState,
 };
 use crate::config::{Loaded, Sort, Theme};
 use crate::error::AppError;
@@ -104,12 +104,12 @@ pub struct App {
     pipelines_inflight: Option<u64>,
     pipelines_fetched_at: Option<u64>,
     pub pipelines_error: Option<AppError>,
-    /// Every cluster fetched. `clusters` is the filtered view of this.
-    pub all_clusters: Vec<Cluster>,
-    pub clusters: Selectable<Cluster>,
-    clusters_inflight: Option<u64>,
-    clusters_fetched_at: Option<u64>,
-    pub clusters_error: Option<AppError>,
+    /// Every cluster fetched. `compute` is the filtered view of this.
+    pub all_compute: Vec<Cluster>,
+    pub compute: Selectable<Cluster>,
+    compute_inflight: Option<u64>,
+    compute_fetched_at: Option<u64>,
+    pub compute_error: Option<AppError>,
     /// The visible jobs, with the cursor.
     pub jobs: Selectable<Job>,
     pub filter: Filter,
@@ -194,11 +194,11 @@ impl App {
             pipelines_inflight: Some(0),
             pipelines_fetched_at: None,
             pipelines_error: None,
-            all_clusters: Vec::new(),
-            clusters: Selectable::default(),
-            clusters_inflight: Some(0),
-            clusters_fetched_at: None,
-            clusters_error: None,
+            all_compute: Vec::new(),
+            compute: Selectable::default(),
+            compute_inflight: Some(0),
+            compute_fetched_at: None,
+            compute_error: None,
             jobs: Selectable::default(),
             filter: Filter {
                 text: config.filter.clone().unwrap_or_default(),
@@ -254,8 +254,8 @@ impl App {
             Message::PipelinesLoaded(pipelines) => {
                 self.on_pipelines_loaded(pipelines, &mut commands);
             }
-            Message::ClustersLoaded(clusters) => self.on_clusters_loaded(clusters),
-            Message::ClustersFailed(error) => self.on_clusters_failed(error),
+            Message::ComputeLoaded(compute) => self.on_compute_loaded(compute),
+            Message::ComputeFailed(error) => self.on_compute_failed(error),
             Message::ClusterStarted { cluster_id } => {
                 self.on_cluster_action(&cluster_id, ClusterState::Pending, &mut commands);
             }
@@ -364,7 +364,7 @@ impl App {
     /// One heartbeat: the clock, the spinner, the debounced runs fetch and TTL-driven refreshes.
     fn tick(&mut self, commands: &mut Vec<Command>) {
         self.ticks = self.ticks.saturating_add(1);
-        if self.loading || self.pipelines_loading() || self.clusters_loading() || self.runs_busy() {
+        if self.loading || self.pipelines_loading() || self.compute_loading() || self.runs_busy() {
             self.spinner = self
                 .spinner
                 .wrapping_add(1)
@@ -408,10 +408,10 @@ impl App {
             self.refresh_pipelines(commands);
         }
         if self
-            .clusters_fetched_at
+            .compute_fetched_at
             .is_some_and(|at| self.age_ticks(at) >= self.jobs_ttl_ticks)
         {
-            self.refresh_clusters(commands);
+            self.refresh_compute(commands);
         }
         // Active runs poll fast so the table moves on its own; settled ones wait the TTL.
         let runs_ttl = if self.runs_active() {
@@ -632,21 +632,21 @@ impl App {
         self.pipelines_error = Some(error);
     }
 
-    fn on_clusters_loaded(&mut self, clusters: Vec<Cluster>) {
-        self.all_clusters = clusters;
-        self.clusters_fetched_at = Some(self.ticks);
-        self.clusters_inflight = None;
-        self.clusters_error = None;
+    fn on_compute_loaded(&mut self, compute: Vec<Cluster>) {
+        self.all_compute = compute;
+        self.compute_fetched_at = Some(self.ticks);
+        self.compute_inflight = None;
+        self.compute_error = None;
         self.apply_filter();
     }
 
-    fn on_clusters_failed(&mut self, error: AppError) {
-        self.clusters_inflight = None;
-        self.clusters_fetched_at = Some(self.ticks);
-        if !self.all_clusters.is_empty() {
+    fn on_compute_failed(&mut self, error: AppError) {
+        self.compute_inflight = None;
+        self.compute_fetched_at = Some(self.ticks);
+        if !self.all_compute.is_empty() {
             self.notice = Some(error.to_string());
         }
-        self.clusters_error = Some(error);
+        self.compute_error = Some(error);
     }
 
     /// A cluster action was accepted: show the transitional state until the refetch.
@@ -657,26 +657,26 @@ impl App {
         commands: &mut Vec<Command>,
     ) {
         self.notice = Some(format!("{} requested", state.as_str().to_lowercase()));
-        self.all_clusters
+        self.all_compute
             .iter_mut()
-            .chain(self.clusters.items_mut().iter_mut())
+            .chain(self.compute.items_mut().iter_mut())
             .filter(|cluster| cluster.id == cluster_id)
             .for_each(|cluster| cluster.state = state);
-        self.refresh_clusters(commands);
+        self.refresh_compute(commands);
     }
 
-    /// One clusters fetch at a time, same TTL as jobs.
-    fn refresh_clusters(&mut self, commands: &mut Vec<Command>) {
-        if self.clusters_inflight.is_none() {
-            self.clusters_inflight = Some(self.ticks);
-            commands.push(Command::FetchClusters { max: self.max_jobs });
+    /// One compute fetch at a time, same TTL as jobs.
+    fn refresh_compute(&mut self, commands: &mut Vec<Command>) {
+        if self.compute_inflight.is_none() {
+            self.compute_inflight = Some(self.ticks);
+            commands.push(Command::FetchCompute { max: self.max_jobs });
         }
     }
 
-    /// A clusters fetch is in flight.
+    /// A compute fetch is in flight.
     #[must_use]
-    pub const fn clusters_loading(&self) -> bool {
-        self.clusters_inflight.is_some()
+    pub const fn compute_loading(&self) -> bool {
+        self.compute_inflight.is_some()
     }
 
     /// Applies `change` to a pipeline in both the full and the filtered list.
@@ -856,10 +856,10 @@ impl App {
                 self.all_pipelines.len(),
                 "pipelines",
             ),
-            Panel::Clusters => (
-                self.clusters.items().len(),
-                self.all_clusters.len(),
-                "clusters",
+            Panel::Compute => (
+                self.compute.items().len(),
+                self.all_compute.len(),
+                "compute",
             ),
             Panel::Status | Panel::Jobs | Panel::Main => {
                 (self.jobs.items().len(), self.all_jobs.len(), "jobs")
@@ -940,10 +940,10 @@ impl App {
             Action::RefreshAll => {
                 self.refresh_jobs(commands);
                 self.refresh_pipelines(commands);
-                self.refresh_clusters(commands);
+                self.refresh_compute(commands);
                 self.refresh_runs(commands);
             }
-            Action::NextPanel => self.set_focus(self.focus.next_side()),
+            Action::NextPanel => self.set_focus(self.next_visible_side(self.focus)),
             Action::Open => {
                 if self.focus == Panel::Main
                     && self.viewing_run.is_none()
@@ -990,11 +990,11 @@ impl App {
             Panel::Main => self.refresh_runs(commands),
             Panel::Jobs => self.refresh_jobs(commands),
             Panel::Pipelines => self.refresh_pipelines(commands),
-            Panel::Clusters => self.refresh_clusters(commands),
+            Panel::Compute => self.refresh_compute(commands),
             Panel::Status => {
                 self.refresh_jobs(commands);
                 self.refresh_pipelines(commands);
-                self.refresh_clusters(commands);
+                self.refresh_compute(commands);
             }
         }
     }
@@ -1042,9 +1042,12 @@ impl App {
                 let pipeline = self.pipelines.selected()?;
                 Some(format!("{}/pipelines/{}", self.host, pipeline.id))
             }
-            Panel::Clusters => {
-                let cluster = self.clusters.selected()?;
-                Some(format!("{}/compute/clusters/{}", self.host, cluster.id))
+            Panel::Compute => {
+                let row = self.compute.selected()?;
+                Some(match row.kind {
+                    ComputeKind::Cluster => format!("{}/compute/clusters/{}", self.host, row.id),
+                    ComputeKind::Warehouse => format!("{}/sql/warehouses/{}", self.host, row.id),
+                })
             }
             Panel::Status | Panel::Main => None,
         }
@@ -1065,7 +1068,7 @@ impl App {
         if self.context == Panel::Pipelines {
             return self.pipeline_menu_items();
         }
-        if self.context == Panel::Clusters {
+        if self.context == Panel::Compute {
             return self.cluster_menu_items();
         }
         if self.context != Panel::Jobs {
@@ -1120,19 +1123,27 @@ impl App {
 
     /// Start a cluster that is down; terminate one that is up.
     fn cluster_menu_items(&self) -> Vec<MenuItem> {
-        let Some(cluster) = self.clusters.selected() else {
+        let Some(cluster) = self.compute.selected() else {
             return Vec::new();
         };
-        let item = if cluster.state.is_active() {
-            MenuItem::TerminateCluster {
-                cluster_id: cluster.id.clone(),
-                name: cluster.name.clone(),
-            }
-        } else {
-            MenuItem::StartCluster {
-                cluster_id: cluster.id.clone(),
-                name: cluster.name.clone(),
-            }
+        let (id, name) = (cluster.id.clone(), cluster.name.clone());
+        let item = match (cluster.kind, cluster.state.is_active()) {
+            (ComputeKind::Cluster, true) => MenuItem::TerminateCluster {
+                cluster_id: id,
+                name,
+            },
+            (ComputeKind::Cluster, false) => MenuItem::StartCluster {
+                cluster_id: id,
+                name,
+            },
+            (ComputeKind::Warehouse, true) => MenuItem::StopWarehouse {
+                warehouse_id: id,
+                name,
+            },
+            (ComputeKind::Warehouse, false) => MenuItem::StartWarehouse {
+                warehouse_id: id,
+                name,
+            },
         };
         vec![item]
     }
@@ -1263,18 +1274,18 @@ impl App {
             self.pipelines.select_where(|pipeline| pipeline.id == id);
         }
 
-        let keep_cluster = self.clusters.selected().map(|cluster| cluster.id.clone());
+        let keep_cluster = self.compute.selected().map(|cluster| cluster.id.clone());
         let mut visible: Vec<Cluster> = self
-            .all_clusters
+            .all_compute
             .iter()
             .filter(|cluster| self.filter.matches_cluster(cluster, self.me.as_ref()))
             .cloned()
             .collect();
         // Clusters have no run to sort by; name order is the one that stays put.
         visible.sort_by_cached_key(|cluster| cluster.name.to_lowercase());
-        self.clusters.set_items(visible);
+        self.compute.set_items(visible);
         if let Some(id) = keep_cluster {
-            self.clusters.select_where(|cluster| cluster.id == id);
+            self.compute.select_where(|cluster| cluster.id == id);
         }
 
         let keep = self.jobs.selected().map(|job| job.id);
@@ -1328,7 +1339,29 @@ impl App {
         }
     }
 
+    /// `[4]` is worth a panel only while there is, or may still be, something to show. A
+    /// serverless workspace with no warehouses loads an empty list and the panel folds away.
+    #[must_use]
+    pub const fn show_compute(&self) -> bool {
+        self.compute_fetched_at.is_none()
+            || !self.all_compute.is_empty()
+            || self.compute_error.is_some()
+    }
+
+    /// The side panel after `panel`, skipping a hidden compute panel.
+    fn next_visible_side(&self, panel: Panel) -> Panel {
+        let next = panel.next_side();
+        if next == Panel::Compute && !self.show_compute() {
+            next.next_side()
+        } else {
+            next
+        }
+    }
+
     fn set_focus(&mut self, panel: Panel) {
+        if panel == Panel::Compute && !self.show_compute() {
+            return;
+        }
         self.focus = panel;
         if panel.is_side() && self.context != panel {
             self.context = panel;
@@ -1344,7 +1377,7 @@ impl App {
                 self.select_runs();
             }
             Panel::Pipelines => self.pipelines.apply(movement),
-            Panel::Clusters => self.clusters.apply(movement),
+            Panel::Compute => self.compute.apply(movement),
             Panel::Main => {
                 if self.viewing_run.is_none()
                     && self.context == Panel::Jobs
@@ -1526,6 +1559,7 @@ pub mod tests {
 
     pub fn cluster(id: &str, name: &str, state: ClusterState) -> Cluster {
         Cluster {
+            kind: ComputeKind::Cluster,
             id: id.to_owned(),
             name: name.to_owned(),
             creator_user_name: "someone@example.com".to_owned(),
@@ -1636,8 +1670,8 @@ pub mod tests {
         assert_eq!(app.spinner, 2, "pipelines still loading");
         app.update(Message::PipelinesLoaded(vec![]));
         app.update(Message::Tick);
-        assert_eq!(app.spinner, 3, "clusters still loading");
-        app.update(Message::ClustersLoaded(vec![]));
+        assert_eq!(app.spinner, 3, "compute still loading");
+        app.update(Message::ComputeLoaded(vec![]));
         app.update(Message::Tick);
         assert_eq!(app.spinner, 3);
     }
@@ -2540,17 +2574,17 @@ pub mod tests {
     #[test]
     fn clusters_list_start_and_terminate() {
         let mut app = loaded();
-        assert!(app.clusters_loading(), "fetched from launch");
-        app.update(Message::ClustersLoaded(vec![
+        assert!(app.compute_loading(), "fetched from launch");
+        app.update(Message::ComputeLoaded(vec![
             cluster("c2", "shared-analytics", ClusterState::Running),
             cluster("c1", "someone's interactive", ClusterState::Terminated),
         ]));
-        assert!(!app.clusters_loading());
+        assert!(!app.compute_loading());
         press(&mut app, "4");
-        assert_eq!(app.filter_summary(), "2 of 2 clusters");
-        assert_eq!(app.clusters.selected().map(|c| c.id.as_str()), Some("c2"));
+        assert_eq!(app.filter_summary(), "2 of 2 compute");
+        assert_eq!(app.compute.selected().map(|c| c.id.as_str()), Some("c2"));
         press(&mut app, "j");
-        assert_eq!(app.clusters.selected().map(|c| c.id.as_str()), Some("c1"));
+        assert_eq!(app.compute.selected().map(|c| c.id.as_str()), Some("c1"));
         assert_eq!(
             app.update(key(Key::Char('y'))),
             vec![Command::Copy(
@@ -2572,10 +2606,10 @@ pub mod tests {
             app.update(Message::ClusterStarted {
                 cluster_id: "c1".to_owned()
             }),
-            vec![Command::FetchClusters { max: 200 }]
+            vec![Command::FetchCompute { max: 200 }]
         );
         assert_eq!(
-            app.clusters.selected().map(|c| c.state),
+            app.compute.selected().map(|c| c.state),
             Some(ClusterState::Pending),
             "optimistic until the refetch"
         );
@@ -2584,9 +2618,65 @@ pub mod tests {
             if matches!(items.first(), Some(MenuItem::TerminateCluster { .. }))));
         app.update(key(Key::Esc));
         press(&mut app, "f");
-        assert_eq!(app.filter_summary(), "failed only · 0 of 2 clusters");
+        assert_eq!(app.filter_summary(), "failed only · 0 of 2 compute");
         press(&mut app, "f");
-        assert_eq!(app.filter_summary(), "active only · 2 of 2 clusters");
+        assert_eq!(app.filter_summary(), "active only · 2 of 2 compute");
+    }
+
+    #[test]
+    fn empty_compute_hides_the_panel_and_skips_it() {
+        let mut app = loaded();
+        assert!(app.show_compute(), "still loading: shown with a spinner");
+        app.update(Message::ComputeLoaded(vec![]));
+        assert!(!app.show_compute(), "nothing to show");
+        press(&mut app, "4");
+        assert_eq!(app.focus, Panel::Jobs, "4 does nothing");
+        press(&mut app, "3");
+        app.update(key(Key::Tab));
+        assert_eq!(app.focus, Panel::Status, "Tab skips the hidden panel");
+        app.update(Message::ComputeLoaded(vec![cluster(
+            "w1",
+            "Serverless Starter Warehouse",
+            ClusterState::Terminated,
+        )]));
+        assert!(app.show_compute());
+        press(&mut app, "3");
+        app.update(key(Key::Tab));
+        assert_eq!(app.focus, Panel::Compute);
+        app.update(Message::ComputeFailed(boom()));
+        assert!(app.show_compute(), "an error is worth showing");
+    }
+
+    #[test]
+    fn warehouses_get_start_and_stop() {
+        let mut app = loaded();
+        let mut warehouse = cluster("w1", "shared-bi", ClusterState::Running);
+        warehouse.kind = ComputeKind::Warehouse;
+        app.update(Message::ComputeLoaded(vec![warehouse]));
+        app.allow_actions = true;
+        press(&mut app, "4x");
+        app.update(key(Key::Enter));
+        assert_eq!(
+            app.update(key(Key::Char('y'))),
+            vec![Command::StopWarehouse {
+                warehouse_id: "w1".to_owned()
+            }]
+        );
+        app.update(Message::ClusterTerminated {
+            cluster_id: "w1".to_owned(),
+        });
+        assert_eq!(
+            app.compute.selected().map(|row| row.state),
+            Some(ClusterState::Terminating)
+        );
+        app.update(Message::ComputeLoaded(vec![{
+            let mut stopped = cluster("w1", "shared-bi", ClusterState::Terminated);
+            stopped.kind = ComputeKind::Warehouse;
+            stopped
+        }]));
+        press(&mut app, "x");
+        assert!(matches!(&app.input, InputMode::Menu { items, .. }
+            if matches!(items.first(), Some(MenuItem::StartWarehouse { .. }))));
     }
 
     #[test]

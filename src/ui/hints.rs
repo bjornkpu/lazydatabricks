@@ -38,7 +38,7 @@ pub fn hints(focus: Panel, input: &InputMode, keys: &Keymap, viewing_run: bool) 
             k(Action::Quit),
             k(Action::Help)
         ),
-        Panel::Jobs | Panel::Pipelines | Panel::Clusters => format!(
+        Panel::Jobs | Panel::Pipelines | Panel::Compute => format!(
             " Move: {}/{} │ Filter: {} │ Mine: {} │ Status: {} │ Actions: {} │ Quit: {} │ Keys: {}",
             k(Action::Down),
             k(Action::Up),

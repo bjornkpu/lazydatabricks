@@ -32,7 +32,7 @@ pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
         Some(Tab::Detail) if app.context == Panel::Pipelines => {
             pipeline_detail(app, block, area, frame);
         }
-        Some(Tab::Detail) if app.context == Panel::Clusters => {
+        Some(Tab::Detail) if app.context == Panel::Compute => {
             cluster_detail(app, block, area, frame);
         }
         Some(Tab::Detail) => detail(app, block, area, frame),
@@ -330,7 +330,7 @@ fn pipeline_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Fra
 }
 
 fn cluster_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
-    let Some(cluster) = app.clusters.selected() else {
+    let Some(cluster) = app.compute.selected() else {
         frame.render_widget(block, area);
         return;
     };
@@ -356,8 +356,16 @@ fn cluster_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Fram
         ),
         field(app, "Source", cluster.source.clone()),
         field(app, "Creator", cluster.creator_user_name.clone()),
-        field(app, "Spark", cluster.spark_version.clone()),
-        field(app, "Node type", cluster.node_type_id.clone()),
+        field(
+            app,
+            "Spark",
+            if cluster.spark_version.is_empty() {
+                dash()
+            } else {
+                cluster.spark_version.clone()
+            },
+        ),
+        field(app, "Size", cluster.node_type_id.clone()),
         field(app, "Workers", cluster.workers()),
         field(
             app,

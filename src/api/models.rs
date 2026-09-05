@@ -377,9 +377,21 @@ pub struct ClustersList {
     pub next_page_token: Option<String>,
 }
 
-/// One cluster, all-purpose or job. Ids are strings like `0901-071234-abcd1234`.
+/// What a compute row is. Clusters come from `clusters/list`; SQL warehouses are folded into the
+/// same shape so the panel, filter and menu have one type to deal with.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub enum ComputeKind {
+    #[default]
+    Cluster,
+    Warehouse,
+}
+
+/// One compute row: a cluster, all-purpose or job, or a SQL warehouse. Ids are strings like
+/// `0901-071234-abcd1234`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Cluster {
+    #[serde(default)]
+    pub kind: ComputeKind,
     #[serde(rename = "cluster_id")]
     pub id: String,
     #[serde(default, rename = "cluster_name")]
@@ -416,6 +428,68 @@ impl Cluster {
             },
             |scale| format!("{}-{}", scale.min_workers, scale.max_workers),
         )
+    }
+}
+
+/// `GET /api/2.0/sql/warehouses` response.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct WarehousesList {
+    #[serde(default)]
+    pub warehouses: Vec<Warehouse>,
+}
+
+/// A SQL warehouse, the one serverless thing with a visible warm or cold state.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Warehouse {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub creator_name: String,
+    /// `STOPPED`, `STARTING`, `RUNNING`, `STOPPING`, `DELETING`, `DELETED`.
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub cluster_size: String,
+    #[serde(default)]
+    pub enable_serverless_compute: bool,
+    #[serde(default)]
+    pub auto_stop_mins: Option<u32>,
+    #[serde(default)]
+    pub num_clusters: Option<u32>,
+}
+
+impl From<Warehouse> for Cluster {
+    /// Warehouse states map onto cluster states so one glyph function serves both.
+    fn from(warehouse: Warehouse) -> Self {
+        let state = match warehouse.state.as_str() {
+            "RUNNING" => ClusterState::Running,
+            "STARTING" => ClusterState::Pending,
+            "STOPPING" | "DELETING" => ClusterState::Terminating,
+            "STOPPED" | "DELETED" => ClusterState::Terminated,
+            _ => ClusterState::Unknown,
+        };
+        let source = if warehouse.enable_serverless_compute {
+            "SQL warehouse, serverless"
+        } else {
+            "SQL warehouse"
+        };
+        Self {
+            kind: ComputeKind::Warehouse,
+            id: warehouse.id,
+            name: warehouse.name,
+            creator_user_name: warehouse.creator_name,
+            source: source.to_owned(),
+            state,
+            state_message: warehouse
+                .auto_stop_mins
+                .map_or_else(String::new, |mins| format!("auto-stop after {mins} min")),
+            spark_version: String::new(),
+            node_type_id: warehouse.cluster_size,
+            num_workers: warehouse.num_clusters,
+            autoscale: None,
+            start_time: None,
+        }
     }
 }
 
@@ -633,6 +707,7 @@ mod tests {
     const RUN_OUTPUT: &str = include_str!("../../tests/fixtures/run_output.json");
     const JOB_GET: &str = include_str!("../../tests/fixtures/job_get.json");
     const CLUSTERS_LIST: &str = include_str!("../../tests/fixtures/clusters_list.json");
+    const WAREHOUSES_LIST: &str = include_str!("../../tests/fixtures/warehouses_list.json");
 
     #[test]
     fn parses_jobs_list_fixture() {
@@ -736,6 +811,27 @@ mod tests {
         assert_eq!(job.workers(), "2");
         assert!(page.clusters[2].state.is_active(), "pending bills");
         assert!(!ClusterState::Terminated.is_active());
+    }
+
+    #[test]
+    fn warehouses_become_compute_rows() {
+        let page: WarehousesList = serde_json::from_str(WAREHOUSES_LIST).unwrap();
+        assert_eq!(page.warehouses.len(), 2);
+        let stopped: Cluster = page.warehouses[0].clone().into();
+        assert_eq!(stopped.kind, ComputeKind::Warehouse);
+        assert_eq!(stopped.state, ClusterState::Terminated);
+        assert_eq!(stopped.source, "SQL warehouse, serverless");
+        assert_eq!(stopped.node_type_id, "2X-Small");
+        assert_eq!(stopped.state_message, "auto-stop after 10 min");
+        let running: Cluster = page.warehouses[1].clone().into();
+        assert_eq!(running.state, ClusterState::Running);
+        assert_eq!(running.workers(), "1");
+        let listed: Cluster = serde_json::from_str(r#"{"cluster_id":"x"}"#).unwrap();
+        assert_eq!(
+            listed.kind,
+            ComputeKind::Cluster,
+            "clusters default the kind"
+        );
     }
 
     #[test]
