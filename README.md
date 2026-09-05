@@ -45,8 +45,8 @@ the target. Opening a failed run shows the failing task's error and traceback.
 | `j`/`k`, `g`/`G` | move the cursor |
 | `ctrl+d`/`ctrl+u` | ten rows down / up |
 | `h`/`l`, `[`/`]` | switch main-panel tabs |
-| `/` | filter by name; `Enter` keeps it, `Esc` clears it |
-| `m` | toggle mine only (by `dev` tag or creator) |
+| `/` | filter by name or owner; `Enter` keeps it, `Esc` clears it |
+| `m` | toggle mine only (`dev` tag, `[tag]` name prefix, creator, or `me_aliases`) |
 | `f` | cycle status: all, failed only, active only |
 | `x` | actions menu for the selected job |
 | `r` / `R` | refresh the focused panel / everything |
@@ -67,6 +67,7 @@ mine_only = true
 filter = "gold"
 status = "all"             # or "failed", "active"; f cycles it
 dev_tag = "bjorn_punsvik"  # tag value that marks a job as mine; derived from the email if unset
+me_aliases = ["sp-1234"]   # service principals whose jobs count as mine
 allow_actions = false
 theme = "dark"             # or "light"
 sort = "activity"          # or "name", "created"; newest first, ties by name

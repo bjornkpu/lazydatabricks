@@ -11,6 +11,8 @@ pub struct Me {
     /// Value the platform's `dev` tag uses for this user: the email's local part with `.`
     /// replaced by `_`. A convention of this workspace; config can override it at M7.
     pub tag: String,
+    /// Other names that count as me: service principals that deploy my bundles. From config.
+    pub aliases: Vec<String>,
 }
 
 impl Me {
@@ -20,8 +22,26 @@ impl Me {
         Self {
             email: email.to_owned(),
             tag: local.replace('.', "_"),
+            aliases: Vec::new(),
         }
     }
+
+    /// Mine by name or ownership: a `[<tag>]` prefix (what asset bundles write in development
+    /// mode), me as creator or run-as, or any alias in either role.
+    fn owns(&self, name: &str, creator: &str, run_as: &str) -> bool {
+        name.starts_with(&format!("[{}]", self.tag))
+            || [creator, run_as]
+                .iter()
+                .any(|who| *who == self.email || self.aliases.iter().any(|alias| alias == who))
+    }
+}
+
+/// Case-insensitive substring match of `needle` in any of `haystacks`.
+fn contains_any<'a>(needle: &str, haystacks: impl IntoIterator<Item = &'a str>) -> bool {
+    let needle = needle.to_lowercase();
+    haystacks
+        .into_iter()
+        .any(|hay| hay.to_lowercase().contains(&needle))
 }
 
 /// Which rows a list shows by the state of their newest run or update. `f` cycles it; `status`
@@ -96,33 +116,49 @@ pub struct Filter {
 }
 
 impl Filter {
-    /// Whether `job` is visible given its newest known run. With `mine_only` and no `me` yet,
-    /// nothing matches: better an honest empty list than a silently unfiltered one.
+    /// Whether `job` is visible given its newest known run. The text matches the name, the
+    /// creator or the run-as user, so `/olav` is also "everything Olav left behind". With
+    /// `mine_only` and no `me` yet, nothing matches: better an honest empty list than a silently
+    /// unfiltered one.
     #[must_use]
     pub fn matches(&self, job: &Job, latest: Option<&Run>, me: Option<&Me>) -> bool {
         let name_ok = self.text.is_empty()
-            || job
-                .settings
-                .name
-                .to_lowercase()
-                .contains(&self.text.to_lowercase());
+            || contains_any(
+                &self.text,
+                [
+                    job.settings.name.as_str(),
+                    job.creator_user_name.as_str(),
+                    job.run_as_user_name.as_str(),
+                ],
+            );
         let mine_ok = !self.mine_only
             || me.is_some_and(|me| {
-                job.settings.tags.get("dev") == Some(&me.tag) || job.creator_user_name == me.email
+                job.settings.tags.get("dev") == Some(&me.tag)
+                    || me.owns(
+                        &job.settings.name,
+                        &job.creator_user_name,
+                        &job.run_as_user_name,
+                    )
             });
         name_ok && mine_ok && self.status.allows_run(latest)
     }
 
-    /// Pipelines carry no tags in the list response, so "mine" is the creator alone.
+    /// Pipelines carry no tags in the list response, so "mine" is the name prefix or the creator.
     #[must_use]
     pub fn matches_pipeline(&self, pipeline: &Pipeline, me: Option<&Me>) -> bool {
         let name_ok = self.text.is_empty()
-            || pipeline
-                .name
-                .to_lowercase()
-                .contains(&self.text.to_lowercase());
-        let mine_ok =
-            !self.mine_only || me.is_some_and(|me| pipeline.creator_user_name == me.email);
+            || contains_any(
+                &self.text,
+                [pipeline.name.as_str(), pipeline.creator_user_name.as_str()],
+            );
+        let mine_ok = !self.mine_only
+            || me.is_some_and(|me| {
+                me.owns(
+                    &pipeline.name,
+                    &pipeline.creator_user_name,
+                    &pipeline.creator_user_name,
+                )
+            });
         name_ok && mine_ok && self.status.allows_pipeline(pipeline)
     }
 }
@@ -190,6 +226,47 @@ mod tests {
         assert!(
             !filter.matches(&by_tag, None, None),
             "unknown me matches nothing"
+        );
+    }
+
+    #[test]
+    fn text_also_matches_owners() {
+        let filter = Filter {
+            text: "OTHER@".to_owned(),
+            ..Filter::default()
+        };
+        assert!(filter.matches(&crate::app::tests::theirs(1, "x"), None, None));
+        assert!(!filter.matches(&job(1, "x"), None, None));
+        let pipeline = crate::app::tests::pipeline("p", "x", "other@example.com");
+        assert!(filter.matches_pipeline(&pipeline, None));
+    }
+
+    #[test]
+    fn mine_includes_bundle_prefix_and_aliases() {
+        let filter = Filter {
+            mine_only: true,
+            ..Filter::default()
+        };
+        let mut with_alias = me();
+        with_alias.aliases = vec!["sp-1234".to_owned()];
+        let mut prefixed = crate::app::tests::theirs(1, "[bjorn_punsvik] churn");
+        prefixed.creator_user_name = "sp-1234".to_owned();
+        assert!(filter.matches(&prefixed, None, Some(&with_alias)), "prefix");
+        let mut by_alias = crate::app::tests::theirs(2, "churn");
+        by_alias.run_as_user_name = "sp-1234".to_owned();
+        assert!(
+            filter.matches(&by_alias, None, Some(&with_alias)),
+            "alias as run-as"
+        );
+        assert!(
+            !filter.matches(&by_alias, None, Some(&me())),
+            "no alias configured, not mine"
+        );
+        let pipeline = crate::app::tests::pipeline("p", "[bjorn_punsvik] gold", "sp-1234");
+        assert!(filter.matches_pipeline(&pipeline, Some(&with_alias)));
+        assert!(
+            filter.matches_pipeline(&pipeline, Some(&me())),
+            "prefix alone is enough"
         );
     }
 

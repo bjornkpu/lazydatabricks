@@ -77,6 +77,8 @@ pub struct App {
     pub config_note: String,
     /// Config override for the `dev` tag that marks a job as mine.
     dev_tag: Option<String>,
+    /// Config: other names that are me.
+    me_aliases: Vec<String>,
     /// Upper bound on jobs fetched across pages.
     pub max_jobs: usize,
     /// Jobs older than this many ticks are refetched in the background.
@@ -165,6 +167,7 @@ impl App {
             keys: Keymap::with_overrides(&config.keys),
             config_note,
             dev_tag: config.dev_tag.clone(),
+            me_aliases: config.me_aliases.clone(),
             max_jobs: config.max_jobs,
             jobs_ttl_ticks: config.jobs_ttl_secs.saturating_mul(TICKS_PER_SECOND),
             runs_ttl_ticks: config.runs_ttl_secs.saturating_mul(TICKS_PER_SECOND),
@@ -292,6 +295,7 @@ impl App {
                 if let Some(tag) = &self.dev_tag {
                     tag.clone_into(&mut me.tag);
                 }
+                me.aliases.clone_from(&self.me_aliases);
                 self.me = Some(me);
                 self.me_error = None;
                 if self.filter.mine_only {
@@ -1258,10 +1262,11 @@ pub mod tests {
         }
     }
 
-    /// A job owned by somebody else: different creator and `dev` tag.
+    /// A job owned by somebody else: different creator, run-as and `dev` tag.
     pub fn theirs(id: i64, name: &str) -> Job {
         let mut job = job(id, name);
         job.creator_user_name = "other@example.com".to_owned();
+        job.run_as_user_name = "other@example.com".to_owned();
         job.settings
             .tags
             .insert("dev".to_owned(), "other".to_owned());

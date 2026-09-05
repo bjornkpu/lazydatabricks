@@ -27,6 +27,9 @@ pub struct Config {
     pub allow_actions: bool,
     /// Value of the `dev` tag that marks a job as mine. Derived from the email when unset.
     pub dev_tag: Option<String>,
+    /// Other names that count as me for the mine filter, as creator or run-as: service
+    /// principals that deploy my bundles.
+    pub me_aliases: Vec<String>,
     /// Chrome colours: `dark` (default) or `light`. Status glyphs keep their colours either way.
     pub theme: Theme,
     /// Order of the job and pipeline lists: `activity` (default), `name` or `created`. `s`
@@ -52,6 +55,7 @@ impl Default for Config {
             status: Status::All,
             allow_actions: false,
             dev_tag: None,
+            me_aliases: Vec::new(),
             theme: Theme::Dark,
             sort: Sort::Activity,
             date_format: "%d.%m %H:%M".to_owned(),
@@ -182,6 +186,10 @@ mod tests {
         assert_eq!(config.profile.as_deref(), Some("dev"));
         assert!(config.mine_only);
         assert_eq!(config.dev_tag.as_deref(), Some("bk"));
+        assert_eq!(
+            parse("me_aliases = [\"sp-1\"]").unwrap().me_aliases,
+            vec!["sp-1".to_owned()]
+        );
         assert_eq!(config.max_jobs, 200);
         assert_eq!(
             config.keys[&Action::NextTab],
