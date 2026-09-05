@@ -35,6 +35,7 @@ fn menu(app: &App, items: &[MenuItem], selected: usize, frame: &mut Frame) {
     let title = match items.first() {
         Some(MenuItem::SwitchProfile { .. }) => " Profiles ",
         Some(MenuItem::CopyText { .. }) => " Copy ",
+        Some(MenuItem::Filter(_)) => " Filter ",
         _ => " Actions ",
     };
     let labels: Vec<String> = items.iter().map(MenuItem::label).collect();

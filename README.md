@@ -55,6 +55,7 @@ the target. Opening a failed run shows the failing task's error and traceback.
 | `/` | filter by name or owner; `Enter` keeps it, `Esc` clears it |
 | `m` | toggle mine only (`dev` tag, `[tag]` name prefix, creator, or `me_aliases`) |
 | `f` | cycle status: all, failed only, active only |
+| `F` | filter menu: status, mine only, clear the text filter |
 | `x` | actions menu: run, run with parameters, pause/resume schedule, repair, cancel; start/stop pipeline; start/terminate cluster; start/stop warehouse |
 | `r` / `R` | refresh the focused panel / everything |
 | `s` | cycle sort: activity, name, created |

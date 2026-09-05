@@ -466,6 +466,13 @@ mod tests {
     }
 
     #[test]
+    fn filter_menu_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "F");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn name_replacements_80x24() {
         let mut app = with_runs();
         app.replacements = vec![("[someone] ".to_owned(), String::new())];

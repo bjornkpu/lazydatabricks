@@ -54,6 +54,8 @@ pub enum Action {
     Prompt,
     /// Open the config file in `$EDITOR`.
     EditConfig,
+    /// The filter menu: status, mine only, clear the text.
+    FilterMenu,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -98,6 +100,7 @@ impl Default for Keymap {
             (Action::SwitchProfile, vec![Key::Char('p')]),
             (Action::Prompt, vec![Key::Char(':')]),
             (Action::EditConfig, vec![Key::Char('e')]),
+            (Action::FilterMenu, vec![Key::Char('F')]),
         ]))
     }
 }

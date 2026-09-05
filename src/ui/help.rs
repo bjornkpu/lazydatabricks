@@ -84,6 +84,10 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             (k(Action::Filter), "filter by name"),
             (k(Action::MineOnly), "toggle mine only"),
             (k(Action::StatusFilter), "cycle status: all, failed, active"),
+            (
+                k(Action::FilterMenu),
+                "filter menu: status, mine only, clear text",
+            ),
             (k(Action::Open), "focus the main panel"),
             (
                 k(Action::Menu),
@@ -121,6 +125,10 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
             (k(Action::Filter), "filter by name"),
             (k(Action::MineOnly), "toggle mine only"),
             (k(Action::StatusFilter), "cycle status: all, failed, active"),
+            (
+                k(Action::FilterMenu),
+                "filter menu: status, mine only, clear text",
+            ),
             (k(Action::Open), "focus the main panel"),
             (k(Action::Menu), "actions menu"),
             (k(Action::Refresh), "refresh pipelines"),

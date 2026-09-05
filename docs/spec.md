@@ -1015,6 +1015,16 @@ JSON shows the full name, so nothing is hidden, only shortened.
 *Teaches:* a display transform is a function on the way to the screen, never a change to state.
 *Done when:* `"[dev bk] " = ""` turns `[dev bk] nightly_bronze_ingest` into a row that fits.
 
+### M49 — Filter menu
+lazygit's `ctrl+s` filter options. `f` cycles three statuses and `m` toggles mine, and both are
+fine until a fourth filter arrives; `F` lists them as a menu with the cursor on the status in
+force, plus "clear text filter" while `/` has text. Choosing applies at once and reads back the
+Status panel's filter line as the notice. Menu entries that are state rather than IO return no
+commands, so `MenuItem::command` became `commands`, a list, which bulk actions will want next.
+
+*Teaches:* a menu that mutates state and returns nothing is still the same menu.
+*Done when:* someone who never found `m` reads "Mine only: on" and presses Enter.
+
 ---
 
 ## 9. Testing

@@ -18,7 +18,7 @@ pub use focus::{ComputePanel, Panel, ScreenMode, SideLayout, Tab};
 use jiff::tz::TimeZone;
 pub use keys::{Action, Keymap};
 pub use list::{Move, Selectable};
-pub use menu::{InputMode, MenuItem, parse_params};
+pub use menu::{FilterChoice, InputMode, MenuItem, parse_params};
 pub use message::{ApiCall, Command, Key, Message};
 
 use crate::api::models::{
@@ -1124,6 +1124,7 @@ impl App {
                 }
             }
             Action::EditConfig => commands.push(Command::EditConfig),
+            Action::FilterMenu => self.open_filter_menu(),
             Action::Sort => {
                 self.sort = self.sort.next();
                 self.apply_filter();
@@ -1294,6 +1295,39 @@ impl App {
             Some(text) => commands.push(Command::Page(text)),
             None => self.notice = Some("Nothing to page yet".to_owned()),
         }
+    }
+
+    /// `F`: every filter as a menu, the cursor on the status in force. The same three settings
+    /// `f`, `m` and `/` reach; this is the list of them.
+    fn open_filter_menu(&mut self) {
+        let mut items: Vec<MenuItem> = [Status::All, Status::Failed, Status::Active]
+            .into_iter()
+            .map(|status| MenuItem::Filter(FilterChoice::Status(status)))
+            .collect();
+        items.push(MenuItem::Filter(FilterChoice::MineOnly(
+            !self.filter.mine_only,
+        )));
+        if !self.filter.text.is_empty() {
+            items.push(MenuItem::Filter(FilterChoice::ClearText(
+                self.filter.text.clone(),
+            )));
+        }
+        let selected = items
+            .iter()
+            .position(|item| *item == MenuItem::Filter(FilterChoice::Status(self.filter.status)))
+            .unwrap_or(0);
+        self.input = InputMode::Menu { items, selected };
+    }
+
+    /// One `F` choice applied; the notice reads back the filter line the Status panel shows.
+    fn apply_choice(&mut self, choice: &FilterChoice) {
+        match choice {
+            FilterChoice::Status(status) => self.filter.status = *status,
+            FilterChoice::MineOnly(on) => self.filter.mine_only = *on,
+            FilterChoice::ClearText(_) => self.filter.text.clear(),
+        }
+        self.apply_filter();
+        self.notice = Some(self.filter_summary());
     }
 
     /// `p`: every profile in `~/.databrickscfg` as a menu, the current one under the cursor.
@@ -1505,7 +1539,7 @@ impl App {
     /// Sends an action and says so; the reply, or its failure, comes back as a message.
     fn fire(&mut self, item: &MenuItem, commands: &mut Vec<Command>) {
         self.notice = Some(format!("{}…", item.label()));
-        commands.push(item.command());
+        commands.extend(item.commands());
     }
 
     /// A popup command's output goes into the overlay; nothing, or a failure, into the notice.
@@ -1658,6 +1692,7 @@ impl App {
                     return;
                 };
                 match item {
+                    MenuItem::Filter(choice) => self.apply_choice(&choice),
                     MenuItem::CopyText { label, text } => {
                         self.notice = Some(format!("Copied {label}"));
                         commands.push(Command::Copy(text));
@@ -2865,6 +2900,52 @@ pub mod tests {
             0,
             "the filter sees the full name, which lacks it"
         );
+    }
+
+    #[test]
+    fn capital_f_lists_the_filters_and_applies_one() {
+        let mut app = loaded();
+        press(&mut app, "/a");
+        app.update(key(Key::Enter));
+        press(&mut app, "F");
+        let InputMode::Menu { items, selected } = &app.input else {
+            panic!("{:?}", app.input);
+        };
+        assert_eq!(*selected, 0, "status all is in force");
+        let labels: Vec<String> = items.iter().map(MenuItem::label).collect();
+        assert_eq!(
+            labels,
+            [
+                "Show all",
+                "Show failed only",
+                "Show active only",
+                "Mine only: on",
+                "Clear text filter /a"
+            ]
+        );
+        press(&mut app, "j");
+        assert_eq!(
+            app.update(key(Key::Enter)),
+            vec![],
+            "no command: state only"
+        );
+        assert_eq!(app.filter.status, Status::Failed);
+        assert_eq!(app.notice.as_deref(), Some(app.filter_summary().as_str()));
+        press(&mut app, "F");
+        assert!(matches!(app.input, InputMode::Menu { selected: 1, .. }));
+        press(&mut app, "jj");
+        app.update(key(Key::Enter));
+        assert!(app.filter.mine_only);
+        press(&mut app, "F");
+        press(&mut app, "jjj");
+        app.update(key(Key::Enter));
+        assert_eq!(app.filter.text, "");
+        press(&mut app, "F");
+        let InputMode::Menu { items, .. } = &app.input else {
+            panic!("{:?}", app.input);
+        };
+        assert_eq!(items.len(), 4, "no text, no clear entry");
+        assert_eq!(items[3].label(), "Mine only: off");
     }
 
     #[test]

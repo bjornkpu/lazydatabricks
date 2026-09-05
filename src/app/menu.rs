@@ -3,8 +3,8 @@
 
 use std::collections::BTreeMap;
 
-use super::Command;
 use super::custom::Output;
+use super::{Command, Status};
 
 /// One entry in the menu. Carries everything needed to name the target and build the command,
 /// so neither the menu nor the confirmation has to look anything up.
@@ -68,6 +68,8 @@ pub enum MenuItem {
         label: String,
         text: String,
     },
+    /// One setting from the `F` menu. Applied in `update`; no command leaves the program.
+    Filter(FilterChoice),
     /// A custom command from config, its placeholders already filled in.
     Shell {
         name: String,
@@ -96,6 +98,7 @@ impl MenuItem {
             Self::Shell { name, .. } => name.clone(),
             Self::SwitchProfile { name } => format!("Switch to {name}"),
             Self::CopyText { label, .. } => format!("Copy {label}"),
+            Self::Filter(choice) => choice.label(),
         }
     }
 
@@ -105,7 +108,10 @@ impl MenuItem {
     pub const fn needs_actions(&self) -> bool {
         !matches!(
             self,
-            Self::Shell { .. } | Self::SwitchProfile { .. } | Self::CopyText { .. }
+            Self::Shell { .. }
+                | Self::SwitchProfile { .. }
+                | Self::CopyText { .. }
+                | Self::Filter(_)
         )
     }
 
@@ -128,14 +134,17 @@ impl MenuItem {
             Self::Shell { command, .. } => format!("Run `{command}`?"),
             Self::SwitchProfile { name } => format!("Switch to {name}?"),
             Self::CopyText { label, .. } => format!("Copy {label}?"),
+            Self::Filter(choice) => format!("{}?", choice.label()),
         }
     }
 
-    /// The command that carries this out. Pipeline ids are strings, so the command owns a copy.
-    /// `RunWith` never gets here without parameters; see `with_params`.
+    /// The commands that carry this out: none for a filter choice, which is state, not IO.
+    /// Pipeline ids are strings, so the command owns a copy. `RunWith` never gets here without
+    /// parameters; see `with_params`.
     #[must_use]
-    pub fn command(&self) -> Command {
-        match self {
+    pub fn commands(&self) -> Vec<Command> {
+        let command = match self {
+            Self::Filter(_) => return Vec::new(),
             Self::RunNow { job_id, .. } | Self::RunWith { job_id, .. } => Command::RunNow {
                 job_id: *job_id,
                 params: BTreeMap::new(),
@@ -186,6 +195,29 @@ impl MenuItem {
             },
             Self::SwitchProfile { name } => Command::SwitchProfile(name.clone()),
             Self::CopyText { text, .. } => Command::Copy(text.clone()),
+        };
+        vec![command]
+    }
+}
+
+/// What the `F` menu can set. lazygit's `ctrl+s` filter options, sized to our filters.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FilterChoice {
+    Status(Status),
+    MineOnly(bool),
+    /// Drop the `/` text; carries it so the label can show what goes.
+    ClearText(String),
+}
+
+impl FilterChoice {
+    #[must_use]
+    pub fn label(&self) -> String {
+        match self {
+            Self::Status(Status::All) => "Show all".to_owned(),
+            Self::Status(status) => format!("Show {} only", status.as_str()),
+            Self::MineOnly(true) => "Mine only: on".to_owned(),
+            Self::MineOnly(false) => "Mine only: off".to_owned(),
+            Self::ClearText(text) => format!("Clear text filter /{text}"),
         }
     }
 }
@@ -247,11 +279,11 @@ mod tests {
         assert_eq!(run.label(), "Run now: okonomi_gold");
         assert_eq!(run.confirmation(), "Start a run of \"okonomi_gold\" now?");
         assert_eq!(
-            run.command(),
-            Command::RunNow {
+            run.commands(),
+            vec![Command::RunNow {
                 job_id: 7,
                 params: BTreeMap::new()
-            }
+            }]
         );
         let repair = MenuItem::RepairRun {
             job_id: 7,
@@ -260,11 +292,11 @@ mod tests {
         assert_eq!(repair.label(), "Repair run 42");
         assert_eq!(repair.confirmation(), "Re-run the failed tasks of run 42?");
         assert_eq!(
-            repair.command(),
-            Command::RepairRun {
+            repair.commands(),
+            vec![Command::RepairRun {
                 job_id: 7,
                 run_id: 42
-            }
+            }]
         );
         let cancel = MenuItem::CancelRun {
             job_id: 7,
@@ -272,11 +304,16 @@ mod tests {
         };
         assert_eq!(cancel.label(), "Cancel run 42");
         assert_eq!(
-            cancel.command(),
-            Command::CancelRun {
+            cancel.commands(),
+            vec![Command::CancelRun {
                 job_id: 7,
                 run_id: 42
-            }
+            }]
+        );
+        assert!(
+            MenuItem::Filter(FilterChoice::MineOnly(true))
+                .commands()
+                .is_empty()
         );
     }
 
