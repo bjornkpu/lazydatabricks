@@ -21,13 +21,17 @@ your twenty.
 
 ## Install
 
-Needs Rust stable and the [Databricks CLI](https://docs.databricks.com/dev-tools/cli/) logged in
-to a profile in `~/.databrickscfg`. Authentication is delegated to the CLI, so OAuth, Azure AD,
-PATs and keyring storage all work without configuration here.
+Download the binary for your platform from the
+[releases page](https://github.com/bjornkpu/lazydatabricks/releases) and put it on your `PATH`,
+or build it with Rust stable: `cargo install --path .`.
+
+You also need the [Databricks CLI](https://docs.databricks.com/dev-tools/cli/) logged in to a
+profile in `~/.databrickscfg`. Authentication is delegated to the CLI, so OAuth, Azure AD, PATs
+and keyring storage all work without configuration here. The first run without a profile prints
+the exact login command.
 
 ```
-databricks auth login -p dev
-cargo install --path .
+databricks auth login --host https://<workspace-url> -p dev
 lazydatabricks -p dev
 lazydatabricks -p dev,prod    # several workspaces in one window; p cycles them
 ```
