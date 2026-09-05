@@ -466,6 +466,13 @@ mod tests {
     }
 
     #[test]
+    fn copy_menu_80x24() {
+        let mut app = with_runs();
+        press(&mut app, "0jy");
+        insta::assert_snapshot!(render(&app));
+    }
+
+    #[test]
     fn profile_menu_80x24() {
         let mut app = with_runs();
         app.profiles = ["DEFAULT", "dev", "prod"]

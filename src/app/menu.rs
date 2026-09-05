@@ -63,6 +63,11 @@ pub enum MenuItem {
     SwitchProfile {
         name: String,
     },
+    /// One thing `y` can put on the clipboard: `label` says what, `text` is it.
+    CopyText {
+        label: String,
+        text: String,
+    },
     /// A custom command from config, its placeholders already filled in.
     Shell {
         name: String,
@@ -90,6 +95,7 @@ impl MenuItem {
             Self::StopWarehouse { name, .. } => format!("Stop warehouse: {name}"),
             Self::Shell { name, .. } => name.clone(),
             Self::SwitchProfile { name } => format!("Switch to {name}"),
+            Self::CopyText { label, .. } => format!("Copy {label}"),
         }
     }
 
@@ -97,7 +103,10 @@ impl MenuItem {
     /// switches are not Databricks writes, so they are always live.
     #[must_use]
     pub const fn needs_actions(&self) -> bool {
-        !matches!(self, Self::Shell { .. } | Self::SwitchProfile { .. })
+        !matches!(
+            self,
+            Self::Shell { .. } | Self::SwitchProfile { .. } | Self::CopyText { .. }
+        )
     }
 
     /// The question asked before anything is sent. For `RunWith` it is the prompt's title.
@@ -118,6 +127,7 @@ impl MenuItem {
             Self::StopWarehouse { name, .. } => format!("Stop warehouse \"{name}\"?"),
             Self::Shell { command, .. } => format!("Run `{command}`?"),
             Self::SwitchProfile { name } => format!("Switch to {name}?"),
+            Self::CopyText { label, .. } => format!("Copy {label}?"),
         }
     }
 
@@ -175,6 +185,7 @@ impl MenuItem {
                 output: *output,
             },
             Self::SwitchProfile { name } => Command::SwitchProfile(name.clone()),
+            Self::CopyText { text, .. } => Command::Copy(text.clone()),
         }
     }
 }

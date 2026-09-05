@@ -954,6 +954,16 @@ plain lines for exactly this.
 *Teaches:* once the terminal hand-off exists, every "view this properly" feature is one command.
 *Done when:* a 3 000-line traceback is searchable with `/` in less.
 
+### M43 — Copy menu
+lazygit's `y` opens a menu of attributes to copy; ours copied the URL and nothing else. Now `y`
+opens **Copy**: the URL first, so `y` Enter still pastes a link into Teams, then the run id when
+one is under the cursor, the job, pipeline or compute id, the name, and the JSON once the tab has
+fetched it. The menu is the `x` machinery with a `CopyText` entry that carries its own text, so
+choosing never looks anything up again. No actions gate: a clipboard is not a write.
+
+*Teaches:* the third use of the menu cost nothing; the entry carries its payload.
+*Done when:* `y j Enter` on a run puts its id on the clipboard for a support ticket.
+
 ---
 
 ## 9. Testing

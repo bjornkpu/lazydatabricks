@@ -31,13 +31,10 @@ fn menu(app: &App, items: &[MenuItem], selected: usize, frame: &mut Frame) {
     } else {
         "read-only: --allow-actions to enable"
     };
-    let title = if items
-        .iter()
-        .all(|item| matches!(item, MenuItem::SwitchProfile { .. }))
-    {
-        " Profiles "
-    } else {
-        " Actions "
+    let title = match items.first() {
+        Some(MenuItem::SwitchProfile { .. }) => " Profiles ",
+        Some(MenuItem::CopyText { .. }) => " Copy ",
+        _ => " Actions ",
     };
     let labels: Vec<String> = items.iter().map(MenuItem::label).collect();
     let width = labels

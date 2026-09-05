@@ -1111,14 +1111,7 @@ impl App {
                     self.notice = Some("Nothing selected to open".to_owned());
                 }
             }
-            Action::Copy => {
-                if let Some(url) = self.selected_url() {
-                    self.notice = Some(format!("Copied {url}"));
-                    commands.push(Command::Copy(url));
-                } else {
-                    self.notice = Some("Nothing selected to copy".to_owned());
-                }
-            }
+            Action::Copy => self.open_copy_menu(),
             Action::CopyTable => {
                 self.notice = Some("Copied the visible rows".to_owned());
                 commands.push(Command::CopyVisible);
@@ -1171,6 +1164,63 @@ impl App {
             Action::NextTab => self.next_tab(),
             Action::PrevTab => self.prev_tab(),
         }
+    }
+
+    /// `y`: what the selection can be copied as. URL first, so `y` Enter is still "copy the
+    /// link"; then the id, the name and the JSON once fetched.
+    fn open_copy_menu(&mut self) {
+        let mut items = Vec::new();
+        let mut copy = |label: &str, text: Option<String>| {
+            if let Some(text) = text {
+                items.push(MenuItem::CopyText {
+                    label: label.to_owned(),
+                    text,
+                });
+            }
+        };
+        copy("URL", self.selected_url());
+        let viewed_run = self.viewing_run.or_else(|| {
+            (self.focus == Panel::Main)
+                .then(|| self.selected_run().map(|run| run.id))
+                .flatten()
+        });
+        match self.context {
+            Panel::Jobs => {
+                copy("run ID", viewed_run.map(|id| id.to_string()));
+                copy("job ID", self.jobs.selected().map(|job| job.id.to_string()));
+                copy(
+                    "name",
+                    self.jobs.selected().map(|job| job.settings.name.clone()),
+                );
+            }
+            Panel::Pipelines => {
+                copy(
+                    "pipeline ID",
+                    self.pipelines
+                        .selected()
+                        .map(|pipeline| pipeline.id.clone()),
+                );
+                copy(
+                    "name",
+                    self.pipelines
+                        .selected()
+                        .map(|pipeline| pipeline.name.clone()),
+                );
+            }
+            Panel::Compute => {
+                copy("ID", self.compute.selected().map(|row| row.id.clone()));
+                copy("name", self.compute.selected().map(|row| row.name.clone()));
+            }
+            Panel::Status | Panel::Main => {}
+        }
+        if let Load::Loaded(json) = self.json_view() {
+            copy("JSON", Some(json));
+        }
+        if items.is_empty() {
+            self.notice = Some("Nothing selected to copy".to_owned());
+            return;
+        }
+        self.input = InputMode::Menu { items, selected: 0 };
     }
 
     /// Enter on a text tab: the same text the tab shows, in `$PAGER`.
@@ -1551,6 +1601,10 @@ impl App {
                     return;
                 };
                 match item {
+                    MenuItem::CopyText { label, text } => {
+                        self.notice = Some(format!("Copied {label}"));
+                        commands.push(Command::Copy(text));
+                    }
                     MenuItem::Shell { confirm: false, .. } | MenuItem::SwitchProfile { .. } => {
                         self.fire(&item, commands);
                     }
@@ -2108,6 +2162,12 @@ pub mod tests {
         Message::Key(key)
     }
 
+    /// `y` opens the copy menu with the URL first; Enter takes it.
+    fn copy_url(app: &mut App) -> Vec<Command> {
+        app.update(key(Key::Char('y')));
+        app.update(key(Key::Enter))
+    }
+
     fn press(app: &mut App, keys: &str) {
         for c in keys.chars() {
             app.update(key(Key::Char(c)));
@@ -2557,6 +2617,33 @@ pub mod tests {
             vec![],
             "no runs loaded, so Enter has nothing to open"
         );
+    }
+
+    #[test]
+    fn y_offers_url_id_name_and_json() {
+        let mut app = loaded();
+        let labels = |app: &App| -> Vec<String> {
+            let InputMode::Menu { items, .. } = &app.input else {
+                panic!("{:?}", app.input);
+            };
+            items.iter().map(MenuItem::label).collect()
+        };
+        press(&mut app, "y");
+        assert_eq!(labels(&app), ["Copy URL", "Copy job ID", "Copy name"]);
+        press(&mut app, "j");
+        assert_eq!(
+            app.update(key(Key::Enter)),
+            vec![Command::Copy("1".to_owned())],
+            "no actions opt-in needed"
+        );
+        assert_eq!(app.notice.as_deref(), Some("Copied job ID"));
+        app.update(Message::JobLoaded(job(1, "a")));
+        press(&mut app, "y");
+        assert_eq!(labels(&app)[3], "Copy JSON");
+        app.update(key(Key::Esc));
+        press(&mut app, "1y");
+        assert_eq!(app.input, InputMode::Normal);
+        assert_eq!(app.notice.as_deref(), Some("Nothing selected to copy"));
     }
 
     #[test]
@@ -3500,7 +3587,7 @@ pub mod tests {
         );
         press(&mut app, "0");
         assert_eq!(
-            app.update(key(Key::Char('y'))),
+            copy_url(&mut app),
             vec![Command::Copy(url)],
             "main keeps jobs context"
         );
@@ -3535,7 +3622,7 @@ pub mod tests {
         press(&mut app, "j");
         assert_eq!(app.compute.selected().map(|c| c.id.as_str()), Some("c1"));
         assert_eq!(
-            app.update(key(Key::Char('y'))),
+            copy_url(&mut app),
             vec![Command::Copy(
                 "https://adb-1.azuredatabricks.net/compute/clusters/c1".to_owned()
             )]
@@ -3699,7 +3786,7 @@ pub mod tests {
         assert_eq!(app.pipelines_error, Some(boom()));
         assert!(!app.pipelines_loading());
         assert_eq!(
-            app.update(key(Key::Char('y'))),
+            copy_url(&mut app),
             vec![Command::Copy(
                 "https://adb-1.azuredatabricks.net/pipelines/p1".to_owned()
             )]
@@ -4012,14 +4099,14 @@ pub mod tests {
     fn run_urls_follow_the_cursor() {
         let mut app = with_active_run();
         assert_eq!(
-            app.update(key(Key::Char('y'))),
+            copy_url(&mut app),
             vec![Command::Copy(
                 "https://adb-1.azuredatabricks.net/jobs/1".to_owned()
             )]
         );
         press(&mut app, "0j");
         assert_eq!(
-            app.update(key(Key::Char('y'))),
+            copy_url(&mut app),
             vec![Command::Copy(
                 "https://adb-1.azuredatabricks.net/jobs/1/runs/9".to_owned()
             )]

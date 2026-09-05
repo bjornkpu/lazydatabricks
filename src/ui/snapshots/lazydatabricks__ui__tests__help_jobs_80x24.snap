@@ -16,7 +16,7 @@ expression: render(&app)
 "│         │    x  actions menu: run, pause schedule, repair, cancel  │         │"
 "│         │    r  refresh jobs                                       │         │"
 "└─────────│    o  open job in browser                                │         │"
-"┌─[3]─Pipe│    y  copy job URL                                       │         │"
+"┌─[3]─Pipe│    y  copy: URL, job ID, name, JSON                      │         │"
 "│         │    Y  copy the job list as text                          │─────────┘"
 "│         │    s  cycle sort: activity, name, created                │─────────┐"
 "│         │  0-4  focus panel by number                              │0    84ms│"

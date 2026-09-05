@@ -14,7 +14,7 @@ expression: render(&app)
 "│          │    x  actions menu                                     │          │"
 "│          │    r  refresh runs                                     │          │"
 "│          │    o  open job in browser                              │          │"
-"│          │    y  copy job URL                                     │          │"
+"│          │    y  copy: URL, run ID, job ID, name, JSON            │          │"
 "└──────────│    Y  copy the runs table as text                      │          │"
 "┌─[3]─Pipel│  0-4  focus panel by number                            │          │"
 "│          │  Tab  next side panel                                  │──────────┘"

@@ -58,7 +58,7 @@ the target. Opening a failed run shows the failing task's error and traceback.
 | `x` | actions menu: run, run with parameters, pause/resume schedule, repair, cancel; start/stop pipeline; start/terminate cluster; start/stop warehouse |
 | `r` / `R` | refresh the focused panel / everything |
 | `s` | cycle sort: activity, name, created |
-| `o` / `y` | open in browser (`$BROWSER` if set) / copy URL (`wl-copy` on Wayland) |
+| `o` / `y` | open in browser (`$BROWSER` if set) / copy menu: URL, id, name, JSON (`wl-copy` on Wayland) |
 | `Y` | copy the focused panel's rows as text, for Teams |
 | `A` | enable actions for this session (asks first); again to disable |
 | `p` | switch profile: every profile in `~/.databrickscfg`, opened on first use |
