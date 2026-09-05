@@ -42,6 +42,8 @@ pub enum Action {
     Sort,
     /// Cycle the status filter: all, failed, active.
     StatusFilter,
+    PageDown,
+    PageUp,
 }
 
 /// The active bindings. Lookup is a scan over a few dozen entries per key press.
@@ -51,7 +53,7 @@ pub struct Keymap(BTreeMap<Action, Vec<Key>>);
 impl Default for Keymap {
     fn default() -> Self {
         Self(BTreeMap::from([
-            (Action::Quit, vec![Key::Char('q'), Key::CtrlC]),
+            (Action::Quit, vec![Key::Char('q'), Key::Ctrl('c')]),
             (Action::ScreenMode, vec![Key::Char('+')]),
             (Action::ToggleLog, vec![Key::Char('@')]),
             (Action::Filter, vec![Key::Char('/')]),
@@ -79,6 +81,8 @@ impl Default for Keymap {
             (Action::Copy, vec![Key::Char('y')]),
             (Action::Sort, vec![Key::Char('s')]),
             (Action::StatusFilter, vec![Key::Char('f')]),
+            (Action::PageDown, vec![Key::Ctrl('d')]),
+            (Action::PageUp, vec![Key::Ctrl('u')]),
         ]))
     }
 }
@@ -141,23 +145,29 @@ impl fmt::Display for Key {
             Self::Enter => f.write_str("Enter"),
             Self::Esc => f.write_str("Esc"),
             Self::Backspace => f.write_str("Bksp"),
-            Self::CtrlC => f.write_str("^C"),
+            Self::Ctrl(c) => write!(f, "^{}", c.to_ascii_uppercase()),
         }
     }
 }
 
-/// Key names as written in config: a single character, or one of the names below.
+/// Key names as written in config: a single character, `ctrl+` and a character, or one of the
+/// names below.
 impl FromStr for Key {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut chars = s.chars();
-        if let Some(c) = chars.next()
-            && chars.next().is_none()
-        {
+        let single = |s: &str| {
+            let mut chars = s.chars();
+            chars.next().filter(|_| chars.next().is_none())
+        };
+        if let Some(c) = single(s) {
             return Ok(Self::Char(c));
         }
-        Ok(match s.to_ascii_lowercase().as_str() {
+        let lower = s.to_ascii_lowercase();
+        if let Some(c) = lower.strip_prefix("ctrl+").and_then(single) {
+            return Ok(Self::Ctrl(c));
+        }
+        Ok(match lower.as_str() {
             "tab" => Self::Tab,
             "up" => Self::Up,
             "down" => Self::Down,
@@ -166,10 +176,9 @@ impl FromStr for Key {
             "enter" => Self::Enter,
             "esc" => Self::Esc,
             "backspace" => Self::Backspace,
-            "ctrl+c" => Self::CtrlC,
             _ => {
                 return Err(format!(
-                    "unknown key {s:?}; use one character or tab, up, down, left, right, enter, esc, backspace, ctrl+c"
+                    "unknown key {s:?}; use one character, ctrl+<character>, or tab, up, down, left, right, enter, esc, backspace"
                 ));
             }
         })
@@ -192,7 +201,9 @@ mod tests {
     fn defaults_follow_lazygit() {
         let keys = Keymap::default();
         assert_eq!(keys.action(Key::Char('q')), Some(Action::Quit));
-        assert_eq!(keys.action(Key::CtrlC), Some(Action::Quit));
+        assert_eq!(keys.action(Key::Ctrl('c')), Some(Action::Quit));
+        assert_eq!(keys.action(Key::Ctrl('d')), Some(Action::PageDown));
+        assert_eq!(keys.labels(Action::PageUp), "^U");
         assert_eq!(keys.action(Key::Char(']')), Some(Action::NextTab));
         assert_eq!(keys.action(Key::Char('7')), None);
         assert_eq!(keys.label(Action::Down), "j");
@@ -223,8 +234,10 @@ mod tests {
         assert_eq!("l".parse::<Key>(), Ok(Key::Char('l')));
         assert_eq!("ø".parse::<Key>(), Ok(Key::Char('ø')));
         assert_eq!("Enter".parse::<Key>(), Ok(Key::Enter));
-        assert_eq!("ctrl+c".parse::<Key>(), Ok(Key::CtrlC));
-        assert!("ctrl+x".parse::<Key>().is_err());
+        assert_eq!("ctrl+c".parse::<Key>(), Ok(Key::Ctrl('c')));
+        assert_eq!("Ctrl+D".parse::<Key>(), Ok(Key::Ctrl('d')));
+        assert!("ctrl+xy".parse::<Key>().is_err());
+        assert!("alt+x".parse::<Key>().is_err());
         assert!("".parse::<Key>().is_err());
     }
 }

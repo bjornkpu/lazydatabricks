@@ -31,8 +31,9 @@ cargo install --path .
 lazydatabricks -p dev
 ```
 
-Read-only by default. `--allow-actions` (or `allow_actions = true` in config) enables run-now and
-cancel in the `x` menu, each behind a confirmation that names the target.
+Read-only by default. `--allow-actions` (or `allow_actions = true` in config) enables run-now,
+run with parameters, repair and cancel in the `x` menu, each behind a confirmation that names
+the target. Opening a failed run shows the failing task's error and traceback.
 
 ## Keys
 
@@ -42,9 +43,11 @@ cancel in the `x` menu, each behind a confirmation that names the target.
 |---|---|
 | `0`–`3`, `Tab` | focus a panel |
 | `j`/`k`, `g`/`G` | move the cursor |
+| `ctrl+d`/`ctrl+u` | ten rows down / up |
 | `h`/`l`, `[`/`]` | switch main-panel tabs |
 | `/` | filter by name; `Enter` keeps it, `Esc` clears it |
 | `m` | toggle mine only (by `dev` tag or creator) |
+| `f` | cycle status: all, failed only, active only |
 | `x` | actions menu for the selected job |
 | `r` / `R` | refresh the focused panel / everything |
 | `s` | cycle sort: activity, name, created |
@@ -62,10 +65,12 @@ Optional, every field has a default. The Profile tab shows the path; on Windows 
 profile = "dev"            # env DATABRICKS_CONFIG_PROFILE and --profile win over this
 mine_only = true
 filter = "gold"
+status = "all"             # or "failed", "active"; f cycles it
 dev_tag = "bjorn_punsvik"  # tag value that marks a job as mine; derived from the email if unset
 allow_actions = false
 theme = "dark"             # or "light"
 sort = "activity"          # or "name", "created"; newest first, ties by name
+date_format = "%d.%m %H:%M" # strftime, checked at startup
 max_jobs = 200
 jobs_ttl_secs = 300        # background refresh interval
 runs_ttl_secs = 120
@@ -75,10 +80,11 @@ next_tab = ["l", "ø", "right"]
 prev_tab = ["h", "æ", "left"]
 ```
 
-Actions: `quit`, `screen_mode`, `toggle_log`, `filter`, `mine_only`, `refresh`, `refresh_all`,
-`next_panel`, `open`, `back`, `down`, `up`, `first`, `last`, `next_tab`, `prev_tab`, `menu`,
-`help`, `browse`, `copy`. Key names: one character, or `tab`, `up`, `down`, `left`, `right`,
-`enter`, `esc`, `backspace`, `ctrl+c`.
+Actions: `quit`, `screen_mode`, `toggle_log`, `filter`, `mine_only`, `status_filter`,
+`refresh`, `refresh_all`, `next_panel`, `open`, `back`, `down`, `up`, `page_down`, `page_up`,
+`first`, `last`, `next_tab`, `prev_tab`, `menu`, `help`, `browse`, `copy`, `sort`. Key names:
+one character, `ctrl+` and a character, or `tab`, `up`, `down`, `left`, `right`, `enter`,
+`esc`, `backspace`.
 
 ## Debugging
 

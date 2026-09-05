@@ -3,10 +3,10 @@ source: src/ui/mod.rs
 expression: render(&app)
 ---
 "┌─[1]─Status───────────────────────────┐┌─[0]─Runs - Detail ⠋──────────────────┐"
-"┌─[2]─Jobs by activity─────────────────┐│  Run ID       Started      Duration  │"
-"│ 2h ◐ [someone] okonomi_gold          ││› 508518927610 09/01 10:08  -         │"
-"│ 1d ✗ nightly_bronze_ingest           ││  508518927610 08/31 10:08  1m12s     │"
-"│    · weekly_report                   ││  508518927610 08/30 10:08  57s       │"
+"┌─[2]─Jobs by activity─────────────────┐│  Started      Duration  Result       │"
+"│ 2h ◐ [someone] okonomi_gold          ││› 01.09 10:08  -         ◐ RUNNING    │"
+"│ 1d ✗ nightly_bronze_ingest           ││  31.08 10:08  1m12s     ✓ SUCCESS    │"
+"│    · weekly_report                   ││  30.08 10:08  57s       ✗ FAILED     │"
 "│                                      ││                                      │"
 "│                                      ││                                      │"
 "│                                      ││                                      │"

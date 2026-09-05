@@ -64,6 +64,8 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
         Panel::Jobs => vec![
             (k(Action::Down), "next job"),
             (k(Action::Up), "previous job"),
+            (k(Action::PageDown), "ten jobs down"),
+            (k(Action::PageUp), "ten jobs up"),
             (k(Action::First), "first job"),
             (k(Action::Last), "last job"),
             (k(Action::Filter), "filter by name"),
@@ -79,6 +81,8 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
         Panel::Main => vec![
             (k(Action::Down), "next run"),
             (k(Action::Up), "previous run"),
+            (k(Action::PageDown), "ten runs down"),
+            (k(Action::PageUp), "ten runs up"),
             (k(Action::Open), "open the run: tasks and message"),
             (k(Action::NextTab), "next tab"),
             (k(Action::PrevTab), "previous tab"),
@@ -91,6 +95,8 @@ fn bindings(focus: Panel, keys: &Keymap) -> Vec<(String, &'static str)> {
         Panel::Pipelines => vec![
             (k(Action::Down), "next pipeline"),
             (k(Action::Up), "previous pipeline"),
+            (k(Action::PageDown), "ten pipelines down"),
+            (k(Action::PageUp), "ten pipelines up"),
             (k(Action::Filter), "filter by name"),
             (k(Action::MineOnly), "toggle mine only"),
             (k(Action::StatusFilter), "cycle status: all, failed, active"),

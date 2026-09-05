@@ -73,7 +73,8 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
         block = stale(block, error, &counter, area, &palette);
     }
     // `2m ✓ name`: age of the latest run, its result, then the name. Blank age and a dot when
-    // no run is known yet.
+    // no run is known yet. Names truncate with `…`, never silently.
+    let name_width = usize::from(area.width).saturating_sub(2 + 6);
     let rows = app.jobs.items().iter().map(|job| {
         let latest = app.latest_runs.get(&job.id);
         let age = match (latest.and_then(|run| run.start_time), app.now) {
@@ -87,7 +88,7 @@ pub fn jobs(app: &App, area: Rect, frame: &mut Frame) {
                 Style::new().add_modifier(Modifier::DIM),
             ),
             Span::styled(glyph.to_string(), Style::new().fg(color)),
-            Span::raw(format!(" {}", job.settings.name)),
+            Span::raw(format!(" {}", chrome::fit(&job.settings.name, name_width))),
         ])
     });
     let list = List::new(rows)
@@ -119,11 +120,12 @@ pub fn pipelines(app: &App, area: Rect, frame: &mut Frame) {
         }
         block = stale(block, error, &counter, area, &palette);
     }
+    let name_width = usize::from(area.width).saturating_sub(2 + 2);
     let rows = app.pipelines.items().iter().map(|pipeline| {
         let (glyph, color) = theme::pipeline_glyph(pipeline);
         Line::from(vec![
             Span::styled(glyph.to_string(), Style::new().fg(color)),
-            Span::raw(format!(" {}", pipeline.name)),
+            Span::raw(format!(" {}", chrome::fit(&pipeline.name, name_width))),
         ])
     });
     let list = List::new(rows)

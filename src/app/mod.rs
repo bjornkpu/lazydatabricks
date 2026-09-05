@@ -105,6 +105,8 @@ pub struct App {
     /// Run-now and cancel are allowed. Off by default: reading is safe, triggering is not.
     pub allow_actions: bool,
     pub theme: Theme,
+    /// `strftime` pattern for absolute times, validated at config load.
+    pub date_format: String,
     /// Order of both lists. Applied in `apply_filter`.
     pub sort: Sort,
     /// A jobs fetch is in flight. True from launch until the first `JobsLoaded` or `JobsFailed`,
@@ -183,6 +185,7 @@ impl App {
             notice: None,
             allow_actions: config.allow_actions,
             theme: config.theme,
+            date_format: config.date_format.clone(),
             sort: config.sort,
             loading: true,
             jobs_fetched_at: None,
@@ -738,6 +741,8 @@ impl App {
             }
             Action::Down => self.move_cursor(Move::Down),
             Action::Up => self.move_cursor(Move::Up),
+            Action::PageDown => self.move_cursor(Move::PageDown),
+            Action::PageUp => self.move_cursor(Move::PageUp),
             Action::First => self.move_cursor(Move::First),
             Action::Last => self.move_cursor(Move::Last),
             Action::NextTab => self.next_tab(),
@@ -748,7 +753,7 @@ impl App {
     /// Keys while `/` filter editing is active. Letters go to the filter, not to bindings.
     fn filter_key(&mut self, key: Key, commands: &mut Vec<Command>) {
         match key {
-            Key::CtrlC => commands.push(Command::Quit),
+            Key::Ctrl('c') => commands.push(Command::Quit),
             Key::Enter => self.input = InputMode::Normal,
             Key::Esc => {
                 self.input = InputMode::Normal;
@@ -765,7 +770,7 @@ impl App {
             }
             Key::Down => self.move_cursor(Move::Down),
             Key::Up => self.move_cursor(Move::Up),
-            Key::Tab | Key::Left | Key::Right => {}
+            Key::Tab | Key::Left | Key::Right | Key::Ctrl(_) => {}
         }
     }
 
@@ -938,7 +943,7 @@ impl App {
             return;
         };
         match key {
-            Key::CtrlC => commands.push(Command::Quit),
+            Key::Ctrl('c') => commands.push(Command::Quit),
             Key::Esc => {}
             Key::Enter => match parse_params(&text) {
                 Ok(params) => {
@@ -958,7 +963,7 @@ impl App {
                 text.push(c);
                 self.input = InputMode::Params { job_id, name, text };
             }
-            Key::Tab | Key::Up | Key::Down | Key::Left | Key::Right => {
+            Key::Tab | Key::Up | Key::Down | Key::Left | Key::Right | Key::Ctrl(_) => {
                 self.input = InputMode::Params { job_id, name, text };
             }
         }
@@ -1269,7 +1274,8 @@ pub mod tests {
         let mut app = app();
         assert!(app.loading);
         assert_eq!(app.update(key(Key::Char('q'))), vec![Command::Quit]);
-        assert_eq!(app.update(key(Key::CtrlC)), vec![Command::Quit]);
+        assert_eq!(app.update(key(Key::Ctrl('c'))), vec![Command::Quit]);
+        assert_eq!(app.update(key(Key::Ctrl('d'))), vec![], "^D is not quit");
     }
 
     #[test]

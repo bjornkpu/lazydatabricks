@@ -1,6 +1,10 @@
 //! A list with a cursor. The selection is `Option<usize>` and is `None` exactly when the list
 //! is empty, so callers never index.
 
+/// Rows one page movement covers.
+// ponytail: a fixed page, not the panel height; `update` does not know the terminal size.
+const PAGE: usize = 10;
+
 /// A cursor movement, independent of which list it lands on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Move {
@@ -8,6 +12,8 @@ pub enum Move {
     Down,
     First,
     Last,
+    PageUp,
+    PageDown,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +87,8 @@ impl<T> Selectable<T> {
         self.selected = Some(match (movement, self.selected.unwrap_or(0)) {
             (Move::Up, current) => current.saturating_sub(1),
             (Move::Down, current) => current.saturating_add(1).min(last),
+            (Move::PageUp, current) => current.saturating_sub(PAGE),
+            (Move::PageDown, current) => current.saturating_add(PAGE).min(last),
             (Move::First, _) => 0,
             (Move::Last, _) => last,
         });
@@ -155,6 +163,21 @@ mod tests {
         assert_eq!(list.selected(), Some(&"c"));
         list.apply(Move::First);
         assert_eq!(list.selected(), Some(&"a"));
+    }
+
+    #[test]
+    fn paging_moves_ten_and_clamps() {
+        let mut list = Selectable::new((0..25).collect());
+        list.apply(Move::PageDown);
+        assert_eq!(list.selected(), Some(&10));
+        list.apply(Move::PageDown);
+        list.apply(Move::PageDown);
+        assert_eq!(list.selected(), Some(&24));
+        list.apply(Move::PageUp);
+        assert_eq!(list.selected(), Some(&14));
+        list.apply(Move::PageUp);
+        list.apply(Move::PageUp);
+        assert_eq!(list.selected(), Some(&0));
     }
 
     #[test]

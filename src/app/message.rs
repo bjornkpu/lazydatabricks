@@ -23,7 +23,8 @@ pub enum Key {
     Enter,
     Esc,
     Backspace,
-    CtrlC,
+    /// A letter with Control held, `ctrl+d` in config.
+    Ctrl(char),
 }
 
 /// One REST call, as shown in the API log.

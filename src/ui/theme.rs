@@ -118,11 +118,14 @@ pub fn span(start: Option<Timestamp>, end: Option<Timestamp>) -> Option<SignedDu
     Some(end?.duration_since(start?))
 }
 
-/// `MM/DD HH:MM` in `tz`. Absolute times belong in tables; ages belong in side lists.
+/// `ts` in `tz` as `format` says (`%d.%m %H:%M` by default). Absolute times belong in tables;
+/// ages belong in side lists. The format was validated at config load, so a failure here is
+/// a bug, and shows as one rather than a panic.
 #[must_use]
-pub fn clock(ts: Timestamp, tz: &TimeZone) -> String {
+pub fn clock(ts: Timestamp, tz: &TimeZone, format: &str) -> String {
     // TimeZone is an Arc inside; the clone is a refcount bump.
-    ts.to_zoned(tz.clone()).strftime("%m/%d %H:%M").to_string()
+    jiff::fmt::strtime::format(format, &ts.to_zoned(tz.clone()))
+        .unwrap_or_else(|_| "bad date_format".to_owned())
 }
 
 /// One number and one letter, for the leftmost column of a list: `2m`, `4h`, `1d`, `1w`, `3M`.
@@ -194,9 +197,10 @@ mod tests {
     #[test]
     fn clock_uses_given_zone() {
         let ts = Timestamp::from_millisecond(1_788_170_893_271).unwrap();
-        assert_eq!(clock(ts, &TimeZone::UTC), "08/31 10:08");
+        assert_eq!(clock(ts, &TimeZone::UTC, "%d.%m %H:%M"), "31.08 10:08");
         let oslo = TimeZone::get("Europe/Oslo").unwrap();
-        assert_eq!(clock(ts, &oslo), "08/31 12:08");
+        assert_eq!(clock(ts, &oslo, "%Y-%m-%d %H:%M"), "2026-08-31 12:08");
+        assert_eq!(clock(ts, &oslo, "%!"), "bad date_format");
     }
 
     #[test]

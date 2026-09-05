@@ -318,7 +318,7 @@ fn read_key(timeout: std::time::Duration) -> Result<Option<Message>> {
         return Ok(None);
     }
     let key = match key.code {
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Key::CtrlC,
+        KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) => Key::Ctrl(c),
         KeyCode::Char(c) => Key::Char(c),
         KeyCode::Tab => Key::Tab,
         KeyCode::Up => Key::Up,

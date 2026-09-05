@@ -32,6 +32,8 @@ pub struct Config {
     /// Order of the job and pipeline lists: `activity` (default), `name` or `created`. `s`
     /// cycles it while running.
     pub sort: Sort,
+    /// `strftime` pattern for absolute times in tables. Default `%d.%m %H:%M`.
+    pub date_format: String,
     /// Background refresh interval for the jobs list.
     pub jobs_ttl_secs: u64,
     /// How long cached runs are shown before being refetched.
@@ -52,6 +54,7 @@ impl Default for Config {
             dev_tag: None,
             theme: Theme::Dark,
             sort: Sort::Activity,
+            date_format: "%d.%m %H:%M".to_owned(),
             jobs_ttl_secs: 300,
             runs_ttl_secs: 120,
             keys: BTreeMap::new(),
@@ -143,8 +146,14 @@ pub fn load() -> Result<Loaded, AppError> {
     })
 }
 
+/// Parses the file and checks the values `toml` cannot: a `date_format` that would fail on
+/// every render is rejected here, once, instead of there, sixty times a second.
 fn parse(text: &str) -> Result<Config, String> {
-    toml::from_str(text).map_err(|error| error.to_string())
+    let config: Config = toml::from_str(text).map_err(|error| error.to_string())?;
+    let sample = jiff::Zoned::new(jiff::Timestamp::UNIX_EPOCH, jiff::tz::TimeZone::UTC);
+    jiff::fmt::strtime::format(&config.date_format, &sample)
+        .map_err(|error| format!("date_format {:?}: {error}", config.date_format))?;
+    Ok(config)
 }
 
 #[cfg(test)]
@@ -187,11 +196,23 @@ mod tests {
     }
 
     #[test]
+    fn date_format_is_checked_at_load() {
+        assert_eq!(
+            parse("date_format = \"%Y-%m-%d %H:%M\"")
+                .unwrap()
+                .date_format,
+            "%Y-%m-%d %H:%M"
+        );
+        let error = parse("date_format = \"%!\"").unwrap_err();
+        assert!(error.contains("date_format"), "{error}");
+    }
+
+    #[test]
     fn typos_are_errors() {
         let error = parse("max_job = 5").unwrap_err();
         assert!(error.contains("max_job"), "{error}");
-        let error = parse("[keys]\nnext_tab = [\"ctrl+x\"]").unwrap_err();
-        assert!(error.contains("ctrl+x"), "{error}");
+        let error = parse("[keys]\nnext_tab = [\"alt+x\"]").unwrap_err();
+        assert!(error.contains("alt+x"), "{error}");
         assert!(parse("[keys]\nfly = [\"f\"]").is_err());
     }
 }

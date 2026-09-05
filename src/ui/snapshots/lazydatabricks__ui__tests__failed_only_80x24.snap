@@ -7,7 +7,7 @@ expression: render(&app)
 "│failed only · 1 of 3 jobs││                                                   │"
 "└─────────────────────────┘│                                                   │"
 "┌─[2]─Jobs by activity────┐│                                                   │"
-"│ 1d ✗ nightly_bronze_inge││                                                   │"
+"│ 1d ✗ nightly_bronze_ing…││                                                   │"
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "│                         ││                                                   │"

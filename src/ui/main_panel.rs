@@ -12,6 +12,10 @@ use super::{chrome, theme};
 use crate::api::models::Run;
 use crate::app::{App, Load, Panel, Tab};
 
+/// Inner width below which the runs table drops its Run ID column: ids plus dates plus a
+/// result word need about this much.
+const NARROW_RUNS_TABLE: u16 = 50;
+
 pub fn draw(app: &App, area: Rect, frame: &mut Frame) {
     let mut title = tabs_title(app);
     if let Some(run_id) = app.viewing_run {
@@ -68,31 +72,44 @@ fn runs(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
             return;
         }
     };
-    let header = Row::new(["Run ID", "Started", "Duration", "Result"])
-        .style(Style::new().add_modifier(Modifier::BOLD));
+    // Too narrow for every column: the run id goes, never truncated, and Result stays.
+    let skip = usize::from(block.inner(area).width < NARROW_RUNS_TABLE);
+    let header = Row::new(
+        ["Run ID", "Started", "Duration", "Result"]
+            .into_iter()
+            .skip(skip),
+    )
+    .style(Style::new().add_modifier(Modifier::BOLD));
     let rows = runs.items().iter().map(|run| {
         let (glyph, color) = theme::run_glyph(run);
-        let started = run
-            .start_time
-            .map_or_else(|| "-".to_owned(), |ts| theme::clock(ts, &app.tz));
+        let started = run.start_time.map_or_else(
+            || "-".to_owned(),
+            |ts| theme::clock(ts, &app.tz, &app.date_format),
+        );
         let duration = theme::run_duration(run).map_or_else(|| "-".to_owned(), theme::duration);
         let result = Line::from(vec![
             Span::styled(glyph.to_string(), Style::new().fg(color)),
             Span::raw(format!(" {}", theme::run_result(run))),
         ]);
-        Row::new([
-            Cell::from(run.id.to_string()),
-            Cell::from(started),
-            Cell::from(duration),
-            Cell::from(result),
-        ])
+        Row::new(
+            [
+                Cell::from(run.id.to_string()),
+                Cell::from(started),
+                Cell::from(duration),
+                Cell::from(result),
+            ]
+            .into_iter()
+            .skip(skip),
+        )
     });
     let widths = [
         Constraint::Length(16),
         Constraint::Length(12),
         Constraint::Length(9),
         Constraint::Fill(1),
-    ];
+    ]
+    .into_iter()
+    .skip(skip);
     let focused = app.focus == Panel::Main;
     let table = Table::new(rows, widths)
         .header(header)
@@ -152,7 +169,7 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
         field(
             "Started",
             run.start_time
-                .map_or_else(dash, |ts| theme::clock(ts, &app.tz)),
+                .map_or_else(dash, |ts| theme::clock(ts, &app.tz, &app.date_format)),
         ),
         field(
             "Duration",
@@ -183,7 +200,7 @@ fn run_detail(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
         let (glyph, color) = theme::state_glyph(&task.state);
         let started = task
             .start_time
-            .map_or_else(dash, |ts| theme::clock(ts, &app.tz));
+            .map_or_else(dash, |ts| theme::clock(ts, &app.tz, &app.date_format));
         let duration =
             theme::span(task.start_time, task.end_time).map_or_else(dash, theme::duration);
         Row::new([
@@ -272,9 +289,10 @@ fn updates(app: &App, block: Block<'static>, area: Rect, frame: &mut Frame) {
             s if s.is_done() => ('✗', ratatui::style::Color::Red),
             _ => ('◐', ratatui::style::Color::Yellow),
         };
-        let created = update
-            .creation_time
-            .map_or_else(|| "-".to_owned(), |ts| theme::clock(ts, &app.tz));
+        let created = update.creation_time.map_or_else(
+            || "-".to_owned(),
+            |ts| theme::clock(ts, &app.tz, &app.date_format),
+        );
         // The first block of the UUID is enough to tell updates apart on screen.
         let short_id: String = update.id.chars().take(8).collect();
         Row::new([
