@@ -13,6 +13,7 @@ mod shell;
 mod ui;
 
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
@@ -131,6 +132,11 @@ async fn run(
                 }
                 Command::Copy(text) => {
                     tokio::spawn(desktop(tx.clone(), move || shell::copy(&text)));
+                }
+                Command::Bell => {
+                    // BEL goes straight to the terminal; the next draw is unaffected.
+                    let mut out = std::io::stdout();
+                    let _ = out.write_all(b"\x07").and_then(|()| out.flush());
                 }
             }
         }

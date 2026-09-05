@@ -234,6 +234,10 @@ impl App {
                 self.error = Some(error);
             }
             Message::PipelinesLoaded(pipelines) => {
+                self.alert(
+                    &pipeline_failures(&self.all_pipelines, &pipelines),
+                    &mut commands,
+                );
                 self.all_pipelines = pipelines;
                 self.pipelines_fetched_at = Some(self.ticks);
                 self.pipelines_inflight = None;
@@ -260,15 +264,10 @@ impl App {
                 self.refresh_pipelines(&mut commands);
             }
             Message::Clock(now) => self.now = Some(now),
-            Message::RecentRunsLoaded(runs) => {
-                // Newest first, so the first run seen for a job is its latest.
-                for run in runs {
-                    self.latest_runs.entry(run.job_id).or_insert(run);
-                }
-                // Activity order depends on these.
-                self.apply_filter();
+            Message::RecentRunsLoaded(runs) => self.on_recent_runs_loaded(runs, &mut commands),
+            Message::RunsLoaded { job_id, runs } => {
+                self.on_runs_loaded(job_id, runs, &mut commands);
             }
-            Message::RunsLoaded { job_id, runs } => self.on_runs_loaded(job_id, runs),
             Message::RunsFailed { job_id, error } => self.on_runs_failed(job_id, error),
             Message::RunDetailLoaded(run) => self.on_run_detail_loaded(run, &mut commands),
             Message::RunOutputLoaded { run_id, output } => {
@@ -386,12 +385,59 @@ impl App {
         }
     }
 
+    /// The workspace sweep landed. Newest first, so the first run seen for a job is its latest;
+    /// jobs the sweep no longer covers keep the run they had, which is still their newest.
+    fn on_recent_runs_loaded(&mut self, runs: Vec<Run>, commands: &mut Vec<Command>) {
+        let mut latest = HashMap::new();
+        for run in runs {
+            latest.entry(run.job_id).or_insert(run);
+        }
+        self.alert(&self.run_failures(&latest), commands);
+        self.latest_runs.extend(latest);
+        // Activity order depends on these.
+        self.apply_filter();
+    }
+
+    /// Jobs whose newest run just turned into a failure, by name. A job seen for the first time
+    /// is not a transition, so the first load after start stays quiet.
+    fn run_failures(&self, latest: &HashMap<i64, Run>) -> Vec<String> {
+        let mut names: Vec<String> = latest
+            .iter()
+            .filter(|(job_id, run)| {
+                run.state.is_failure()
+                    && self
+                        .latest_runs
+                        .get(job_id)
+                        .is_some_and(|old| old.id != run.id || !old.state.is_failure())
+            })
+            .filter_map(|(job_id, _)| {
+                self.all_jobs
+                    .iter()
+                    .find(|job| job.id == *job_id)
+                    .map(|job| job.settings.name.clone())
+            })
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// Bell and a notice for every name in `failed`. Nothing when the list is empty.
+    fn alert(&mut self, failed: &[String], commands: &mut Vec<Command>) {
+        if failed.is_empty() {
+            return;
+        }
+        self.notice = Some(format!("✗ {} failed", failed.join(", ")));
+        commands.push(Command::Bell);
+    }
+
     /// A job's runs arrived: cache them, show them if that job is selected, note its newest run.
-    fn on_runs_loaded(&mut self, job_id: i64, runs: Vec<Run>) {
+    fn on_runs_loaded(&mut self, job_id: i64, runs: Vec<Run>, commands: &mut Vec<Command>) {
         if self.runs_inflight == Some(job_id) {
             self.runs_inflight = None;
         }
         if let Some(latest) = runs.first() {
+            let fresh = HashMap::from([(job_id, latest.clone())]);
+            self.alert(&self.run_failures(&fresh), commands);
             self.latest_runs.insert(job_id, latest.clone());
         }
         if self.runs_job == Some(job_id) {
@@ -575,8 +621,6 @@ impl App {
         if !self.loading {
             self.loading = true;
             commands.push(Command::FetchJobs { max: self.max_jobs });
-            // Rebuilt from scratch so jobs whose runs were deleted do not keep a stale age.
-            self.latest_runs.clear();
             commands.push(Command::FetchRecentRuns { max: self.max_jobs });
         }
     }
@@ -1136,6 +1180,31 @@ impl App {
     }
 }
 
+/// Pipelines whose latest update just turned into a failure, by name.
+fn pipeline_failures(old: &[Pipeline], new: &[Pipeline]) -> Vec<String> {
+    let failed = |pipeline: &Pipeline| {
+        matches!(
+            pipeline.latest_updates.first().map(|update| update.state),
+            Some(UpdateState::Failed | UpdateState::Canceled)
+        )
+    };
+    let mut names: Vec<String> = new
+        .iter()
+        .filter(|pipeline| failed(pipeline))
+        .filter(|pipeline| {
+            old.iter().any(|before| {
+                before.id == pipeline.id
+                    && (!failed(before)
+                        || before.latest_updates.first().map(|update| &update.id)
+                            != pipeline.latest_updates.first().map(|update| &update.id))
+            })
+        })
+        .map(|pipeline| pipeline.name.clone())
+        .collect();
+    names.sort();
+    names
+}
+
 #[cfg(test)]
 pub mod tests {
     use std::time::Duration;
@@ -1378,6 +1447,65 @@ pub mod tests {
         assert_eq!(
             ticks(&mut app, 1),
             vec![Command::FetchPipelines { max: 200 }]
+        );
+    }
+
+    #[test]
+    fn a_job_turning_red_rings_the_bell_once() {
+        let mut app = loaded();
+        let mut ok = run(20, 1000, 2000, Some(ResultState::Success));
+        ok.job_id = 2;
+        let mut first_seen_failed = run(30, 1000, 2000, Some(ResultState::Failed));
+        first_seen_failed.job_id = 3;
+        assert_eq!(
+            app.update(Message::RecentRunsLoaded(vec![ok, first_seen_failed])),
+            vec![],
+            "first sight is not a transition"
+        );
+        assert_eq!(app.notice, None);
+        let mut failed = run(21, 3000, 4000, Some(ResultState::Timedout));
+        failed.job_id = 2;
+        assert_eq!(
+            app.update(Message::RecentRunsLoaded(vec![failed.clone()])),
+            vec![Command::Bell]
+        );
+        assert_eq!(app.notice, Some("✗ b failed".to_owned()));
+        assert!(
+            app.latest_runs.contains_key(&3),
+            "unswept jobs keep their run"
+        );
+        app.update(key(Key::Char('k')));
+        assert_eq!(
+            app.update(Message::RecentRunsLoaded(vec![failed])),
+            vec![],
+            "same failed run again is not news"
+        );
+        // Per-job fetches count too: run 21 running again then failing.
+        let mut again = run(22, 5000, 6000, Some(ResultState::Failed));
+        again.job_id = 2;
+        ticks(&mut app, 3);
+        let commands = app.update(Message::RunsLoaded {
+            job_id: 2,
+            runs: vec![again],
+        });
+        assert!(commands.contains(&Command::Bell));
+    }
+
+    #[test]
+    fn a_pipeline_update_failing_rings_the_bell() {
+        let mut app = with_pipelines();
+        let mut pipelines = app.all_pipelines.clone();
+        pipelines[0].latest_updates[0].state = UpdateState::Failed;
+        assert_eq!(
+            app.update(Message::PipelinesLoaded(pipelines.clone())),
+            vec![Command::Bell]
+        );
+        assert_eq!(app.notice, Some("✗ felles_gold failed".to_owned()));
+        app.update(key(Key::Char('k')));
+        assert_eq!(
+            app.update(Message::PipelinesLoaded(pipelines)),
+            vec![],
+            "still the same failed update"
         );
     }
 

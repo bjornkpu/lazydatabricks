@@ -151,4 +151,6 @@ pub enum Command {
     OpenUrl(String),
     /// Put text on the clipboard.
     Copy(String),
+    /// Ring the terminal bell: something on screen just failed.
+    Bell,
 }

@@ -99,13 +99,24 @@ impl Client {
         Ok(pipelines)
     }
 
-    /// The most recent runs across the whole workspace, newest first, up to `max`. Gives every
-    /// job its latest run in a handful of calls instead of one call per job.
+    /// The most recent runs across the whole workspace, newest first, up to `max`, plus every
+    /// active run however old. Gives every job its latest run in a handful of calls instead of
+    /// one call per job, and keeps a weeks-old streaming run from falling out of the window.
     pub async fn list_recent_runs(&self, max: usize) -> Result<Vec<Run>, AppError> {
+        let mut runs = self.runs_pages(&[], max).await?;
+        let active = self.runs_pages(&[("active_only", "true")], max).await?;
+        let seen: std::collections::HashSet<i64> = runs.iter().map(|run| run.id).collect();
+        runs.extend(active.into_iter().filter(|run| !seen.contains(&run.id)));
+        Ok(runs)
+    }
+
+    /// Pages of `runs/list` with `extra` query parameters, until `max` runs or the last page.
+    async fn runs_pages(&self, extra: &[(&str, &str)], max: usize) -> Result<Vec<Run>, AppError> {
         let mut runs = Vec::new();
         let mut page_token: Option<String> = None;
         loop {
             let mut query = vec![("limit", PAGE_SIZE)];
+            query.extend_from_slice(extra);
             if let Some(token) = &page_token {
                 query.push(("page_token", token.as_str()));
             }
