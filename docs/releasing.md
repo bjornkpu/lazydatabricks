@@ -9,12 +9,21 @@ git tag v0.2.0 && git push --tags
                 |
                 +-> builds 5 targets, creates the GitHub Release   <- the only place bytes live
                 +-> uploads lazydatabricks-installer.sh / .ps1
-                +-> uploads lazydatabricks.rb and pushes it to bjornkpu/homebrew-tap
 ```
 
+No accounts, no secrets, no external service. `GITHUB_TOKEN` is provided by Actions itself.
+
 A package manager never hosts the binary. It hosts a small text file holding a URL and a
-sha256 pointing back at the GitHub Release. That is why adding Scoop, winget or the AUR later
-is cheap: each one is another pointer file generated from the same release.
+sha256 pointing back at the GitHub Release. That is why adding Homebrew, Scoop, winget or the
+AUR later is cheap: each one is another pointer file generated from the same release.
+
+## Cutting a release
+
+1. Bump `version` in `Cargo.toml`, `cargo check` to refresh `Cargo.lock`, commit.
+2. `git tag v0.2.0 && git push && git push --tags`
+3. Watch the run under Actions. It edits the draft release as jobs finish.
+
+Versions are SemVer: breaking key bindings or config format is a minor bump while below 1.0.
 
 ## Changing the release setup
 
@@ -26,39 +35,29 @@ Never edit `.github/workflows/release.yml` by hand; the next `dist generate` ove
 Upgrading dist: `cargo install cargo-dist --locked`, then `dist init --yes`, which bumps
 `cargo-dist-version` and regenerates the workflow.
 
-## One-time setup already done
+## Already set up
 
-- `dist-workspace.toml` — targets, installers, tap, install path
+- `dist-workspace.toml` — targets, installers, install path
 - `[profile.dist]` in `Cargo.toml` — release profile used by the CI builds
 - `LICENSE`, and `description` / `license` / `repository` / `homepage` in `Cargo.toml`,
-  required by crates.io and used in the Homebrew formula
+  required by crates.io and by most package manager manifests
 
-## One-time setup still needed
+## Not done yet, in rough order of value
 
-1. Create the public repo `bjornkpu/homebrew-tap` (empty is fine).
-2. Create a fine-grained personal access token scoped to that repo with Contents: read/write.
-3. Add it to this repo as the Actions secret `HOMEBREW_TAP_TOKEN`.
+**Homebrew tap.** Create the public repo `bjornkpu/homebrew-tap`, add a fine-grained token
+scoped to it with Contents: read/write as the Actions secret `HOMEBREW_TAP_TOKEN`, then add
+`"homebrew"` to `installers`, plus `tap = "bjornkpu/homebrew-tap"` and
+`publish-jobs = ["homebrew"]` to `dist-workspace.toml`. Gives
+`brew install bjornkpu/tap/lazydatabricks`.
 
-Without the secret the release still succeeds; only the tap push is skipped.
+**crates.io.** `cargo login` with a token from crates.io, then `cargo publish`. Gives
+`cargo install lazydatabricks`, and `cargo binstall lazydatabricks` fetches the prebuilt
+binary because dist writes a `dist-manifest.json` to each release. A version can never be
+un-published, only yanked.
 
-## Publishing to crates.io
+**release-plz.** A GitHub Action that reads the conventional commits since the last tag and
+opens a "chore: release v0.2.0" PR containing the version bump and a generated CHANGELOG.
+Merging it tags, which triggers the workflow above. Replaces step 1 and 2 of Cutting a release.
 
-Separate from the tag flow, and manual:
-
-```
-cargo login          # paste a token from https://crates.io/settings/tokens
-cargo publish
-```
-
-Publishing gives `cargo install lazydatabricks` and, because dist writes a
-`dist-manifest.json` to the release, `cargo binstall lazydatabricks` downloads the prebuilt
-binary instead of compiling. A version can never be un-published, only yanked.
-
-## Cutting a release
-
-1. Bump `version` in `Cargo.toml`, `cargo check` to refresh `Cargo.lock`, commit.
-2. `git tag v0.2.0 && git push && git push --tags`
-3. Watch the run under Actions. It edits the draft release as jobs finish.
-4. `cargo publish` if the crates.io version should move too.
-
-Versions are SemVer: breaking key bindings or config format is a minor bump while below 1.0.
+**Scoop, winget, AUR.** Pointer files, as described at the top. Add when someone asks.
+dist has no Debian package generator; Debian users take the shell installer or the archive.
