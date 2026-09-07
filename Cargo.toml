@@ -1,6 +1,6 @@
 [package]
 name = "lazydatabricks"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Terminal UI for Databricks jobs, runs and SQL warehouses."
 license = "MIT"
