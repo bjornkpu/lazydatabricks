@@ -1,0 +1,11 @@
+# release-plz derives the next version from conventional commits, writes CHANGELOG.md, and
+# opens a release PR. Merging that PR makes it push the tag, which triggers release.yml.
+# See docs/releasing.md.
+[workspace]
+# dist owns the GitHub Release; release-plz must not create a competing one.
+git_release_enable = false
+# Pushing the tag is release-plz's job: it is what triggers the dist workflow.
+git_tag_enable = true
+changelog_update = true
+# Publish to crates.io from the release job.
+publish = true

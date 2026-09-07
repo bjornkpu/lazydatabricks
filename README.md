@@ -35,7 +35,8 @@ irm https://github.com/bjornkpu/lazydatabricks/releases/latest/download/lazydata
 ```
 
 Both drop the binary in `~/.local/bin` and add it to your `PATH`. With a Rust toolchain,
-`cargo install --path .` also works. Archives for every platform are on the
+`cargo install lazydatabricks` builds it from source and `cargo binstall lazydatabricks`
+fetches the prebuilt binary. Archives for every platform are on the
 [releases page](https://github.com/bjornkpu/lazydatabricks/releases).
 
 You also need the [Databricks CLI](https://docs.databricks.com/dev-tools/cli/) logged in to a
