@@ -1,0 +1,28 @@
+---
+source: src/ui/mod.rs
+expression: render(&app)
+---
+"┌─[1]─Status──────────────┐┌─[0]─Profile - Config ⠋────────────────────────────┐"
+"│◐ dev → adb-1.azuredatabr││Profile        dev                                 │"
+"│3 of 3 jobs · 0s ago     ││Host           https://adb-1.azuredatabricks.net   │"
+"│◐ 1 · ✗ 1 · ● 0          ││Jobs           3                                   │"
+"└─────────────────────────┘│Config         config.toml (not found, defaults)   │"
+"┌─[2]─Jobs by activity────┐│                                                   │"
+"│ 2h ◐ [someone] okonomi_…││                                                   │"
+"│ 1d ✗ nightly_bronze_ing…││                                                   │"
+"│    · weekly_report      ││                                                   │"
+"│                         ││                                                   │"
+"└───────────────────1┌ Copy ───────────────────────────────┐                   │"
+"┌─[3]─Pipelines ⠋ by │Copy update command                  │                   │"
+"│                    │Copy last request as databricks api  │                   │"
+"│                    │Copy last request as curl            │                   │"
+"│                    └─────Enter: choose │ Esc: close──────┘                   │"
+"│                         │└───────────────────────────────────────────────────┘"
+"└───────────────────0 of 0┘┌─API log───────────────────────────────────────────┐"
+"┌─[4]─Compute ⠋───────────┐│GET  /api/2.2/jobs/list?limit=25        200    84ms│"
+"│                         ││GET  /api/2.2/jobs/runs/list?job_id=1&… 200   131ms│"
+"│                         ││                                                   │"
+"│                         ││                                                   │"
+"│                         ││                                                   │"
+"└───────────────────0 of 0┘└───────────────────────────────────────────────────┘"
+" Choose: j/k │ Confirm: Enter │ Close: Esc                                v0.1.0"

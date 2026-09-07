@@ -1304,6 +1304,13 @@ impl App {
         if let Load::Loaded(json) = self.json_view() {
             copy("JSON", Some(json));
         }
+        // A newer release: the install line for this OS, to paste after quitting.
+        if self.update.is_some() {
+            copy(
+                "update command",
+                Some(crate::api::INSTALL_COMMAND.to_owned()),
+            );
+        }
         // The API log exists to teach the API; the newest call as something you can run.
         if let Some(call) = self.api_log.back() {
             copy(
@@ -1381,7 +1388,7 @@ impl App {
         match result {
             Ok(latest) if crate::api::newer(&latest, current) => {
                 self.notice = Some(format!(
-                    "v{latest} is out (this is v{current}): github.com/bjornkpu/lazydatabricks/releases"
+                    "v{latest} is out (this is v{current}): y copies the update command"
                 ));
                 self.update = Some(latest);
             }
@@ -3535,6 +3542,43 @@ pub mod tests {
             app.compare.as_ref().map(|run| run.id),
             Some(9),
             "leaving the run keeps the mark"
+        );
+    }
+
+    #[test]
+    fn a_newer_release_puts_the_install_line_in_the_copy_menu() {
+        let mut app = loaded();
+        press(&mut app, "y");
+        let InputMode::Menu { items, .. } = &app.input else {
+            panic!("{:?}", app.input);
+        };
+        assert!(
+            !items
+                .iter()
+                .any(|item| item.label() == "Copy update command"),
+            "nothing to update to yet"
+        );
+        app.update(key(Key::Esc));
+        app.update(Message::UpdateChecked(Ok("99.0.0".to_owned())));
+        press(&mut app, "1y");
+        let InputMode::Menu { items, .. } = &app.input else {
+            panic!("{:?}", app.input);
+        };
+        let index = items
+            .iter()
+            .position(|item| item.label() == "Copy update command")
+            .unwrap();
+        for _ in 0..index {
+            press(&mut app, "j");
+        }
+        let commands = app.update(key(Key::Enter));
+        let [Command::Copy(text)] = commands.as_slice() else {
+            panic!("{commands:?}");
+        };
+        assert!(text.contains("lazydatabricks-installer"), "{text}");
+        assert!(
+            text.ends_with(if cfg!(windows) { "| iex" } else { "| sh" }),
+            "{text}"
         );
     }
 

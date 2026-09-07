@@ -79,7 +79,7 @@ the target. Opening a failed run shows the failing task's error and traceback.
 | `Y` | copy the focused panel's rows as text, for Teams |
 | `A` | enable actions for this session (asks first); again to disable |
 | `p` | switch profile: every profile in `~/.databrickscfg`, opened on first use |
-| `u` | check GitHub for a newer release; a newer one stays on the Status line |
+| `u` | check GitHub for a newer release; a newer one stays on the Status line and puts the install one-liner in the `y` menu: quit, paste, run |
 | `e` | open the config file in `$VISUAL` or `$EDITOR`; changes apply after a restart |
 | `:` | run one `databricks` CLI line: `:jobs get {{job_id}}` runs `databricks jobs get <id> -p <profile>` and shows the output |
 | `+` | cycle screen mode: normal, half, full |
