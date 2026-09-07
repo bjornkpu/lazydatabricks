@@ -5,7 +5,7 @@ Conventions follow https://www.namtao.com/rust/.
 
 ## Commands
 
-Work order is `docs/spec.md` milestones M0..M61. Tests are written per milestone, not at the end.
+Work order is `docs/spec.md` milestones M0..M62. Tests are written per milestone, not at the end.
 
 - `cargo nextest run` — tests (use this, not `cargo test`)
 - `cargo clippy --all-targets` — must be clean; lints are `deny`, so this is the compile gate
@@ -14,6 +14,13 @@ Work order is `docs/spec.md` milestones M0..M61. Tests are written per milestone
 - `cargo run` — run the app
 
 Before claiming anything works: clippy, fmt, nextest, all green.
+
+## Commits
+
+Conventional Commits, one commit per milestone. release-plz builds CHANGELOG.md from the
+subjects, so a subject describes the change for a user: never a milestone number (`M62`), never
+"this commit". `feat: y copies the install line when a newer release exists`, not
+`feat: M62 ...`. The milestone lives in `docs/spec.md` and the bead, not in git.
 
 ## Lints
 

@@ -29,6 +29,14 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// Where releases are published; the update check reads the newest tag from here.
 const RELEASES_API: &str = "https://api.github.com/repos/bjornkpu/lazydatabricks/releases/latest";
 
+/// The one line that installs the newest release on this OS, the same line the README gives.
+/// Updating is running it again after quitting: the installer overwrites the binary in place.
+pub const INSTALL_COMMAND: &str = if cfg!(windows) {
+    "irm https://github.com/bjornkpu/lazydatabricks/releases/latest/download/lazydatabricks-installer.ps1 | iex"
+} else {
+    "curl -LsSf https://github.com/bjornkpu/lazydatabricks/releases/latest/download/lazydatabricks-installer.sh | sh"
+};
+
 /// The newest released version, `0.2.0` style, from GitHub. Not a Databricks call, so it stays
 /// off the API log and out of `Client`.
 pub async fn latest_release() -> Result<String, AppError> {

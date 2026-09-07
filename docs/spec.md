@@ -1155,6 +1155,17 @@ browser tab is not a write. `o` keeps opening the run.
 *Teaches:* when a thing has no row, give it a menu entry rather than a cursor.
 *Done when:* the failed task's notebook opens in the browser from two keys and Enter.
 
+### M62 — The update is one paste
+lazygit and gh never update themselves; they say a newer version exists and name the command.
+gh goes one step further and prints the exact line for how it was installed. Here the installer
+is the only writer of the binary, so a newer release makes the `y` menu offer "Copy update
+command": the README's `irm … | iex` on Windows, `curl … | sh` elsewhere, chosen at compile time.
+The notice says so instead of pointing at the releases page. Quit, paste, run. No updater
+binary, no second writer, nothing to fight a package manager later.
+
+*Teaches:* an update hint is only useful when it is the command.
+*Done when:* a Windows user on v0.1.0 has v0.2.0 installed with `y`, Enter, `q`, paste.
+
 ---
 
 ## 9. Testing
