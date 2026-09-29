@@ -6,3 +6,4 @@
 .dolt/
 *.db
 .beads-credential-key
+*.snap.new
