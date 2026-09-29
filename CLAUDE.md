@@ -1,102 +1,112 @@
 # lazydatabricks
 
-Rust TUI for Databricks. Also serves as a bootstrap template for future Rust projects.
-Conventions follow https://www.namtao.com/rust/.
+A lazygit-style terminal UI for Databricks jobs, pipelines and compute, in Rust.
 
 ## Commands
 
-Work order is `docs/spec.md` milestones M0..M62. Tests are written per milestone, not at the end.
+- `cargo nextest run`: tests (use this, not `cargo test`)
+- `cargo clippy --all-targets -- -D warnings`: must be clean; lints are `deny`, so this is the
+  compile gate
+- `cargo fmt --check`: formatting
+- `cargo deny check`, `cargo machete`: dependency advisories, licenses, bans, unused crates
+- `bacon clippy-all` / `bacon nextest`: watch mode
+- `cargo run -- <args>`: run the TUI. It needs the Databricks CLI logged in to a profile.
+  `--config <file>` (or `LAZYDATABRICKS_CONFIG`) keeps your real config clean;
+  `LAZYDATABRICKS_LOG=debug` writes `lazydatabricks.log` next to the config file.
+- `bd ready`: what is buildable next
 
-- `cargo nextest run` — tests (use this, not `cargo test`)
-- `cargo clippy --all-targets -- -D warnings` — must be clean; lints are `deny`, so this is the compile gate
-- `cargo fmt --check` — formatting
-- `bacon clippy` / `bacon nextest` — watch mode during development
-- `cargo run` — run the app
+The gate: fmt, clippy, nextest, all green before claiming anything works. The Stop hook in
+`.claude/settings.json` runs it at the end of every turn and blocks while it is red. CI runs the
+same gate plus deny and machete.
 
-Before claiming anything works: clippy, fmt, nextest, all green.
+## Workflow
+
+1. Work order is the milestones in `docs/spec.md`. Tests are written per milestone, not at the
+   end.
+2. Track the work in beads (`bd`).
+3. Build it with TDD, one behaviour at a time: red, green, refactor.
+4. When a design settles, fold the decisions into the tracked docs: `README.md` for behaviour,
+   `docs/spec.md` for the design and the reasoning behind it, `docs/invariants.md` for rules
+   with the tests that pin them, and `CLAUDE.md` for the module map.
+
+Beads are local only. They are gitignored and never pushed (never `bd dolt push`).
+
+## Decided, do not ask
+
+Everything in `docs/conventions/` and in the `Cargo.toml` comments is BK's standing preference:
+crates, layout, architecture, testing, errors, style, release. Brainstorming, grilling and
+planning sessions treat it as decided. Ask only about features, the domain, and real conflicts
+between a feature and a convention; when you raise a conflict, name the convention.
+
+## Hard rules
+
+- Never weaken `[lints]` in `Cargo.toml` to make code compile. `#[allow(clippy::...)]` goes on
+  one item only, with a one-line comment saying why. Ask BK before relaxing
+  `arithmetic_side_effects` or `as_conversions`.
+- No `unsafe` (`unsafe_code = "forbid"`).
+- Pure core, thin IO shell: only `src/main.rs`, `src/api/mod.rs`, `src/api/auth.rs`,
+  `config::load` and `src/shell.rs` do IO. `App::update` returns `Command`s; `main` runs them.
+- Never break an invariant in `docs/invariants.md`. An invariant without a test is a bug.
+- Never accept a snapshot you have not read.
+- No crate outside the `Cargo.toml` catalog without asking BK. Never an alternative for a job a
+  listed crate does.
+- No test needs network, a live workspace, or the user's real config.
 
 ## Commits
 
-Conventional Commits, one commit per milestone. release-plz builds CHANGELOG.md from the
-subjects, so a subject describes the change for a user: never a milestone number (`M62`), never
-"this commit". `feat: y copies the install line when a newer release exists`, not
-`feat: M62 ...`. The milestone lives in `docs/spec.md` and the bead, not in git.
+Conventional Commits, one commit per milestone. release-plz builds `CHANGELOG.md` from the
+subjects, so a subject describes the change for a user: never a milestone number (`M62`),
+never a bead id, never "this commit". `feat: y copies the install line when a newer release
+exists`, not `feat: M62 ...`. The milestone lives in `docs/spec.md` and the bead, not in git.
 
-## Lints
+Releases publish to crates.io as well as GitHub Releases (`publish = true` in
+`release-plz.toml`). See `docs/releasing.md`.
 
-`[lints.clippy]` in `Cargo.toml` is pedantic + nursery + panic-denying lints. Never weaken it
-to make code compile. No `unwrap`/`expect`/`panic`/`todo`/indexing/`as` casts in non-test code.
-`clippy.toml` allows them in tests; prototype there.
+## Map
 
-`#[allow(clippy::...)]` needs a one-line comment saying why, and must be as narrow as possible
-(one item, never module-wide). The spec (§2) names `arithmetic_side_effects` and `as_conversions`
-as the two that may be relaxed if they obstruct rather than teach. Ask BK before doing so.
+```
+src/
+  main.rs           clap, logging, terminal, draw/update loop, runs Commands;
+                    the only crossterm import; anyhow only here           [IO]
+  cli.rs            command line flags
+  config.rs         config.toml: parse and render [pure], load [IO]
+  error.rs          AppError (thiserror)
+  shell.rs          browser, clipboard, custom command lines               [IO]
+  api/
+    mod.rs          Client: reqwest, pagination, the API log               [IO]
+    auth.rs         host from ~/.databrickscfg, token from the CLI         [IO]
+    models.rs       serde mirrors of the REST shapes                       [pure]
+  app/              Message, Command, App::update                          [pure]
+    message.rs      Message enum
+    focus.rs        panels, screen modes, main-panel tabs
+    keys.rs         keymap, lazygit defaults, config overrides
+    list.rs         a list with a cursor
+    filter.rs       who "me" is, which items are visible
+    menu.rs         the x menu and its confirmations
+    custom.rs       custom commands and their placeholders
+  ui/               draw(&App, &mut Frame)                                 [pure]
+    side.rs         [1] Status, [2] Jobs, [3] Pipelines
+    main_panel.rs   [0] tabs
+    chrome.rs       borders, numbered titles, n of m
+    hints.rs        contextual hint bar
+    apilog.rs       API log panel
+    help.rs         ? overlay
+    menu.rs         x menu overlay
+    popup.rs        custom command output
+    theme.rs        glyphs, colours, time formatting
+tests/
+  fixtures/         real Databricks API response shapes
+```
 
-`[lints.rust]` sets `unsafe_code = "forbid"`.
+Module boundaries may shift; the pure/IO split does not.
 
-The Stop hook in `.claude/settings.json` runs fmt, clippy and nextest at the end of every turn
-and blocks while they are red. CI also runs `cargo deny check` and `cargo machete`.
+## Conventions
 
-## Dependencies
+Read the one that matches what you are about to do:
 
-Chosen crates are listed as comments under `[dependencies]` in `Cargo.toml`, audited against
-crates.io. Uncomment one when its milestone needs it. Don't add an alternative crate for a job a
-listed one does. Ask before adding anything not on the list.
-
-## Style
-
-- Modern idiomatic Rust, edition 2024. Concretely: `let ... else` over nested `match`; let
-  chains (`if let ... && ...`); iterators and closures over index loops; `?` over manual
-  matching; `impl Trait` in argument and return position; `TryFrom`/`try_into` for narrowing;
-  `std::sync::LazyLock` over `lazy_static`/`once_cell`; `thiserror` for typed errors,
-  `anyhow` only at `main`; `#[must_use]` on pure functions returning values; `&str` and slices
-  in parameters, owned types in fields; no `Rc<RefCell<_>>` in app state; no `.clone()` added
-  just to satisfy the borrow checker without a comment saying why. When unsure what is
-  idiomatic, check the Rust API Guidelines and current ratatui examples, not old blog posts.
-- Follow the ponytail rule: smallest working change. No speculative abstractions, no traits
-  with one implementation, no config for constants.
-- Typestate pattern (see namtao page) for states that must not be mixed at runtime.
-- Errors: `Result<_, AppError>` everywhere (`src/error.rs`, thiserror), `anyhow` only in `main`. Never swallow errors.
-- Every non-trivial branch, parser, or state transition leaves one test behind.
-
-## Architecture (LLM-first: everything must be checkable as text)
-
-Elm-style. Three pure pieces, one thin IO shell:
-
-- `Message` — our own enum (`Key(..)`, `Tick`, `JobsLoaded(..)`, ...), the Elm/iced term.
-  crossterm `Event`s are converted to `Message` at the boundary in `main`; nothing else
-  imports crossterm. Async tasks never touch `App`; they send `Message`s down an mpsc channel.
-- `App::update(&mut self, Message) -> Vec<Command>` — the only place state mutates, no IO.
-  Side effects come back as `Command`s (`Quit`, `FetchJobs`, `FetchRuns`, `RunNow`, `CancelRun`) that `main` executes;
-  `Command::Quit` instead of calling `exit`. `main` spawns the first jobs fetch itself.
-- `ui::draw(&App, &mut Frame)` — pure render. No state mutation.
-- `DatabricksApi` trait — the only network boundary. Two impls: real reqwest client, and a fake
-  fed from JSON fixtures in `tests/fixtures/`. This is the one trait allowed to exist with a
-  single production implementation, because the fake is the point. Cheap under the mpsc
-  design: the fake just sends `Message::JobsLoaded(fixture)`.
-
-Use the typestate pattern for screens whose transitions must not be mixed at runtime.
-
-### Testing layers
-
-1. **State tests** — feed `Vec<Message>` to `App::update`, assert on `App`. Most tests go here.
-2. **Snapshot tests** — render `ui::draw` into ratatui `TestBackend` (80x24 unless the test says
-   otherwise) and `insta::assert_snapshot!`. The `.snap` files are ASCII screens; read them to
-   "see" the UI. Review changes with `cargo insta review`, or `cargo insta accept` when the
-   diff is intended. Never accept a snapshot you haven't read.
-3. **Fixture tests** — the fake `DatabricksApi` returns fixtures; tests cover deserialisation
-   and the `update` reaction to loaded data. Fixtures are real API response shapes.
-4. **Headless run** — not built. Snapshot and state tests covered every milestone, and herdr
-   lets Claude drive the real binary in a pane and read the screen back. Revisit only if a bug
-   needs a scripted end-to-end run; it would need the fixture-backed `DatabricksApi` fake.
-5. **Logs** — `LAZYDATABRICKS_LOG=debug` writes `tracing` output to `lazydatabricks.log` next
-   to the config file via `tracing-appender`, never stdout. Requests, statuses and executed
-   commands are logged; `warn!` on every failed response.
-
-Not now: pty/tmux end-to-end tests, proptest on the state machine. Add when a real bug
-motivates them.
-
-### Definition of done for a change
-
-clippy clean, fmt clean, `cargo nextest run` green, snapshots reviewed. Nothing needs network or a live workspace. If a state
-transition or parser changed and no test changed, something is missing.
+- `docs/conventions/architecture.md`: before adding a module, a trait, or anything with IO.
+- `docs/conventions/testing.md`: before writing or changing a test.
+- `docs/conventions/errors.md`: before adding an error variant, a log line, or output.
+- `docs/conventions/style.md`: before writing code; the lint cheat sheet is there.
+- `docs/conventions/crates.md`: before adding or uncommenting a dependency.
+- `docs/releasing.md`: before touching versions, tags, or release config.

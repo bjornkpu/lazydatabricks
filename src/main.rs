@@ -709,3 +709,41 @@ fn read_key(timeout: std::time::Duration) -> Result<Option<Message>> {
     };
     Ok(Some(Message::Key(key)))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    fn rust_files(dir: &Path, found: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                rust_files(&path, found);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                found.push(path);
+            }
+        }
+    }
+
+    #[test]
+    fn only_main_imports_crossterm() {
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let main = src.join("main.rs");
+        let mut files = Vec::new();
+        rust_files(&src, &mut files);
+        let offenders: Vec<_> = files
+            .iter()
+            .filter(|path| **path != main)
+            .filter(|path| {
+                std::fs::read_to_string(path)
+                    .unwrap()
+                    .contains("crossterm::")
+            })
+            .collect();
+        assert!(files.len() > 1, "found no sources under {}", src.display());
+        assert!(
+            offenders.is_empty(),
+            "crossterm outside main.rs: {offenders:?}"
+        );
+    }
+}
