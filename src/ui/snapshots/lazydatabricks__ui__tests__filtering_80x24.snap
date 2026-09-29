@@ -25,4 +25,4 @@ expression: render(&app)
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "└───────────────────0 of 0┘└───────────────────────────────────────────────────┘"
-" Type to filter │ Keep: Enter │ Clear: Esc │ Select: ↑/↓                  v0.1.0"
+" Type to filter │ Keep: Enter │ Clear: Esc │ Select: ↑/↓                  v0.0.0"

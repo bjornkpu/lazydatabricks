@@ -25,4 +25,4 @@ expression: render(&app)
 "│    │    R  refresh everything                                           │    │"
 "│    │    +  cycle screen mode                                            │    │"
 "└────│    @  toggle the API log                                           │────┘"
-" Scro└──────────────────────j/k: scroll │ Esc: close──────────────────────┘0.1.0"
+" Scro└──────────────────────j/k: scroll │ Esc: close──────────────────────┘0.0.0"

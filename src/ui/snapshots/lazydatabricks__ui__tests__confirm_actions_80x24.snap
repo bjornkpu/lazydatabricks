@@ -25,4 +25,4 @@ expression: render(&app)
 "│                         ││                                                   │"
 "│                         ││                                                   │"
 "└───────────────────0 of 0┘└───────────────────────────────────────────────────┘"
-" Enable: y │ Back: any other key                                          v0.1.0"
+" Enable: y │ Back: any other key                                          v0.0.0"

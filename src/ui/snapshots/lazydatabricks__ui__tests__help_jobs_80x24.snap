@@ -25,4 +25,4 @@ expression: render(&app)
 "│     │   Tab  next side panel                                            │    │"
 "│     │     R  refresh everything                                         │    │"
 "└─────│     +  cycle screen mode                                          │────┘"
-" Scrol└─────────────────────j/k: scroll │ Esc: close──────────────────────┘0.1.0"
+" Scrol└─────────────────────j/k: scroll │ Esc: close──────────────────────┘0.0.0"

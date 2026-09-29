@@ -520,7 +520,7 @@ mod tests {
     #[test]
     fn update_available_80x24() {
         let mut app = with_runs();
-        app.update(Message::UpdateChecked(Ok("9.9.9".to_owned())));
+        app.update(Message::UpdateChecked(Ok("99.0.0".to_owned())));
         press(&mut app, "1");
         insta::assert_snapshot!(render(&app));
     }
@@ -528,7 +528,7 @@ mod tests {
     #[test]
     fn update_command_menu_80x24() {
         let mut app = with_runs();
-        app.update(Message::UpdateChecked(Ok("9.9.9".to_owned())));
+        app.update(Message::UpdateChecked(Ok("99.0.0".to_owned())));
         press(&mut app, "1y");
         insta::assert_snapshot!(render(&app));
     }

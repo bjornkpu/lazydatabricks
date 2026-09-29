@@ -10,7 +10,11 @@ use ratatui::widgets::Paragraph;
 use super::theme;
 use crate::app::{Action, App, InputMode, Keymap, Panel};
 
+#[cfg(not(test))]
 const VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"));
+/// Fixed so screen snapshots survive every release bump.
+#[cfg(test)]
+const VERSION: &str = "v0.0.0";
 
 #[must_use]
 pub fn hints(
