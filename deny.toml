@@ -1,0 +1,40 @@
+# cargo deny check: known vulnerabilities, licenses, banned crates, crate sources.
+
+[graph]
+all-features = true
+
+[advisories]
+ignore = []
+
+[licenses]
+# Permissive licenses, plus MPL-2.0: it only asks that changes to MPL files stay open, and
+# crates.io dependencies are used unchanged. The GPL family stays out: it would make the whole
+# binary GPL. Add a license here when a chosen crate needs it, never to unblock an alternative
+# crate.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.8
+# The list covers the catalog crates too, so allowances unused today are expected.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "allow"
+deny = [
+    { crate = "git2", reason = "spawn git; gix only if spawning is a measured problem" },
+    { crate = "openssl-sys", reason = "rustls only" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

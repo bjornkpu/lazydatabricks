@@ -1,1 +1,8 @@
 /target
+
+# Local only: beads and superpowers working files.
+.beads/
+.superpowers/
+.dolt/
+*.db
+.beads-credential-key

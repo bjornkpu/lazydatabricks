@@ -42,6 +42,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 insta = "1"                                        # snapshot tests of rendered screens
 # criterion = "0.8"                                  # benchmarking
 
+[lints.rust]
+unsafe_code = "forbid"
+
 [lints.clippy]
 # UM, ACTUALLY
 pedantic = { level = "deny", priority = -1 }

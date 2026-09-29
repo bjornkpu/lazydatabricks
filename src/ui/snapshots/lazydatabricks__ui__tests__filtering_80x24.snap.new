@@ -1,0 +1,29 @@
+---
+source: src/ui/mod.rs
+assertion_line: 406
+expression: render(&app)
+---
+"┌─[1]─Status──────────────┐┌─[0]─Runs - Detail - JSON - Output ⠋───────────────┐"
+"│✓ dev → adb-1.azuredatabr││  Run ID           Started      Duration  Result   │"
+"│/gol · 1 of 3 jobs · 0s a││› 50851892761075   01.09 10:08  2h00m     ◐ RUNNING│"
+"│◐ 1 · ✗ 1 · ● 0          ││  50851892761073   31.08 10:08  1m12s     ✓ SUCCESS│"
+"└─────────────────────────┘│  50851892761074   30.08 10:08  57s       ✗ FAILED │"
+"┌─[2]─Jobs by activity /go┐│                                                   │"
+"│ 2h ◐ [someone] okonomi_…││                                                   │"
+"│                         ││                                                   │"
+"│                         ││                                                   │"
+"│                         ││                                                   │"
+"│                         ││                                                   │"
+"│                         ││                                                   │"
+"│                         ││                                                   │"
+"└───────────────────1 of 1┘│                                                   │"
+"┌─[3]─Pipelines ⠋ by activ┐│durations    █                                     │"
+"│                         │└───────────────────────────────────────────────────┘"
+"│                         │┌─API log───────────────────────────────────────────┐"
+"│                         ││GET  /api/2.2/jobs/list?limit=25        200    84ms│"
+"└───────────────────0 of 0┘│GET  /api/2.2/jobs/runs/list?job_id=1&… 200   131ms│"
+"┌─[4]─Compute ⠋───────────┐│                                                   │"
+"│                         ││                                                   │"
+"│                         ││                                                   │"
+"└───────────────────0 of 0┘└───────────────────────────────────────────────────┘"
+" Type to filter │ Keep: Enter │ Clear: Esc │ Select: ↑/↓                  v0.1.1"

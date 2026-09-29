@@ -8,7 +8,7 @@ Conventions follow https://www.namtao.com/rust/.
 Work order is `docs/spec.md` milestones M0..M62. Tests are written per milestone, not at the end.
 
 - `cargo nextest run` — tests (use this, not `cargo test`)
-- `cargo clippy --all-targets` — must be clean; lints are `deny`, so this is the compile gate
+- `cargo clippy --all-targets -- -D warnings` — must be clean; lints are `deny`, so this is the compile gate
 - `cargo fmt --check` — formatting
 - `bacon clippy` / `bacon nextest` — watch mode during development
 - `cargo run` — run the app
@@ -31,6 +31,11 @@ to make code compile. No `unwrap`/`expect`/`panic`/`todo`/indexing/`as` casts in
 `#[allow(clippy::...)]` needs a one-line comment saying why, and must be as narrow as possible
 (one item, never module-wide). The spec (§2) names `arithmetic_side_effects` and `as_conversions`
 as the two that may be relaxed if they obstruct rather than teach. Ask BK before doing so.
+
+`[lints.rust]` sets `unsafe_code = "forbid"`.
+
+The Stop hook in `.claude/settings.json` runs fmt, clippy and nextest at the end of every turn
+and blocks while they are red. CI also runs `cargo deny check` and `cargo machete`.
 
 ## Dependencies
 
